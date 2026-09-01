@@ -40,11 +40,17 @@ import dev.pampa.fluidweather.core.sensor.Barometer
 import dev.pampa.fluidweather.core.sensor.ManualBurstController
 import dev.pampa.fluidweather.core.sensor.MaximaAlarm
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
+import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
+import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
+import dev.pampa.fluidweather.nowcast.cleaning.RejectionReason
+import androidx.compose.runtime.produceState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Tutto quello che la diagnostica tocca; lo costruisce :app dal suo grafo. */
 class DiagnosticsDependencies(
@@ -54,6 +60,7 @@ class DiagnosticsDependencies(
   val burstController: ManualBurstController,
   val scheduler: SamplingScheduler,
   val activityRecognizer: ActivityRecognizer,
+  val cleaningPipeline: CleaningPipeline,
 )
 
 /**
@@ -71,6 +78,15 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
   val sampleCount by remember { deps.repository.count() }.collectAsState(initial = 0L)
   val live by remember { deps.barometer.readings() }.collectAsState(initial = null)
   val burst by deps.burstController.progress.collectAsState()
+
+  // Il segnale pulito si ricalcola quando l'archivio cresce: 12 ore di storia negli stadi 1-2.
+  val cleaning by produceState<CleaningResult?>(initialValue = null, sampleCount) {
+    value = withContext(Dispatchers.Default) {
+      deps.cleaningPipeline.process(
+        deps.repository.samplesSince(System.currentTimeMillis() - 12 * 60 * 60_000L),
+      )
+    }
+  }
 
   // I permessi non hanno un flow: il contatore forza la rivalutazione dopo ogni risposta.
   var permissionEpoch by remember { mutableIntStateOf(0) }
@@ -119,6 +135,55 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
           subtitle = "Tutte le letture registrate finora",
           meta = sampleCount.toString(),
         )
+      }
+    }
+
+    item { FluidSectionHeader(title = "Segnale pulito — stadi 1-2") }
+    item {
+      FluidListGroup {
+        val latest = cleaning?.latest
+        if (latest == null) {
+          FluidListRow(
+            title = "In attesa di dati",
+            subtitle = "Il segnale pulito compare quando l'archivio ha qualche lettura",
+          )
+        } else {
+          FluidListRow(
+            title = "Livello (mare)",
+            subtitle = "Ridotto con la quota, filtrato, con la sua incertezza",
+            meta = String.format(
+              Locale.getDefault(),
+              "%.2f ± %.2f hPa",
+              latest.levelHpa,
+              latest.levelSigmaHpa,
+            ),
+          )
+          FluidListDivider()
+          FluidListRow(
+            title = "Tendenza",
+            subtitle = "Quiete sotto 1,0 · sorveglianza oltre",
+            meta = String.format(
+              Locale.getDefault(),
+              "%+.2f ± %.2f hPa/h",
+              latest.trendHpaPerHour,
+              latest.trendSigmaHpaPerHour,
+            ),
+          )
+        }
+        val result = cleaning
+        if (result != null) {
+          val counts = result.rejectionCounts()
+          FluidListDivider()
+          FluidListRow(
+            title = "Scarti della pulizia",
+            subtitle = if (counts.isEmpty()) {
+              "Nessun punto scartato nelle ultime 12 ore"
+            } else {
+              counts.entries.joinToString(" · ") { (reason, count) -> "${reason.label()}: $count" }
+            },
+            meta = "${result.cleaned.size} tenuti",
+          )
+        }
       }
     }
 
@@ -305,4 +370,11 @@ private fun SampleSource.label(): String = when (this) {
   SampleSource.SURVEILLANCE -> "sorveglianza"
   SampleSource.MANUAL_BURST -> "raffica manuale"
   SampleSource.CONTINUOUS -> "continuo"
+}
+
+private fun RejectionReason.label(): String = when (this) {
+  RejectionReason.ANOMALOUS_VARIANCE -> "varianza anomala"
+  RejectionReason.VEHICLE -> "veicolo"
+  RejectionReason.ALTITUDE_CHANGE -> "cambio di quota"
+  RejectionReason.NON_WEATHER_JUMP -> "salto non-meteo"
 }

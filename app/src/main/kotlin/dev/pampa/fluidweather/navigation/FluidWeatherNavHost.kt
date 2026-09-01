@@ -94,6 +94,7 @@ fun FluidWeatherNavHost(graph: AppGraph) {
           burstController = graph.manualBurstController,
           scheduler = graph.samplingScheduler,
           activityRecognizer = graph.activityRecognizer,
+          cleaningPipeline = graph.cleaningPipeline,
         )
       }
       DiagnosticsScreen(deps = deps, onBack = { navController.popBackStack() })

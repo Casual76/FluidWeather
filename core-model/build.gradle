@@ -1,26 +1,14 @@
+// Puro Kotlin/JVM, non una libreria Android: il dominio deve essere visibile a :nowcast e
+// :testbench (anch'essi JVM puri), e non contiene nulla di Android. E' questa scelta che permette
+// alla pipeline di essere verificata sul computer con gli stessi tipi che girano sul telefono.
 plugins {
-  id 'com.android.library'
-  id 'org.jetbrains.kotlin.android'
+  id 'org.jetbrains.kotlin.jvm'
 }
 
 apply from: "${rootDir}/engine/versions.gradle"
 
-android {
-  namespace 'dev.pampa.fluidweather.core.model'
-  compileSdk engine.compileSdk
-
-  defaultConfig {
-    minSdk engine.minSdk
-  }
-
-  compileOptions {
-    sourceCompatibility engine.javaVersion
-    targetCompatibility engine.javaVersion
-  }
-
-  kotlinOptions {
-    jvmTarget = engine.jvmTarget
-  }
+kotlin {
+  jvmToolchain(17)
 }
 
 dependencies {

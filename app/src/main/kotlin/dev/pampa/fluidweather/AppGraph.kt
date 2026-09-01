@@ -13,6 +13,7 @@ import dev.pampa.fluidweather.core.sensor.ManualBurstController
 import dev.pampa.fluidweather.core.sensor.SamplingEngine
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.sensor.SurveillanceController
+import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +37,9 @@ class AppGraph(context: Context) {
   private val locationProvider = LocationProvider(context)
   private val surveillanceController = SurveillanceController(context)
 
+  /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */
+  val cleaningPipeline = CleaningPipeline()
+
   val samplingEngine = SamplingEngine(
     barometer = barometer,
     locationProvider = locationProvider,
@@ -43,6 +47,7 @@ class AppGraph(context: Context) {
     repository = pressureRepository,
     settingsStore = samplingSettingsStore,
     surveillance = surveillanceController,
+    cleaningPipeline = cleaningPipeline,
   )
   val samplingScheduler = SamplingScheduler(context, samplingSettingsStore)
   val manualBurstController = ManualBurstController(samplingEngine, applicationScope)

@@ -26,6 +26,8 @@ android {
 
 dependencies {
   api project(':core-data')
+  // La marcia di sorveglianza decide sulla tendenza pulita (stadi 1-2), non sul segnale grezzo.
+  api project(':nowcast')
 
   implementation "androidx.core:core-ktx:${engine.coreKtx}"
   implementation "androidx.work:work-runtime-ktx:${appVersions.work}"

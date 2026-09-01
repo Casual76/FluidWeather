@@ -7,6 +7,7 @@ import dev.pampa.fluidweather.core.model.ActivityKind
 import dev.pampa.fluidweather.core.model.PressureSample
 import dev.pampa.fluidweather.core.model.PressureTrend
 import dev.pampa.fluidweather.core.model.SampleSource
+import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import java.util.UUID
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -24,6 +25,7 @@ class SamplingEngine(
   private val repository: PressureRepository,
   private val settingsStore: SamplingSettingsStore,
   private val surveillance: SurveillanceController,
+  private val cleaningPipeline: CleaningPipeline,
 ) {
 
   /** Il giro periodico: raffica o lettura secca secondo la modalita', poi il cambio di marcia. */
@@ -70,9 +72,15 @@ class SamplingEngine(
     stored
   }
 
-  /** La tendenza grezza dell'ultima ora, per il cambio di marcia e per la diagnostica. */
-  suspend fun currentTrend(): Double? =
-    PressureTrend.hPaPerHour(repository.samplesSince(System.currentTimeMillis() - 3_600_000L))
+  /**
+   * La tendenza *pulita* delle ultime tre ore: gli stadi 1-2 mangiano ascensori, viaggi e
+   * raffiche impazzite prima che diventino un falso cambio di marcia. Tre ore perche' e' la
+   * finestra su cui parlano le soglie della letteratura (1,6 e 3-4 hPa/3h).
+   */
+  suspend fun currentTrend(): Double? {
+    val samples = repository.samplesSince(System.currentTimeMillis() - TREND_WINDOW_MILLIS)
+    return cleaningPipeline.process(samples).latest?.trendHpaPerHour
+  }
 
   private suspend fun freshActivity(): Pair<ActivityKind, Int?> {
     val latest = activityStore.current() ?: return ActivityKind.UNKNOWN to null
@@ -100,6 +108,9 @@ class SamplingEngine(
   private companion object {
     /** Un riconoscimento piu' vecchio di cosi' non descrive piu' questo campione. */
     const val ACTIVITY_FRESHNESS_MILLIS = 10 * 60_000L
+
+    /** La finestra della tendenza per il cambio di marcia. */
+    const val TREND_WINDOW_MILLIS = 3 * 60 * 60_000L
 
     /** Margine oltre la durata nominale prima di considerare il sensore ammutolito. */
     const val BURST_GRACE_SECONDS = 10
