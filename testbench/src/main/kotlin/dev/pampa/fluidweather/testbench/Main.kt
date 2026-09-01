@@ -9,6 +9,7 @@ import dev.pampa.fluidweather.testbench.metrics.Verification
 import dev.pampa.fluidweather.testbench.replay.Replayer
 import dev.pampa.fluidweather.testbench.replay.TaggedVerification
 import dev.pampa.fluidweather.testbench.stages.StageBenches
+import dev.pampa.fluidweather.testbench.train.TrainCommand
 import java.io.File
 import java.util.Locale
 
@@ -27,12 +28,16 @@ fun main(args: Array<String>) {
     "fetch" -> OpenMeteoFetcher().fetchAll()
     "replay" -> replay()
     "stages" -> stages()
+    "train" -> TrainCommand.run(fetchedDatasets())
+    // La resa dei conti: il modello addestrato contro le baseline, solo sul periodo che
+    // l'addestramento non ha mai visto (dal 2025-01-01 in poi).
+    "replay-oos" -> replay(evaluateFromMillis = TrainCommand.CUTOFF_MILLIS, withNowcast = true)
     "all" -> {
       OpenMeteoFetcher().fetchAll()
       replay()
       stages()
     }
-    else -> println("comandi: fetch | replay | stages | all")
+    else -> println("comandi: fetch | replay | stages | train | replay-oos | all")
   }
 }
 
@@ -45,18 +50,19 @@ private fun fetchedDatasets(): List<StationDataset> {
   return available.map { StationDataset.load(it) }
 }
 
-private fun replay() {
+private fun replay(evaluateFromMillis: Long? = null, withNowcast: Boolean = false) {
   val datasets = fetchedDatasets()
   if (datasets.isEmpty()) return
   val replayer = Replayer()
   val report = StringBuilder()
 
-  report.appendLine("=== REPLAY — POD/FAR/CSI a soglia 0,5 · Brier/BSS · per predittore e finestra ===")
+  val title = if (withNowcast) "REPLAY OUT-OF-SAMPLE (dal 2025-01-01) — nowcast-v1 in classifica" else "REPLAY"
+  report.appendLine("=== $title — POD/FAR/CSI a soglia 0,5 · Brier/BSS · per predittore e finestra ===")
   report.appendLine()
 
   val global = mutableMapOf<String, MutableMap<String, MutableList<TaggedVerification>>>()
   for (dataset in datasets) {
-    val outcome = replayer.replay(dataset)
+    val outcome = replayer.replay(dataset, evaluateFromMillis, withNowcast)
     report.appendLine("--- ${dataset.location.name} (${dataset.spanDays.toInt()} giorni, ${outcome.evaluations} valutazioni) — ${dataset.location.why}")
     report.append(table(outcome.cells))
     report.appendLine()
@@ -81,7 +87,7 @@ private fun replay() {
     report.appendLine("  $window: $line")
   }
 
-  emit(report.toString(), "replay.txt")
+  emit(report.toString(), if (withNowcast) "replay-oos.txt" else "replay.txt")
 }
 
 private fun table(cells: Map<String, out Map<String, out List<TaggedVerification>>>): String {

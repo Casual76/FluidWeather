@@ -1,9 +1,11 @@
 package dev.pampa.fluidweather.testbench.replay
 
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
+import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.testbench.data.StationDataset
 import dev.pampa.fluidweather.testbench.events.EventWindow
 import dev.pampa.fluidweather.testbench.events.PrecipitationEvents
+import dev.pampa.fluidweather.testbench.train.RecordContext
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -41,16 +43,27 @@ class Replayer(
   ),
 ) {
 
-  fun replay(dataset: StationDataset): ReplayOutcome {
+  fun replay(
+    dataset: StationDataset,
+    /** Valuta solo da qui in poi: e' cosi' che il modello addestrato si giudica out-of-sample. */
+    evaluateFromMillis: Long? = null,
+    /** Costruisce anche le feature dello stadio 4 e mette in classifica il nowcast. */
+    withNowcast: Boolean = false,
+  ): ReplayOutcome {
     val synthesizer = SampleSynthesizer(dataset)
     val events = PrecipitationEvents(dataset.records)
     val climatologyRates = climatologyRates(dataset, events)
+    val recordContext = if (withNowcast) RecordContext(dataset) else null
+    val activePredictors = if (withNowcast) predictors + NowcastV1Predictor() else predictors
 
-    val cells = predictors.associate { predictor ->
+    val cells = activePredictors.associate { predictor ->
       predictor.name to windows.associate { it.label to mutableListOf<TaggedVerification>() }
     }
 
-    val first = dataset.records.first().timestampMillis + historyHours * 3_600_000L
+    val first = maxOf(
+      dataset.records.first().timestampMillis + historyHours * 3_600_000L,
+      evaluateFromMillis ?: Long.MIN_VALUE,
+    )
     val last = dataset.records.last().timestampMillis
     var evaluations = 0
     var now = first
@@ -61,11 +74,19 @@ class Replayer(
           .lastOrNull { it.timestampMillis <= now && it.temperatureC != null }
           ?.temperatureC
         val cleaning = pipeline.process(samples, temperatureCelsius = temperature)
-        val state = ReplayState(cleaning, events.rainingAt(now), climatologyRates)
+        val rawFeatures = recordContext?.let { context ->
+          FeatureExtractor.extract(
+            cleaning = cleaning,
+            context = context.context(now),
+            normalHpa = context.normal(now),
+            nowMillis = now,
+          )
+        }
+        val state = ReplayState(cleaning, events.rainingAt(now), climatologyRates, rawFeatures)
         val season = seasonOf(now)
         for (window in windows) {
           val truth = events.occurred(now, window) ?: continue
-          for (predictor in predictors) {
+          for (predictor in activePredictors) {
             val probability = predictor.probability(state, window).coerceIn(0.0, 1.0)
             cells.getValue(predictor.name).getValue(window.label) +=
               TaggedVerification(probability, truth, season)

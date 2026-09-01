@@ -10,6 +10,8 @@ class ReplayState(
   /** Il tasso base di pioggia per finestra, calcolato sull'intero dataset (dichiarato: e' il
    * riferimento minimo da battere, non un concorrente onesto — conosce il proprio futuro). */
   val climatologyRates: Map<String, Double>,
+  /** Le feature dello stadio 4, quando il replay le costruisce (nowcast in classifica). */
+  val rawFeatures: DoubleArray? = null,
 ) {
   fun rateFor(window: EventWindow): Double = climatologyRates[window.label] ?: 0.1
 }
@@ -60,5 +62,17 @@ class BarometricRulePredictor : Predictor {
       trend >= 0.53 -> (rate * 0.4).coerceAtLeast(0.02)
       else -> rate
     }
+  }
+}
+
+/** Il motore vero (stadi 4-5), in classifica alla pari con i suoi antenati. */
+class NowcastV1Predictor(
+  private val model: dev.pampa.fluidweather.nowcast.verdict.NowcastModel =
+    dev.pampa.fluidweather.nowcast.verdict.NowcastModel.trained(),
+) : Predictor {
+  override val name = "nowcast-v1"
+  override fun probability(state: ReplayState, window: EventWindow): Double {
+    val features = state.rawFeatures ?: return state.rateFor(window)
+    return model.verdict(features).forWindow(window.label)?.probability ?: state.rateFor(window)
   }
 }

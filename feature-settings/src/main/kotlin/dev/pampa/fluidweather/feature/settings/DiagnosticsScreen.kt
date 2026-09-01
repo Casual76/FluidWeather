@@ -43,7 +43,11 @@ import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.cleaning.RejectionReason
+import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.tide.TideSource
+import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
+import dev.pampa.fluidweather.nowcast.verdict.NowcastModel
+import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import androidx.compose.runtime.produceState
 import java.time.Instant
 import java.time.ZoneId
@@ -136,6 +140,49 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
           subtitle = "Tutte le letture registrate finora",
           meta = sampleCount.toString(),
         )
+      }
+    }
+
+    item { FluidSectionHeader(title = "Verdetto nowcast — v1, solo barometro") }
+    item {
+      FluidListGroup {
+        val verdict: NowcastVerdict? = cleaning?.let { result ->
+          FeatureExtractor.extract(result, context = null, normalHpa = null, nowMillis = System.currentTimeMillis())
+            ?.let { NowcastModel.trained().verdict(it) }
+        }
+        if (verdict == null) {
+          FluidListRow(
+            title = "In attesa di storia",
+            subtitle = "Il verdetto compare dopo ~13 ore di campionamento; " +
+              "il contesto dei provider (fase 6) lo affinera'",
+          )
+        } else {
+          FluidListRow(
+            title = "Livello",
+            subtitle = when (verdict.level) {
+              AlertLevel.QUIETE -> "Nessun segnale fuori dalla climatologia"
+              AlertLevel.SORVEGLIANZA -> "Qualcosa si muove: finestre sopra il 35%"
+              AlertLevel.ALLERTA -> "Precipitazione piu' probabile che no a breve"
+            },
+            meta = verdict.level.name.lowercase(),
+          )
+          verdict.windows.forEach { window ->
+            FluidListDivider()
+            FluidListRow(
+              title = "Pioggia ${window.window}",
+              subtitle = window.topFactors.joinToString(" · ") { factor ->
+                "${factor.name} ${if (factor.contribution > 0) "+" else "−"}"
+              }.ifEmpty { "Nessun fattore fuori dal neutro" },
+              meta = String.format(
+                Locale.getDefault(),
+                "%.0f%% (%.0f-%.0f)",
+                window.probability * 100,
+                window.probabilityLow * 100,
+                window.probabilityHigh * 100,
+              ),
+            )
+          }
+        }
       }
     }
 
