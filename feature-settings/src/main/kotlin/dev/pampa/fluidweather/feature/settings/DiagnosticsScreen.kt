@@ -43,6 +43,7 @@ import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.cleaning.RejectionReason
+import dev.pampa.fluidweather.nowcast.tide.TideSource
 import androidx.compose.runtime.produceState
 import java.time.Instant
 import java.time.ZoneId
@@ -172,6 +173,30 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
         }
         val result = cleaning
         if (result != null) {
+          FluidListDivider()
+          FluidListRow(
+            title = "Marea atmosferica",
+            subtitle = when (result.tide.source) {
+              TideSource.NONE -> "Nessuna posizione nota: non si sottrae niente"
+              TideSource.CLIMATOLOGICAL -> String.format(
+                Locale.getDefault(),
+                "Prior climatologico · S1 %.2f · S2 %.2f hPa",
+                result.tide.s1AmplitudeHpa,
+                result.tide.s2AmplitudeHpa,
+              )
+              TideSource.FITTED -> String.format(
+                Locale.getDefault(),
+                "Adattata al posto · S1 %.2f · S2 %.2f hPa",
+                result.tide.s1AmplitudeHpa,
+                result.tide.s2AmplitudeHpa,
+              )
+            },
+            meta = if (result.tide.source == TideSource.NONE) {
+              "—"
+            } else {
+              String.format(Locale.getDefault(), "adesso %+.2f hPa", result.tide.tideAtLatestHpa)
+            },
+          )
           val counts = result.rejectionCounts()
           FluidListDivider()
           FluidListRow(

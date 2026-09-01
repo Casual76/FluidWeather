@@ -5,6 +5,10 @@ import dev.pampa.fluidweather.core.model.PressureSample
 import dev.pampa.fluidweather.nowcast.acquisition.AggregatedPoint
 import dev.pampa.fluidweather.nowcast.acquisition.BurstAggregator
 import dev.pampa.fluidweather.nowcast.acquisition.DiscardedBurst
+import dev.pampa.fluidweather.nowcast.tide.TidalModel
+import dev.pampa.fluidweather.nowcast.tide.TidalSummary
+import dev.pampa.fluidweather.nowcast.tide.TideEstimator
+import dev.pampa.fluidweather.nowcast.tide.ZeroTide
 import kotlin.math.abs
 
 /** Un punto sopravvissuto alla pulizia, nelle due valute: alla stazione e al livello del mare. */
@@ -16,6 +20,9 @@ data class CleanPoint(
   val seaLevelPressureHpa: Double,
   val noiseSigmaHpa: Double,
   val altitudeMeters: Double?,
+  /** Le coordinate servono allo stadio 3: la marea e' agganciata al sole del posto. */
+  val latitude: Double?,
+  val longitude: Double?,
 )
 
 data class CleaningResult(
@@ -23,6 +30,8 @@ data class CleaningResult(
   val filtered: List<FilteredPoint>,
   val rejected: List<RejectedPoint>,
   val discardedBursts: List<DiscardedBurst>,
+  /** Cosa lo stadio 3 ha sottratto, e da quale modello: la diagnostica lo dichiara. */
+  val tide: TidalSummary,
 ) {
   /** L'ultima stima disponibile: livello e tendenza con le loro incertezze. */
   val latest: FilteredPoint? get() = filtered.lastOrNull()
@@ -49,7 +58,10 @@ data class CleaningResult(
  *     piano con GPS onesto viene *compensato* qui, non scartato;
  *  4. screening dei salti non-meteo sulla serie *ridotta* — quello che ancora salta dopo la
  *     compensazione (l'ascensore col GPS cieco) non e' meteo per definizione;
- *  5. filtro di Kalman su livello + tendenza.
+ *  5. de-tidalizzazione S1/S2 (stadio 3): la marea atmosferica si sottrae *dopo* lo screening —
+ *     varia al piu' di ~0,6 hPa/h, ben sotto la soglia dei salti — e *prima* del filtro, cosi'
+ *     la tendenza stimata e' quella sinottica, non il calo pomeridiano fisiologico;
+ *  6. filtro di Kalman su livello + tendenza della serie de-tidalizzata.
  *
  * Nota sulla quota: la GPS e' ellissoidica e balla di ±10 m; i punti senza quota usano la
  * mediana delle quote della serie, cosi' la riduzione resta *coerente* punto per punto. Un
@@ -74,6 +86,11 @@ class CleaningPipeline(
    * e' un salto, e' rumore.
    */
   private val minJumpHpa: Double = 0.5,
+  /**
+   * Lo stadio 3. Null spegne la de-tidalizzazione (utile nei test e nei confronti A/B del
+   * banco di prova); il default e' la cascata fit locale -> prior climatologico -> zero.
+   */
+  private val tideEstimator: TideEstimator? = TideEstimator(),
 ) {
 
   fun process(
@@ -97,14 +114,25 @@ class CleaningPipeline(
         seaLevelPressureHpa = SeaLevel.reduce(station, effectiveAltitude, temperature),
         noiseSigmaHpa = point.spreadHpa,
         altitudeMeters = point.altitudeMeters,
+        latitude = point.latitude,
+        longitude = point.longitude,
       )
     }
 
     val rejected = screening.rejected.toMutableList()
     val cleaned = screenJumps(reduced, rejected)
 
+    val tide: TidalModel =
+      if (tideEstimator != null && cleaned.isNotEmpty()) tideEstimator.estimate(cleaned) else ZeroTide
+
     val filtered = kalman.filter(
-      cleaned.map { Measurement(it.timestampMillis, it.seaLevelPressureHpa, it.noiseSigmaHpa) },
+      cleaned.map {
+        Measurement(
+          it.timestampMillis,
+          it.seaLevelPressureHpa - tide.tideAt(it.timestampMillis),
+          it.noiseSigmaHpa,
+        )
+      },
     )
 
     return CleaningResult(
@@ -112,6 +140,12 @@ class CleaningPipeline(
       filtered = filtered,
       rejected = rejected,
       discardedBursts = aggregation.discardedBursts,
+      tide = TidalSummary(
+        source = tide.source,
+        s1AmplitudeHpa = tide.s1AmplitudeHpa,
+        s2AmplitudeHpa = tide.s2AmplitudeHpa,
+        tideAtLatestHpa = cleaned.lastOrNull()?.let { tide.tideAt(it.timestampMillis) } ?: 0.0,
+      ),
     )
   }
 
