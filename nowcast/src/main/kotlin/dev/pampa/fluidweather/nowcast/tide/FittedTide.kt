@@ -38,7 +38,7 @@ class FittedTide(
  * qualsiasi sinusoide a quelle frequenze media a zero. Cio' che resta e' marea + rumore, e li'
  * i minimi quadrati fanno il loro mestiere.
  */
-internal class HarmonicFitter {
+class HarmonicFitter {
 
   data class Fit(val a1: Double, val b1: Double, val a2: Double, val b2: Double)
 

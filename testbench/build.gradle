@@ -1,13 +1,24 @@
 // Banco di prova JVM: dataset storici, replay, metriche (POD, FAR, CSI, Brier, affidabilita').
-// Non e' spedito nell'APK: nessun modulo Android dipende da questo.
+// Non e' spedito nell'APK: nessun modulo Android dipende da questo. E' il tribunale del motore:
+// nessuna soglia della pipeline si cambia senza confrontare i numeri prima e dopo, qui.
 plugins {
   id 'org.jetbrains.kotlin.jvm'
+  id 'application'
 }
 
 apply from: "${rootDir}/engine/versions.gradle"
 
 kotlin {
   jvmToolchain(17)
+}
+
+application {
+  mainClass = 'dev.pampa.fluidweather.testbench.MainKt'
+}
+
+// `run` di Gradle vuole la working dir del modulo; i dati vivono in testbench/data (git-ignorata).
+tasks.named('run') {
+  workingDir = projectDir
 }
 
 dependencies {

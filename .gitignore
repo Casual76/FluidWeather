@@ -10,3 +10,7 @@ captures/
 *.apk
 *.aab
 output-metadata.json
+
+# Dati e rapporti del banco di prova: si rigenerano con `gradlew :testbench:run --args=fetch`.
+testbench/data/
+testbench/reports/
