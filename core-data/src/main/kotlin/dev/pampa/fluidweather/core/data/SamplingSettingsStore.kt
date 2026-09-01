@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.map
  * cui quello e' separato da noi: ognuno puo' migrare o azzerare il proprio file senza toccare
  * l'altro.
  */
-private val Context.fluidWeatherStore: DataStore<Preferences> by preferencesDataStore(name = "fluidweather")
+internal val Context.fluidWeatherStore: DataStore<Preferences> by preferencesDataStore(name = "fluidweather")
 
 data class SamplingSettings(
   /** BILANCIATA finche' l'onboarding (fase 15) non fa scegliere esplicitamente. */

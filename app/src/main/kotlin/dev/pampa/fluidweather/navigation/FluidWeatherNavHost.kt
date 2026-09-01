@@ -80,6 +80,9 @@ fun FluidWeatherNavHost(graph: AppGraph) {
           airQualityClient = graph.airQualityClient,
           appearanceStore = graph.appearanceSettingsStore,
           layoutStore = graph.homeLayoutStore,
+          savedLocations = graph.savedLocationsRepository,
+          selectedPlaceStore = graph.selectedPlaceStore,
+          geocodingClient = graph.geocodingClient,
           onWeatherAccent = { graph.weatherAccent.value = it },
         )
       }

@@ -12,10 +12,13 @@ import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
 import dev.pampa.fluidweather.core.data.RoomVerificationStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
+import dev.pampa.fluidweather.core.data.SavedLocationsRepository
+import dev.pampa.fluidweather.core.data.SelectedPlaceStore
 import dev.pampa.fluidweather.core.weather.AirQualityClient
 import dev.pampa.fluidweather.core.weather.ForecastFusion
 import dev.pampa.fluidweather.core.weather.ForecastVerifier
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
+import dev.pampa.fluidweather.core.weather.GeocodingClient
 import dev.pampa.fluidweather.core.weather.ProviderHttp
 import dev.pampa.fluidweather.core.weather.ProviderScoreboard
 import dev.pampa.fluidweather.core.weather.UrlCache
@@ -99,4 +102,9 @@ class AppGraph(context: Context) {
   val appearanceSettingsStore = AppearanceSettingsStore(context)
   val homeLayoutStore = HomeLayoutStore(context)
   val weatherAccent = MutableStateFlow<AccentPreset?>(null)
+
+  // Localita' (fase 10): salvate su Room, selezione persistita, ricerca keyless.
+  val savedLocationsRepository = SavedLocationsRepository(database.savedLocationsDao())
+  val selectedPlaceStore = SelectedPlaceStore(context)
+  val geocodingClient = GeocodingClient(providerHttp)
 }

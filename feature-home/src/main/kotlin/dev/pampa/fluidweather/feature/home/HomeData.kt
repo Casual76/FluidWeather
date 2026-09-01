@@ -10,7 +10,10 @@ import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.SavedLocationsRepository
+import dev.pampa.fluidweather.core.data.SelectedPlaceStore
 import dev.pampa.fluidweather.core.model.AirQualityNow
+import dev.pampa.fluidweather.core.model.Place
 import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.FusedForecast
 import dev.pampa.fluidweather.core.model.FusedHour
@@ -22,6 +25,7 @@ import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import dev.pampa.fluidweather.core.weather.AirQualityClient
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
+import dev.pampa.fluidweather.core.weather.GeocodingClient
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
 import dev.pampa.fluidweather.core.weather.toContext
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
@@ -46,6 +50,9 @@ class HomeDependencies(
   val airQualityClient: AirQualityClient,
   val appearanceStore: AppearanceSettingsStore,
   val layoutStore: HomeLayoutStore,
+  val savedLocations: SavedLocationsRepository,
+  val selectedPlaceStore: SelectedPlaceStore,
+  val geocodingClient: GeocodingClient,
   /** La home deriva l'accento dal meteo e lo consegna al tema dell'app. */
   val onWeatherAccent: (AccentPreset) -> Unit,
 )
@@ -82,16 +89,27 @@ data class HomeUiState(
  * stato appena sa qualcosa: il cielo cambia colore prima che arrivi l'ultimo dettaglio.
  */
 @Composable
-fun rememberHomeState(deps: HomeDependencies): State<HomeUiState> {
+fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> {
   val context = LocalContext.current
-  return produceState(initialValue = HomeUiState(phase = phaseFromClock())) {
+  return produceState(initialValue = HomeUiState(phase = phaseFromClock()), key1 = place.id) {
     val now = System.currentTimeMillis()
 
-    val here = deps.locationProvider.snapshot()
-    if (here == null) {
+    // GPS o localita' scelta: da qui in poi il caricamento non sa la differenza.
+    val resolved: Triple<Double, Double, String?>? = if (place.isGps) {
+      deps.locationProvider.snapshot()?.let { Triple(it.latitude, it.longitude, null) }
+    } else {
+      Triple(place.latitude, place.longitude, place.name)
+    }
+    if (resolved == null) {
       value = value.copy(loading = false, hasLocation = false)
       return@produceState
     }
+    val (latitude, longitude, presetName) = resolved
+    val here = object {
+      val latitude = latitude
+      val longitude = longitude
+    }
+    if (presetName != null) value = value.copy(locationName = presetName)
 
     val phase = SolarEphemeris.phaseAt(now, here.latitude, here.longitude)
     value = value.copy(phase = phase, latitude = here.latitude, longitude = here.longitude)
@@ -152,8 +170,10 @@ fun rememberHomeState(deps: HomeDependencies): State<HomeUiState> {
     val air = runCatching { deps.airQualityClient.now(here.latitude, here.longitude) }.getOrNull()
     if (air != null) value = value.copy(airQuality = air)
 
-    val name = reverseGeocode(context, here.latitude, here.longitude)
-    if (name != null) value = value.copy(locationName = name)
+    if (presetName == null) {
+      val name = reverseGeocode(context, here.latitude, here.longitude)
+      if (name != null) value = value.copy(locationName = name)
+    }
   }
 }
 

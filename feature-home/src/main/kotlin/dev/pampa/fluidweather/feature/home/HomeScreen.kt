@@ -77,6 +77,8 @@ import dev.antigravity.fluidengine.ui.theme.FluidTheme
 import dev.pampa.fluidweather.core.model.AppearanceSettings
 import dev.pampa.fluidweather.core.model.GlassLevel
 import dev.pampa.fluidweather.core.model.GlassPolicy
+import dev.pampa.fluidweather.core.model.Place
+import dev.pampa.fluidweather.core.model.PlaceCycle
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.ui.GlassTile
 import dev.pampa.fluidweather.core.ui.GridReorder
@@ -111,7 +113,12 @@ fun HomeScreen(
   val powerSave = remember { isPowerSaveActive(context) }
   val glassLevel = GlassPolicy.resolve(appearance, powerSave, deviceTier)
 
-  val state by rememberHomeState(deps)
+  // La localita' che comanda la home: GPS o una salvata (fase 10).
+  val places by deps.savedLocations.places.collectAsState(initial = listOf(Place.gps()))
+  val selectedId by deps.selectedPlaceStore.selectedId.collectAsState(initial = Place.GPS_ID)
+  val selectedPlace = places.firstOrNull { it.id == selectedId } ?: Place.gps()
+
+  val state by rememberHomeState(deps, selectedPlace)
 
   FluidTheme(
     settings = remember { EngineSettings(themeMode = ThemeMode.DARK, dynamicColorEnabled = false) },
@@ -121,6 +128,8 @@ fun HomeScreen(
       state = state,
       glassLevel = glassLevel,
       deps = deps,
+      places = places,
+      selectedPlace = selectedPlace,
       onOpenRadar = onOpenRadar,
       onOpenBenchmark = onOpenBenchmark,
       onOpenSettings = onOpenSettings,
@@ -134,6 +143,8 @@ private fun HomeShell(
   state: HomeUiState,
   glassLevel: GlassLevel,
   deps: HomeDependencies,
+  places: List<Place>,
+  selectedPlace: Place,
   onOpenRadar: () -> Unit,
   onOpenBenchmark: () -> Unit,
   onOpenSettings: () -> Unit,
@@ -154,6 +165,7 @@ private fun HomeShell(
   val order = liveOrder ?: HomeWidget.ordered(storedOrder).map { it.id }
   val drag = remember(gridState) { GridDragController(gridState) }
   var selectedWidget by remember { mutableStateOf<HomeWidget?>(null) }
+  var locationSheetOpen by remember { mutableStateOf(false) }
 
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
@@ -195,15 +207,45 @@ private fun HomeShell(
         onDismiss = { selectedWidget = null },
       )
 
+      LocationSheetHost(
+        open = locationSheetOpen,
+        places = places,
+        selectedId = selectedPlace.id,
+        deps = deps,
+        onDismiss = { locationSheetOpen = false },
+        onSelect = { place -> scope.launch { deps.selectedPlaceStore.select(place.id) } },
+        onSaveAndSelect = { place ->
+          scope.launch {
+            deps.savedLocations.save(place)
+            deps.selectedPlaceStore.select(place.id)
+          }
+        },
+        onRemove = { place ->
+          scope.launch {
+            deps.savedLocations.remove(place.id)
+            if (place.id == selectedPlace.id) deps.selectedPlaceStore.select(Place.GPS_ID)
+          }
+        },
+      )
+
       val morphMenu = rememberFluidMorphMenuState()
       HomeFloatingBar(
-        locationName = state.locationName,
+        locationName = if (selectedPlace.isGps) state.locationName else selectedPlace.name,
         backdrop = chromeBackdrop,
         menuState = morphMenu,
         onOpenRadar = onOpenRadar,
         onOpenBenchmark = onOpenBenchmark,
         onOpenSettings = onOpenSettings,
         onOpenReport = onOpenReport,
+        onLocationTap = { locationSheetOpen = true },
+        onLocationSwipe = { forward ->
+          val target = if (forward) {
+            PlaceCycle.next(places, selectedPlace.id)
+          } else {
+            PlaceCycle.previous(places, selectedPlace.id)
+          }
+          if (target != null) scope.launch { deps.selectedPlaceStore.select(target.id) }
+        },
         modifier = Modifier
           .align(Alignment.BottomCenter)
           .navigationBarsPadding()

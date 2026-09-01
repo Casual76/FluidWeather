@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.feature.home
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
@@ -45,6 +47,9 @@ internal fun HomeFloatingBar(
   onOpenBenchmark: () -> Unit,
   onOpenSettings: () -> Unit,
   onOpenReport: () -> Unit,
+  onLocationTap: () -> Unit,
+  /** true = avanti nell'elenco, false = indietro: lo swipe laterale sulla pillola. */
+  onLocationSwipe: (forward: Boolean) -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val menuActions = {
@@ -68,13 +73,28 @@ internal fun HomeFloatingBar(
       )
     }
 
+    var dragTotal by remember { mutableStateOf(0f) }
     FluidGlassButton(
       text = locationName ?: "La mia posizione",
-      onClick = { /* fase 10: espansione in elenco localita' */ },
+      onClick = onLocationTap,
       backdrop = backdrop,
       modifier = Modifier
         .padding(horizontal = 12.dp)
-        .widthIn(min = 150.dp),
+        .widthIn(min = 150.dp)
+        .pointerInput(Unit) {
+          detectHorizontalDragGestures(
+            onDragStart = { dragTotal = 0f },
+            onHorizontalDrag = { change, delta ->
+              change.consume()
+              dragTotal += delta
+            },
+            onDragEnd = {
+              // Swipe a sinistra = posto successivo, come sfogliare in avanti.
+              if (dragTotal < -60f) onLocationSwipe(true)
+              if (dragTotal > 60f) onLocationSwipe(false)
+            },
+          )
+        },
     )
 
     var menuBounds by remember { mutableStateOf<Rect?>(null) }
