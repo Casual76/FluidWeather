@@ -32,10 +32,19 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
     if (bundles.isEmpty()) return FusedForecast(emptyList(), emptyMap())
     val providerIds = bundles.map { it.providerId }
 
-    // Pesi per variabile e fascia, calcolati una volta per fusione.
+    // Pesi per variabile e fascia, calcolati una volta per fusione. Le variabili verificate
+    // hanno la loro classifica; le altre (probabilita', UV, visibilita'...) ereditano la media
+    // dei pesi verificati del provider: chi ci prende sul misurabile e' credibile anche li'.
     val weightTable = HorizonBucket.entries.associateWith { bucket ->
-      FusionVariables.all.associateWith { variable ->
+      val verifiedWeights = FusionVariables.verified.associateWith { variable ->
         scoreboard.weights(variable, bucket, latitude, longitude, providerIds)
+      }
+      val aggregate = providerIds.associateWith { providerId ->
+        val mean = verifiedWeights.values.mapNotNull { it[providerId]?.weight }.average()
+        ProviderWeight(providerId, mean, WeightSource.PRIOR, Double.NaN, 0)
+      }
+      FusionVariables.all.associateWith { variable ->
+        verifiedWeights[variable] ?: aggregate
       }
     }
 
@@ -88,19 +97,30 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
         normalized.forEach { usedWeights.getOrPut(it.providerId) { mutableListOf() } += it.weight }
       }
 
-      // La condizione (icona) non si media: parla il provider col peso maggiore che ce l'ha.
+      // Condizione e direzione del vento non si mediano: parla il provider col peso maggiore.
+      var windDirection: Double? = null
+      var windWeight = -1.0
       for (bundle in bundles) {
         if (onlyProviderId != null && bundle.providerId != onlyProviderId) continue
-        val pointKind = bundle.at(timestamp)?.kind ?: continue
+        val point = bundle.at(timestamp) ?: continue
         val weight = weightTable.getValue(bucket)
           .getValue(FusionVariables.PRECIPITATION)[bundle.providerId]?.weight ?: 0.0
-        if (weight > kindWeight) {
+        if (point.kind != null && weight > kindWeight) {
           kindWeight = weight
-          kind = pointKind
+          kind = point.kind
+        }
+        if (point.windDirectionDeg != null && weight > windWeight) {
+          windWeight = weight
+          windDirection = point.windDirectionDeg
         }
       }
 
-      FusedHour(timestampMillis = timestamp, values = values, kind = kind)
+      FusedHour(
+        timestampMillis = timestamp,
+        values = values,
+        kind = kind,
+        windDirectionDeg = windDirection,
+      )
     }.filter { it.values.isNotEmpty() }
 
     return FusedForecast(

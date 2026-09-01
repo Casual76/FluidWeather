@@ -1,0 +1,249 @@
+package dev.pampa.fluidweather.core.ui
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
+/**
+ * I grafici della griglia: Canvas puro, niente librerie. Curve morbide alla Catmull-Rom (una
+ * temperatura non e' una spezzata), barre per le probabilita', range per il giornaliero, arco
+ * per il sole, disco col terminatore per la luna.
+ */
+object Charts {
+
+  /** La curva morbida con riempimento sfumato sotto: temperatura, pressione, quello che serve. */
+  @Composable
+  fun SmoothLine(
+    values: List<Double>,
+    modifier: Modifier = Modifier,
+    color: Color,
+    fill: Boolean = true,
+    strokeWidth: Float = 5f,
+  ) {
+    Canvas(modifier) {
+      if (values.size < 2) return@Canvas
+      val min = values.min()
+      val max = values.max()
+      val span = (max - min).takeIf { it > 1e-9 } ?: 1.0
+      val stepX = size.width / (values.size - 1)
+      // Margine verticale: la curva respira invece di toccare i bordi.
+      val chartHeight = size.height * 0.84f
+      val topPad = size.height * 0.08f
+      fun pointAt(index: Int): Offset {
+        val normalized = ((values[index] - min) / span).toFloat()
+        return Offset(index * stepX, topPad + (1f - normalized) * chartHeight)
+      }
+
+      val path = Path()
+      path.moveTo(pointAt(0).x, pointAt(0).y)
+      for (i in 0 until values.size - 1) {
+        // Catmull-Rom -> Bezier: i punti di controllo vengono dai vicini, la curva passa dai dati.
+        val p0 = pointAt((i - 1).coerceAtLeast(0))
+        val p1 = pointAt(i)
+        val p2 = pointAt(i + 1)
+        val p3 = pointAt((i + 2).coerceAtMost(values.size - 1))
+        val c1 = Offset(p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f)
+        val c2 = Offset(p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f)
+        path.cubicTo(c1.x, c1.y, c2.x, c2.y, p2.x, p2.y)
+      }
+
+      if (fill) {
+        val fillPath = Path().apply {
+          addPath(path)
+          lineTo(size.width, size.height)
+          lineTo(0f, size.height)
+          close()
+        }
+        drawPath(
+          fillPath,
+          brush = Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = 0.30f), color.copy(alpha = 0f)),
+          ),
+        )
+      }
+      drawPath(path, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
+    }
+  }
+
+  /** Barre di probabilita' [0..100]: piene quanto serve, mai invisibili quando non e' zero. */
+  @Composable
+  fun ProbabilityBars(
+    percentages: List<Double>,
+    modifier: Modifier = Modifier,
+    color: Color,
+  ) {
+    Canvas(modifier) {
+      if (percentages.isEmpty()) return@Canvas
+      val gap = 6f
+      val barWidth = (size.width - gap * (percentages.size - 1)) / percentages.size
+      percentages.forEachIndexed { index, percent ->
+        val fraction = (percent / 100.0).toFloat().coerceIn(0f, 1f)
+        val height = if (percent > 0) (size.height * fraction).coerceAtLeast(4f) else 3f
+        val alpha = if (percent > 0) 1f else 0.25f
+        drawRoundRect(
+          color = color.copy(alpha = alpha),
+          topLeft = Offset(index * (barWidth + gap), size.height - height),
+          size = androidx.compose.ui.geometry.Size(barWidth, height),
+          cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 3f),
+        )
+      }
+    }
+  }
+
+  /**
+   * La barra dei range del giornaliero: il segmento del giorno dentro l'intervallo del periodo,
+   * col pallino di "adesso" quando e' il giorno di oggi.
+   */
+  @Composable
+  fun RangeBar(
+    periodMin: Double,
+    periodMax: Double,
+    dayMin: Double,
+    dayMax: Double,
+    nowValue: Double?,
+    modifier: Modifier = Modifier,
+    trackColor: Color,
+    barBrushColors: List<Color>,
+  ) {
+    Canvas(modifier) {
+      val span = (periodMax - periodMin).takeIf { it > 1e-9 } ?: 1.0
+      val radius = size.height / 2f
+      fun xOf(value: Double): Float =
+        (((value - periodMin) / span).toFloat().coerceIn(0f, 1f)) * (size.width - size.height) + radius
+
+      drawLine(
+        color = trackColor,
+        start = Offset(radius, size.height / 2),
+        end = Offset(size.width - radius, size.height / 2),
+        strokeWidth = size.height,
+        cap = StrokeCap.Round,
+      )
+      drawLine(
+        brush = Brush.horizontalGradient(barBrushColors, startX = xOf(dayMin), endX = xOf(dayMax)),
+        start = Offset(xOf(dayMin), size.height / 2),
+        end = Offset(xOf(dayMax), size.height / 2),
+        strokeWidth = size.height,
+        cap = StrokeCap.Round,
+      )
+      if (nowValue != null) {
+        drawCircle(
+          color = Color.White,
+          radius = radius * 0.72f,
+          center = Offset(xOf(nowValue), size.height / 2),
+        )
+      }
+    }
+  }
+
+  /** L'arco del sole: la giornata come semicerchio, il sole dove sta adesso. */
+  @Composable
+  fun SunArc(
+    dayProgress: Float?,
+    modifier: Modifier = Modifier,
+    arcColor: Color,
+    sunColor: Color,
+  ) {
+    Canvas(modifier) {
+      val stroke = Stroke(width = 4f, cap = StrokeCap.Round)
+      val radius = size.width / 2.3f
+      val center = Offset(size.width / 2f, size.height * 0.95f)
+      val path = Path()
+      var first = true
+      var degrees = 180f
+      while (degrees <= 360f) {
+        val radians = degrees * PI.toFloat() / 180f
+        val point = Offset(center.x + radius * cos(radians), center.y + radius * sin(radians))
+        if (first) {
+          path.moveTo(point.x, point.y)
+          first = false
+        } else {
+          path.lineTo(point.x, point.y)
+        }
+        degrees += 4f
+      }
+      drawPath(path, color = arcColor.copy(alpha = 0.45f), style = stroke)
+
+      if (dayProgress != null) {
+        val angle = (180f + 180f * dayProgress.coerceIn(0f, 1f)) * PI.toFloat() / 180f
+        val sun = Offset(center.x + radius * cos(angle), center.y + radius * sin(angle))
+        drawCircle(
+          brush = Brush.radialGradient(
+            listOf(sunColor, sunColor.copy(alpha = 0f)),
+            center = sun,
+            radius = 26f,
+          ),
+          radius = 26f,
+          center = sun,
+        )
+        drawCircle(color = sunColor, radius = 9f, center = sun)
+      }
+    }
+  }
+
+  /** Il disco lunare col terminatore: un'ellisse d'ombra che scorre con la fase. */
+  @Composable
+  fun MoonDisc(
+    illuminatedFraction: Double,
+    waxing: Boolean,
+    modifier: Modifier = Modifier,
+    moonColor: Color = Color(0xFFE8E4D8),
+    shadowColor: Color = Color(0xFF11141C),
+  ) {
+    Canvas(modifier) {
+      val radius = minOf(size.width, size.height) / 2f
+      val center = Offset(size.width / 2f, size.height / 2f)
+      drawCircle(color = moonColor, radius = radius, center = center)
+
+      // Il terminatore: mezza luna coperta fissa piu' un'ellisse che gonfia o sgonfia l'ombra.
+      val f = illuminatedFraction.coerceIn(0.0, 1.0).toFloat()
+      val shadowSide = if (waxing) -1f else 1f
+      val halfCover = Path().apply {
+        addArc(
+          oval = androidx.compose.ui.geometry.Rect(
+            center.x - radius, center.y - radius, center.x + radius, center.y + radius,
+          ),
+          startAngleDegrees = if (waxing) 90f else -90f,
+          sweepAngleDegrees = 180f,
+        )
+      }
+      val bulge = kotlin.math.abs(1f - 2f * f) * radius
+      val ellipse = Path().apply {
+        addOval(
+          androidx.compose.ui.geometry.Rect(
+            center.x - bulge, center.y - radius, center.x + bulge, center.y + radius,
+          ),
+        )
+      }
+      if (f < 0.5f) {
+        // Falce: mezza ombra piu' l'ellisse d'ombra che invade il lato illuminato.
+        drawPath(halfCover, color = shadowColor)
+        drawPath(ellipse, color = shadowColor)
+      } else {
+        // Gibbosa: mezza ombra, ma l'ellisse RIACCENDE il centro.
+        drawPath(halfCover, color = shadowColor)
+        drawPath(ellipse, color = moonColor)
+      }
+      // Un filo di bordo per staccare dal cielo della tessera.
+      drawCircle(
+        color = Color.White.copy(alpha = 0.15f),
+        radius = radius,
+        center = center,
+        style = Stroke(width = 2f),
+      )
+      // Il lato d'ombra dipende dalla fase: crescente illumina a destra (emisfero nord).
+      // shadowSide e' gia' incorporato dallo startAngle dell'arco.
+      @Suppress("UNUSED_EXPRESSION")
+      shadowSide
+    }
+  }
+}

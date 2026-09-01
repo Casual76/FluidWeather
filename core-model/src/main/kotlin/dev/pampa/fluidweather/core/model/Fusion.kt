@@ -10,8 +10,24 @@ object FusionVariables {
   const val PRECIPITATION = "precipitation"
   const val CLOUD_COVER = "cloud_cover"
   const val WIND_SPEED = "wind_speed"
+  const val HUMIDITY = "humidity"
+  const val DEW_POINT = "dew_point"
+  const val PRECIP_PROBABILITY = "precip_probability"
+  const val UV_INDEX = "uv_index"
+  const val VISIBILITY = "visibility"
+  const val WIND_GUST = "wind_gust"
 
-  val all: List<String> = listOf(TEMPERATURE, PRESSURE_MSL, PRECIPITATION, CLOUD_COVER, WIND_SPEED)
+  /**
+   * Le variabili che si VERIFICANO: osservabili fisiche con una verita' misurabile. Una
+   * probabilita' non ce l'ha (verificarla contro la mediana premierebbe il conformismo, non
+   * l'accuratezza), e UV/visibilita' non hanno analisi affidabili nella costellazione.
+   */
+  val verified: List<String> = listOf(TEMPERATURE, PRESSURE_MSL, PRECIPITATION, CLOUD_COVER, WIND_SPEED)
+
+  /** Le variabili che si FONDONO: tutte quelle lineari. La direzione del vento e' circolare
+   * e viaggia a parte (la dice il provider col peso maggiore, come la condizione). */
+  val all: List<String> = verified +
+    listOf(HUMIDITY, DEW_POINT, PRECIP_PROBABILITY, UV_INDEX, VISIBILITY, WIND_GUST)
 
   fun of(point: HourlyPoint, variable: String): Double? = when (variable) {
     TEMPERATURE -> point.temperatureC
@@ -19,6 +35,12 @@ object FusionVariables {
     PRECIPITATION -> point.precipitationMm
     CLOUD_COVER -> point.cloudCoverPercent
     WIND_SPEED -> point.windSpeedKmh
+    HUMIDITY -> point.relativeHumidityPercent
+    DEW_POINT -> point.dewPointC
+    PRECIP_PROBABILITY -> point.precipitationProbabilityPercent
+    UV_INDEX -> point.uvIndex
+    VISIBILITY -> point.visibilityMeters
+    WIND_GUST -> point.windGustKmh
     else -> null
   }
 }
@@ -84,6 +106,8 @@ data class FusedHour(
   val timestampMillis: Long,
   val values: Map<String, FusedValue>,
   val kind: WeatherKind?,
+  /** Circolare: non si media — la dice il provider col peso maggiore, come [kind]. */
+  val windDirectionDeg: Double? = null,
 )
 
 data class FusedForecast(

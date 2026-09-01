@@ -12,6 +12,7 @@ import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
 import dev.pampa.fluidweather.core.data.RoomVerificationStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
+import dev.pampa.fluidweather.core.weather.AirQualityClient
 import dev.pampa.fluidweather.core.weather.ForecastFusion
 import dev.pampa.fluidweather.core.weather.ForecastVerifier
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
@@ -65,6 +66,7 @@ class AppGraph(context: Context) {
     clients = buildWeatherClients(providerHttp),
     keysStore = providerKeysStore,
   )
+  val airQualityClient = AirQualityClient(providerHttp)
 
   // Fusione e punteggi (fase 7): verifiche in Room, pesi in cascata, override dell'utente.
   private val verificationStore = RoomVerificationStore(database.verificationDao())

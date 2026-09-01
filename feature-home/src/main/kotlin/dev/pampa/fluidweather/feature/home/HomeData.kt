@@ -10,17 +10,22 @@ import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.model.AirQualityNow
 import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.FusedForecast
+import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.SolarEphemeris
+import dev.pampa.fluidweather.core.model.SunTimes
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.WeatherAccent
+import dev.pampa.fluidweather.core.weather.AirQualityClient
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
 import dev.pampa.fluidweather.core.weather.toContext
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
+import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.verdict.NowcastModel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
@@ -38,6 +43,7 @@ class HomeDependencies(
   val locationProvider: LocationProvider,
   val pressureRepository: PressureRepository,
   val cleaningPipeline: CleaningPipeline,
+  val airQualityClient: AirQualityClient,
   val appearanceStore: AppearanceSettingsStore,
   val layoutStore: HomeLayoutStore,
   /** La home deriva l'accento dal meteo e lo consegna al tema dell'app. */
@@ -48,6 +54,8 @@ data class HomeUiState(
   val loading: Boolean = true,
   val hasLocation: Boolean = true,
   val locationName: String? = null,
+  val latitude: Double? = null,
+  val longitude: Double? = null,
   val temperatureC: Double? = null,
   val kind: WeatherKind? = null,
   val maxC: Double? = null,
@@ -56,6 +64,16 @@ data class HomeUiState(
   val phase: DayPhase = DayPhase.DAY,
   val verdict: NowcastVerdict? = null,
   val providersResponding: Int = 0,
+  /** Le ore fuse (passato recente incluso): la dispensa di tutti i widget. */
+  val fusedHours: List<FusedHour> = emptyList(),
+  val airQuality: AirQualityNow? = null,
+  /** Il segnale barometrico pulito (stadi 1-3): pressione e nowcast ci leggono dentro. */
+  val cleaning: CleaningResult? = null,
+  /** L'ultima lettura grezza del sensore, senza correzioni: il compatto della Pressione. */
+  val latestRawPressureHpa: Double? = null,
+  val sunTimesToday: SunTimes.Times? = null,
+  val dayLengthTodayMillis: Long? = null,
+  val dayLengthYesterdayMillis: Long? = null,
 )
 
 /**
@@ -76,7 +94,7 @@ fun rememberHomeState(deps: HomeDependencies): State<HomeUiState> {
     }
 
     val phase = SolarEphemeris.phaseAt(now, here.latitude, here.longitude)
-    value = value.copy(phase = phase)
+    value = value.copy(phase = phase, latitude = here.latitude, longitude = here.longitude)
 
     val round = runCatching { deps.fusionCoordinator.refresh(here.latitude, here.longitude) }
       .getOrNull()
@@ -95,23 +113,54 @@ fun rememberHomeState(deps: HomeDependencies): State<HomeUiState> {
       maxC = maxToday,
       cloudCover = cloud,
       providersResponding = round?.fetches?.count { it.bundle != null } ?: 0,
+      fusedHours = fused?.hours ?: emptyList(),
+    )
+
+    // Sole: oggi e ieri, per il "piu' corto/lungo di ieri" del widget.
+    val zone = ZoneId.systemDefault()
+    val todayStartUtc = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+      .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+    val sunToday = SunTimes.forDay(todayStartUtc, here.latitude, here.longitude)
+    val sunYesterday = SunTimes.forDay(todayStartUtc - 86_400_000L, here.latitude, here.longitude)
+    value = value.copy(
+      sunTimesToday = sunToday,
+      dayLengthTodayMillis = sunToday.lengthMillis(),
+      dayLengthYesterdayMillis = sunYesterday.lengthMillis(),
     )
 
     // Il verdetto locale: barometro pulito + contesto del provider piu' completo.
-    val verdict = runCatching {
-      val samples = deps.pressureRepository.samplesSince(now - 12 * 3_600_000L)
-      val cleaning = deps.cleaningPipeline.process(samples, temperatureCelsius = temperature)
-      val bundle = round?.fetches
-        ?.firstOrNull { it.descriptor.id == ProviderRegistry.OPEN_METEO }?.bundle
-      FeatureExtractor.extract(cleaning, bundle?.toContext(now), normalHpa = null, nowMillis = now)
-        ?.let { NowcastModel.trained().verdict(it) }
+    val bundle = round?.fetches
+      ?.firstOrNull { it.descriptor.id == ProviderRegistry.OPEN_METEO }?.bundle
+    val samples = runCatching { deps.pressureRepository.samplesSince(now - 12 * 3_600_000L) }
+      .getOrDefault(emptyList())
+    val cleaning = runCatching {
+      deps.cleaningPipeline.process(samples, temperatureCelsius = temperature)
     }.getOrNull()
+    val verdict = cleaning?.let {
+      FeatureExtractor.extract(it, bundle?.toContext(now), normalHpa = null, nowMillis = now)
+        ?.let { features -> NowcastModel.trained().verdict(features) }
+    }
+    val latestRaw = samples.maxByOrNull { it.timestampMillis }?.pressureHpa
 
-    value = value.copy(verdict = verdict, loading = false)
+    value = value.copy(
+      verdict = verdict,
+      cleaning = cleaning,
+      latestRawPressureHpa = latestRaw,
+      loading = false,
+    )
+
+    val air = runCatching { deps.airQualityClient.now(here.latitude, here.longitude) }.getOrNull()
+    if (air != null) value = value.copy(airQuality = air)
 
     val name = reverseGeocode(context, here.latitude, here.longitude)
     if (name != null) value = value.copy(locationName = name)
   }
+}
+
+private fun SunTimes.Times.lengthMillis(): Long? {
+  val rise = sunriseMillis ?: return null
+  val set = sunsetMillis ?: return null
+  return (set - rise).takeIf { it > 0 }
 }
 
 private fun FusedForecast.at(nowMillis: Long): Map<String, Double>? =

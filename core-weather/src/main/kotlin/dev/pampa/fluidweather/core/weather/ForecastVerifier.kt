@@ -33,7 +33,7 @@ class ForecastVerifier(
       for (horizonHours in HORIZONS) {
         val target = now + horizonHours * 3_600_000L
         val point = bundle.at(target) ?: continue
-        for (variable in FusionVariables.all) {
+        for (variable in FusionVariables.verified) {
           val value = FusionVariables.of(point, variable) ?: continue
           pending += PendingPrediction(
             providerId = bundle.providerId,

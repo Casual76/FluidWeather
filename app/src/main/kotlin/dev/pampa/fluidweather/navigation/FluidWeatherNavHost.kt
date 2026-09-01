@@ -77,6 +77,7 @@ fun FluidWeatherNavHost(graph: AppGraph) {
           locationProvider = graph.locationProvider,
           pressureRepository = graph.pressureRepository,
           cleaningPipeline = graph.cleaningPipeline,
+          airQualityClient = graph.airQualityClient,
           appearanceStore = graph.appearanceSettingsStore,
           layoutStore = graph.homeLayoutStore,
           onWeatherAccent = { graph.weatherAccent.value = it },

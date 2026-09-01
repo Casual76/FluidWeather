@@ -153,6 +153,7 @@ private fun HomeShell(
   var liveOrder by remember { mutableStateOf<List<String>?>(null) }
   val order = liveOrder ?: HomeWidget.ordered(storedOrder).map { it.id }
   val drag = remember(gridState) { GridDragController(gridState) }
+  var selectedWidget by remember { mutableStateOf<HomeWidget?>(null) }
 
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
@@ -176,6 +177,7 @@ private fun HomeShell(
         onDrop = {
           liveOrder?.let { finalOrder -> scope.launch { deps.layoutStore.setOrder(finalOrder) } }
         },
+        onOpenWidget = { selectedWidget = it },
         modifier = Modifier
           .fillMaxSize()
           .glassBackdropSource(contentBackdrop),
@@ -185,6 +187,12 @@ private fun HomeShell(
         state = state,
         gridState = gridState,
         modifier = Modifier.align(Alignment.TopCenter),
+      )
+
+      WidgetSheetHost(
+        selected = selectedWidget,
+        state = state,
+        onDismiss = { selectedWidget = null },
       )
 
       val morphMenu = rememberFluidMorphMenuState()
@@ -219,6 +227,7 @@ private fun HomeGrid(
   drag: GridDragController,
   onMove: (String, String) -> Unit,
   onDrop: () -> Unit,
+  onOpenWidget: (HomeWidget) -> Unit,
   modifier: Modifier = Modifier,
 ) {
   LazyVerticalGrid(
@@ -265,6 +274,7 @@ private fun HomeGrid(
       val widget = HomeWidget.entries.firstOrNull { it.id == id } ?: return@items
       val dragging = drag.draggingKey == id
       GlassTile(
+        onClick = { onOpenWidget(widget) },
         modifier = Modifier
           .zIndex(if (dragging) 1f else 0f)
           .then(if (dragging) Modifier else Modifier.animateItem())
@@ -297,11 +307,7 @@ private fun HomeGrid(
           )
         }
         Spacer(Modifier.height(10.dp))
-        Text(
-          text = "In costruzione — fase 9",
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-        )
+        WidgetTileContent(widget = widget, state = state)
       }
     }
   }

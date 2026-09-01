@@ -65,7 +65,8 @@ object ProviderRegistry {
       label = "Open-Meteo",
       coverage = Coverage.Global,
       requiresKey = false,
-      horizonHours = 7 * 24,
+      // Dieci giorni: e' il best_match che regge il widget Giornaliero del piano.
+      horizonHours = 10 * 24,
       why = "il miglior modello disponibile per il punto, scelto da Open-Meteo",
       attribution = "Weather data by Open-Meteo.com (CC BY 4.0)",
     ),
