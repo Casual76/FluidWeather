@@ -4,6 +4,7 @@ plugins {
 }
 
 apply from: "${rootDir}/engine/versions.gradle"
+apply from: "${rootDir}/versions-app.gradle"
 
 android {
   namespace 'dev.pampa.fluidweather.core.sensor'
@@ -24,5 +25,14 @@ android {
 }
 
 dependencies {
+  api project(':core-data')
+
+  implementation "androidx.core:core-ktx:${engine.coreKtx}"
+  implementation "androidx.work:work-runtime-ktx:${appVersions.work}"
+  implementation "com.google.android.gms:play-services-location:${appVersions.playServicesLocation}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
+  // L'await() sui Task di Play Services.
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:${engine.coroutines}"
+
   testImplementation "junit:junit:${engine.junit}"
 }

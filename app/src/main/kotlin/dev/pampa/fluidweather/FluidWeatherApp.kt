@@ -1,10 +1,32 @@
 package dev.pampa.fluidweather
 
 import android.app.Application
+import dev.pampa.fluidweather.core.data.LatestActivityStore
+import dev.pampa.fluidweather.core.sensor.SamplingEngine
+import dev.pampa.fluidweather.core.sensor.SamplingScheduler
+import dev.pampa.fluidweather.core.sensor.SensorRuntime
+import kotlinx.coroutines.launch
 
 /**
- * Per ora vuota: il bootstrap dell'engine (config remota, compatibilita', aggiornamento) arriva con
- * le fasi di impostazioni e rilascio, e collegarlo prima significherebbe collegare cose che non si
- * possono ancora vedere ne' provare.
+ * Il punto in cui il campionamento parte e resta in piedi: il grafo si costruisce qui, la
+ * modalita' corrente si riapplica a ogni avvio del processo (worker e allarmi arrivano anche a
+ * processo appena nato, e trovano tutto pronto attraverso [SensorRuntime]).
  */
-class FluidWeatherApp : Application()
+class FluidWeatherApp : Application(), SensorRuntime {
+
+  lateinit var graph: AppGraph
+    private set
+
+  override val samplingEngine: SamplingEngine get() = graph.samplingEngine
+  override val samplingScheduler: SamplingScheduler get() = graph.samplingScheduler
+  override val latestActivityStore: LatestActivityStore get() = graph.latestActivityStore
+
+  override fun onCreate() {
+    super.onCreate()
+    graph = AppGraph(this)
+    graph.activityRecognizer.start()
+    graph.applicationScope.launch {
+      graph.samplingScheduler.applyCurrentMode()
+    }
+  }
+}

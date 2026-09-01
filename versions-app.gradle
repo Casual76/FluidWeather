@@ -1,0 +1,7 @@
+// Versioni delle dipendenze proprie dell'app. Quelle condivise con l'engine (Compose, coroutines,
+// DataStore, JUnit...) vivono in engine/versions.gradle e si leggono dalla mappa `engine`.
+ext.appVersions = [
+  room                : '2.8.4',
+  work                : '2.11.2',
+  playServicesLocation: '21.4.0',
+]

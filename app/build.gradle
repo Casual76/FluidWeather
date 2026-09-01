@@ -52,6 +52,7 @@ dependencies {
   implementation project(':feature-settings')
   implementation project(':feature-report')
   implementation project(':core-ui')
+  implementation project(':core-sensor')      // porta con se' core-data e core-model (api)
 
   implementation project(':engine-ui')        // design system (porta con se' Compose e engine-foundation)
   implementation project(':engine-storage')   // impostazioni su DataStore
@@ -60,4 +61,5 @@ dependencies {
 
   implementation "androidx.activity:activity-compose:${engine.activityCompose}"
   implementation "androidx.navigation:navigation-compose:${engine.navigation}"
+  implementation "androidx.lifecycle:lifecycle-runtime-compose:${engine.lifecycle}"
 }

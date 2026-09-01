@@ -4,14 +4,18 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
+import dev.pampa.fluidweather.AppGraph
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkScreen
 import dev.pampa.fluidweather.feature.home.HomeScreen
 import dev.pampa.fluidweather.feature.radar.RadarScreen
 import dev.pampa.fluidweather.feature.report.ReportScreen
+import dev.pampa.fluidweather.feature.settings.DiagnosticsDependencies
+import dev.pampa.fluidweather.feature.settings.DiagnosticsScreen
 import dev.pampa.fluidweather.feature.settings.SettingsScreen
 
 private object Routes {
@@ -19,6 +23,7 @@ private object Routes {
   const val Radar = "radar"
   const val Benchmark = "benchmark"
   const val Settings = "settings"
+  const val Diagnostics = "settings/diagnostics"
   const val Report = "report"
 }
 
@@ -34,7 +39,7 @@ private const val CoveredParallax = 0.25f
  * gerarchia. I tempi sono i budget di [FluidMotion], cosi' "aprire qualcosa" dura uguale ovunque.
  */
 @Composable
-fun FluidWeatherNavHost() {
+fun FluidWeatherNavHost(graph: AppGraph) {
   val navController = rememberNavController()
   NavHost(
     navController = navController,
@@ -74,7 +79,25 @@ fun FluidWeatherNavHost() {
     }
     composable(Routes.Radar) { RadarScreen(onBack = { navController.popBackStack() }) }
     composable(Routes.Benchmark) { BenchmarkScreen(onBack = { navController.popBackStack() }) }
-    composable(Routes.Settings) { SettingsScreen(onBack = { navController.popBackStack() }) }
+    composable(Routes.Settings) {
+      SettingsScreen(
+        onBack = { navController.popBackStack() },
+        onOpenDiagnostics = { navController.navigate(Routes.Diagnostics) },
+      )
+    }
+    composable(Routes.Diagnostics) {
+      val deps = remember(graph) {
+        DiagnosticsDependencies(
+          barometer = graph.barometer,
+          settingsStore = graph.samplingSettingsStore,
+          repository = graph.pressureRepository,
+          burstController = graph.manualBurstController,
+          scheduler = graph.samplingScheduler,
+          activityRecognizer = graph.activityRecognizer,
+        )
+      }
+      DiagnosticsScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
     composable(Routes.Report) { ReportScreen(onBack = { navController.popBackStack() }) }
   }
 }

@@ -31,6 +31,10 @@ android {
 dependencies {
   implementation project(':engine-ui')
   implementation project(':core-ui')
+  api project(':core-sensor')
+
+  // rememberLauncherForActivityResult per i permessi dalla diagnostica.
+  implementation "androidx.activity:activity-compose:${engine.activityCompose}"
 
   testImplementation "junit:junit:${engine.junit}"
 }

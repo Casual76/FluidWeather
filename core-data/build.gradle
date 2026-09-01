@@ -1,9 +1,11 @@
 plugins {
   id 'com.android.library'
   id 'org.jetbrains.kotlin.android'
+  id 'com.google.devtools.ksp'
 }
 
 apply from: "${rootDir}/engine/versions.gradle"
+apply from: "${rootDir}/versions-app.gradle"
 
 android {
   namespace 'dev.pampa.fluidweather.core.data'
@@ -24,5 +26,16 @@ android {
 }
 
 dependencies {
+  api project(':core-model')
+
+  // api e non implementation: FluidWeatherDatabase estende RoomDatabase, quindi chi costruisce
+  // il database (il grafo in :app) deve poter vedere la superclasse.
+  api "androidx.room:room-runtime:${appVersions.room}"
+  implementation "androidx.room:room-ktx:${appVersions.room}"
+  ksp "androidx.room:room-compiler:${appVersions.room}"
+
+  implementation "androidx.datastore:datastore-preferences:${engine.datastore}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
+
   testImplementation "junit:junit:${engine.junit}"
 }

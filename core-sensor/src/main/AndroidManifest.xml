@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- Il barometro non e' un requisito: senza, l'app degrada in modo trasparente. -->
+  <uses-feature
+      android:name="android.hardware.sensor.barometer"
+      android:required="false" />
+
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <!-- Solo per la modalita' Massima: in Doze profondo la catena di allarmi rallenta, e l'app lo
+       dichiara; l'esenzione, chiesta in diagnostica, e' l'unico rimedio onesto. Fuori dallo store
+       non c'e' una review a cui giustificarla. -->
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+  <application>
+    <!-- specialUse e non "location" o "health": la sorveglianza barometrica non rientra in nessun
+         tipo dichiarato, e la distribuzione fuori dallo store non richiede la review del subtype. -->
+    <service
+        android:name=".SurveillanceService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Campionamento barometrico ad alta frequenza mentre la pressione cambia rapidamente" />
+    </service>
+
+    <receiver
+        android:name=".ActivityUpdateReceiver"
+        android:exported="false" />
+
+    <receiver
+        android:name=".MaximaAlarmReceiver"
+        android:exported="false" />
+
+    <receiver
+        android:name=".BootReceiver"
+        android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
+  </application>
+
+</manifest>

@@ -1,0 +1,308 @@
+package dev.pampa.fluidweather.feature.settings
+
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
+import dev.antigravity.fluidengine.ui.fluid.FluidButton
+import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
+import dev.antigravity.fluidengine.ui.fluid.FluidScreen
+import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
+import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
+import dev.antigravity.fluidengine.ui.theme.FluidListDivider
+import dev.antigravity.fluidengine.ui.theme.FluidListGroup
+import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.SamplingSettings
+import dev.pampa.fluidweather.core.data.SamplingSettingsStore
+import dev.pampa.fluidweather.core.model.ManualBurst
+import dev.pampa.fluidweather.core.model.PressureSample
+import dev.pampa.fluidweather.core.model.SampleSource
+import dev.pampa.fluidweather.core.model.SamplingMode
+import dev.pampa.fluidweather.core.sensor.ActivityRecognizer
+import dev.pampa.fluidweather.core.sensor.Barometer
+import dev.pampa.fluidweather.core.sensor.ManualBurstController
+import dev.pampa.fluidweather.core.sensor.MaximaAlarm
+import dev.pampa.fluidweather.core.sensor.SamplingScheduler
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlinx.coroutines.launch
+
+/** Tutto quello che la diagnostica tocca; lo costruisce :app dal suo grafo. */
+class DiagnosticsDependencies(
+  val barometer: Barometer,
+  val settingsStore: SamplingSettingsStore,
+  val repository: PressureRepository,
+  val burstController: ManualBurstController,
+  val scheduler: SamplingScheduler,
+  val activityRecognizer: ActivityRecognizer,
+)
+
+/**
+ * La verifica di campo della fase 1: il segnale grezzo cosi' com'e', la modalita' di
+ * campionamento, la raffica manuale. Crescera' con la pipeline (segnale pulito, stadi, bias);
+ * per ora deve dimostrare una cosa sola: il telefono registra pressione e la si vede.
+ */
+@Composable
+fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
+  val context = LocalContext.current
+  val scope = rememberCoroutineScope()
+
+  val settings by deps.settingsStore.settings.collectAsState(initial = SamplingSettings())
+  val samples by remember { deps.repository.latest(20) }.collectAsState(initial = emptyList())
+  val sampleCount by remember { deps.repository.count() }.collectAsState(initial = 0L)
+  val live by remember { deps.barometer.readings() }.collectAsState(initial = null)
+  val burst by deps.burstController.progress.collectAsState()
+
+  // I permessi non hanno un flow: il contatore forza la rivalutazione dopo ogni risposta.
+  var permissionEpoch by remember { mutableIntStateOf(0) }
+  val permissionLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestMultiplePermissions(),
+  ) {
+    permissionEpoch++
+    deps.activityRecognizer.start()
+  }
+  val missingPermissions = remember(permissionEpoch) {
+    buildList {
+      if (!deps.activityRecognizer.hasPermission()) add(Manifest.permission.ACTIVITY_RECOGNITION)
+      if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+      ) {
+        add(Manifest.permission.ACCESS_FINE_LOCATION)
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+      ) {
+        add(Manifest.permission.POST_NOTIFICATIONS)
+      }
+    }
+  }
+
+  FluidScreen(title = "Diagnostica barometro", onBack = onBack) {
+    item { FluidSectionHeader(title = "Sensore") }
+    item {
+      FluidListGroup {
+        if (deps.barometer.isAvailable) {
+          FluidListRow(
+            title = "Pressione grezza",
+            subtitle = deps.barometer.sensorName ?: "Barometro",
+            meta = live?.let { String.format(Locale.getDefault(), "%.2f hPa", it.pressureHpa) } ?: "—",
+          )
+        } else {
+          FluidListRow(
+            title = "Barometro assente",
+            subtitle = "Questo dispositivo non ha il sensore: la sezione locale non e' disponibile.",
+          )
+        }
+        FluidListDivider()
+        FluidListRow(
+          title = "Campioni in archivio",
+          subtitle = "Tutte le letture registrate finora",
+          meta = sampleCount.toString(),
+        )
+      }
+    }
+
+    if (missingPermissions.isNotEmpty()) {
+      item {
+        FluidListGroup {
+          FluidListRow(
+            title = "Concedi i permessi",
+            subtitle = "Posizione, attivita' e notifiche arricchiscono ogni campione",
+            onClick = { permissionLauncher.launch(missingPermissions.toTypedArray()) },
+          )
+        }
+      }
+    }
+
+    item { FluidSectionHeader(title = "Modalita' di campionamento") }
+    item {
+      FluidListGroup {
+        SamplingMode.entries.forEachIndexed { index, mode ->
+          if (index > 0) FluidListDivider()
+          FluidListRow(
+            title = mode.label(),
+            subtitle = mode.description(),
+            badge = if (settings.mode == mode) {
+              {
+                Icon(
+                  imageVector = Icons.Rounded.Check,
+                  contentDescription = "Selezionata",
+                  tint = MaterialTheme.colorScheme.primary,
+                )
+              }
+            } else {
+              null
+            },
+            onClick = {
+              scope.launch {
+                deps.settingsStore.setMode(mode)
+                deps.scheduler.apply(mode)
+              }
+            },
+          )
+        }
+      }
+    }
+
+    if (settings.mode == SamplingMode.MASSIMA) {
+      item {
+        FluidListGroup {
+          if (!MaximaAlarm.canSchedule(context)) {
+            FluidListRow(
+              title = "Allarmi esatti non consentiti",
+              subtitle = "Senza, Massima degrada a un giro ogni 15 minuti. Tocca per concederli.",
+              onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                  context.startActivity(
+                    Intent(
+                      Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                      Uri.parse("package:${context.packageName}"),
+                    ),
+                  )
+                }
+              },
+            )
+            FluidListDivider()
+          }
+          val powerManager = context.getSystemService(PowerManager::class.java)
+          if (powerManager?.isIgnoringBatteryOptimizations(context.packageName) == false) {
+            FluidListRow(
+              title = "Esenzione batteria",
+              subtitle = "In Doze profondo il ritmo cala: l'esenzione lo limita. Tocca per chiederla.",
+              onClick = {
+                context.startActivity(
+                  Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:${context.packageName}"),
+                  ),
+                )
+              },
+            )
+          } else {
+            FluidListRow(
+              title = "Massima attiva",
+              subtitle = "Catena di allarmi esatti ogni 5 minuti, raffica di 30 secondi.",
+            )
+          }
+        }
+      }
+    }
+
+    item { FluidSectionHeader(title = "Strumenti") }
+    item {
+      FluidListGroup {
+        FluidListRow(
+          title = "Monitoraggio continuo",
+          subtitle = "Una lettura ogni 10 s mentre l'app e' aperta",
+          badge = {
+            FluidSwitch(
+              checked = settings.continuousWhileOpen,
+              onCheckedChange = { enabled ->
+                scope.launch { deps.settingsStore.setContinuousWhileOpen(enabled) }
+              },
+            )
+          },
+        )
+        FluidListDivider()
+        val burstProgress = burst
+        if (burstProgress == null) {
+          FluidListRow(
+            title = "Raffica manuale",
+            subtitle = "${ManualBurst.DURATION_SECONDS / 60} minuti a ${ManualBurst.HZ} Hz: " +
+              "abbastanza campioni da separare una caduta vera dal rumore",
+            badge = {
+              FluidButton(
+                text = "Avvia",
+                style = FluidButtonStyle.Tinted,
+                onClick = { deps.burstController.start() },
+              )
+            },
+          )
+        } else {
+          FluidListRow(
+            title = "Raffica in corso",
+            subtitle = "${burstProgress.completedSeconds} / ${burstProgress.totalSeconds} s",
+            badge = {
+              FluidButton(
+                text = "Annulla",
+                style = FluidButtonStyle.Plain,
+                onClick = { deps.burstController.cancel() },
+              )
+            },
+          )
+        }
+      }
+    }
+
+    if (samples.isNotEmpty()) {
+      item { FluidSectionHeader(title = "Ultime letture") }
+      item {
+        FluidListGroup {
+          samples.forEachIndexed { index, sample ->
+            if (index > 0) FluidListDivider()
+            SampleRow(sample)
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun SampleRow(sample: PressureSample) {
+  FluidListRow(
+    title = String.format(Locale.getDefault(), "%.2f hPa", sample.pressureHpa),
+    subtitle = buildString {
+      append(sample.source.label())
+      sample.altitudeMeters?.let { append(" · ${it.toInt()} m") }
+      if (sample.activity != dev.pampa.fluidweather.core.model.ActivityKind.UNKNOWN) {
+        append(" · ${sample.activity.name.lowercase()}")
+      }
+    },
+    meta = TimeFormatter.format(Instant.ofEpochMilli(sample.timestampMillis)),
+  )
+}
+
+private val TimeFormatter: DateTimeFormatter =
+  DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
+
+private fun SamplingMode.label(): String = when (this) {
+  SamplingMode.MASSIMA -> "Massima"
+  SamplingMode.BILANCIATA -> "Bilanciata"
+  SamplingMode.RISPARMIO -> "Risparmio"
+  SamplingMode.MINIMA -> "Minima"
+}
+
+private fun SamplingMode.description(): String = when (this) {
+  SamplingMode.MASSIMA -> "Ogni 5 min, raffica 30 s — allarmi esatti, piu' batteria"
+  SamplingMode.BILANCIATA -> "Ogni 15 min, raffica 30 s — il compromesso suggerito"
+  SamplingMode.RISPARMIO -> "Ogni 30 min, raffica 15 s — qualita' in calo dichiarata"
+  SamplingMode.MINIMA -> "Ogni 20 min, lettura secca — consumo ~nullo, accuratezza scarsa"
+}
+
+private fun SampleSource.label(): String = when (this) {
+  SampleSource.PERIODIC -> "giro periodico"
+  SampleSource.SURVEILLANCE -> "sorveglianza"
+  SampleSource.MANUAL_BURST -> "raffica manuale"
+  SampleSource.CONTINUOUS -> "continuo"
+}
