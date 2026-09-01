@@ -24,11 +24,13 @@ private val AmethystBrand = AccentPreset(
 @Composable
 fun FluidWeatherTheme(
   settings: EngineSettings = EngineSettings(),
+  /** L'accento derivato dal meteo attuale (default del piano); null = marchio ametista. */
+  brand: AccentPreset? = null,
   content: @Composable () -> Unit,
 ) {
   FluidTheme(
     settings = settings,
-    brand = AmethystBrand,
+    brand = brand ?: AmethystBrand,
     content = content,
   )
 }

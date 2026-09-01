@@ -5,7 +5,10 @@ import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.antigravity.fluidengine.ui.theme.AccentPreset
+import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
+import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
 import dev.pampa.fluidweather.core.data.RoomVerificationStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
@@ -30,6 +33,7 @@ import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * La DI dell'app, a mano: un grafo costruito una volta nell'Application. Niente framework —
@@ -88,4 +92,9 @@ class AppGraph(context: Context) {
   val manualBurstController = ManualBurstController(samplingEngine, applicationScope)
   val continuousMonitor = ContinuousMonitor(samplingEngine, samplingSettingsStore)
   val activityRecognizer = ActivityRecognizer(context)
+
+  // Fondamenta UI (fase 8): aspetto, layout della griglia, accento derivato dal meteo.
+  val appearanceSettingsStore = AppearanceSettingsStore(context)
+  val homeLayoutStore = HomeLayoutStore(context)
+  val weatherAccent = MutableStateFlow<AccentPreset?>(null)
 }

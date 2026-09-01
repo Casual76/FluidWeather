@@ -30,6 +30,9 @@ android {
 
 dependencies {
   implementation project(':engine-ui')
+  api project(':core-ui')
+  api project(':core-sensor')
+  api project(':core-weather')
 
   testImplementation "junit:junit:${engine.junit}"
 }

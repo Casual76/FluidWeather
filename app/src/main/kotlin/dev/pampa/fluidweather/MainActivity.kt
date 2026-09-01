@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -19,7 +21,8 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     val graph = (application as FluidWeatherApp).graph
     setContent {
-      FluidWeatherTheme {
+      val accent by graph.weatherAccent.collectAsState()
+      FluidWeatherTheme(brand = accent) {
         ContinuousSamplingEffect(graph)
         FluidWeatherNavHost(graph)
       }

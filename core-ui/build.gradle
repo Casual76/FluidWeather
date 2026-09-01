@@ -29,7 +29,8 @@ android {
 }
 
 dependencies {
-  implementation project(':engine-ui')
+  api project(':engine-ui')
+  api project(':core-model')
 
   testImplementation "junit:junit:${engine.junit}"
 }
