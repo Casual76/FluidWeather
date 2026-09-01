@@ -1,0 +1,50 @@
+pluginManagement {
+  repositories {
+    google()
+    mavenCentral()
+    gradlePluginPortal()
+  }
+}
+
+dependencyResolutionManagement {
+  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+  repositories {
+    google()
+    mavenCentral()
+  }
+}
+
+rootProject.name = "FluidWeather"
+
+include ':app'
+include ':feature-home'
+include ':feature-radar'
+include ':feature-benchmark'
+include ':feature-settings'
+include ':feature-report'
+include ':core-ui'
+include ':core-sensor'
+include ':core-model'
+include ':core-data'
+include ':core-weather'
+// Puro Kotlin/JVM, zero Android: la pipeline di nowcast si verifica sul computer.
+include ':nowcast'
+// Banco di prova JVM: dataset, replay, metriche. Non spedito nell'APK.
+include ':testbench'
+
+// --- fluid-engine (inizio) ---
+def engineDir = file('engine')
+if (engineDir.exists()) {
+  [
+   'engine-foundation',
+   'engine-ui',
+   'engine-storage',
+   'engine-net',
+   'engine-config',
+   'engine-update'
+  ].each { name ->
+    include ":$name"
+    project(":$name").projectDir = new File(engineDir, name)
+  }
+}
+// --- fluid-engine (fine) ---

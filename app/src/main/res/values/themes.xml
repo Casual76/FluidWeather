@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Compose dipinge tutto; il tema di piattaforma deve solo togliersi di mezzo e lasciare la
+       finestra edge-to-edge, cosi' le barre hanno qualcosa su cui appoggiarsi davvero. -->
+  <style name="Theme.FluidWeather" parent="android:Theme.Material.NoActionBar">
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">true</item>
+  </style>
+</resources>

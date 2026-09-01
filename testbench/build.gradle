@@ -1,0 +1,17 @@
+// Banco di prova JVM: dataset storici, replay, metriche (POD, FAR, CSI, Brier, affidabilita').
+// Non e' spedito nell'APK: nessun modulo Android dipende da questo.
+plugins {
+  id 'org.jetbrains.kotlin.jvm'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+
+kotlin {
+  jvmToolchain(17)
+}
+
+dependencies {
+  implementation project(':nowcast')
+
+  testImplementation "junit:junit:${engine.junit}"
+}

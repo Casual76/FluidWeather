@@ -1,0 +1,63 @@
+plugins {
+  id 'com.android.application'
+  id 'org.jetbrains.kotlin.android'
+  id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+
+android {
+  namespace 'dev.pampa.fluidweather'
+  compileSdk engine.compileSdk
+
+  defaultConfig {
+    applicationId 'dev.pampa.fluidweather'
+    minSdk engine.minSdk
+    targetSdk engine.compileSdk
+    versionCode 1
+    versionName '0.1.0'
+  }
+
+  buildTypes {
+    debug {
+      // Un suffisso, così una build di lavoro convive sul telefono con quella dello store.
+      applicationIdSuffix '.debug'
+      minifyEnabled false
+    }
+    release {
+      minifyEnabled true
+      shrinkResources true
+      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+    }
+  }
+
+  buildFeatures {
+    compose true
+  }
+
+  compileOptions {
+    sourceCompatibility engine.javaVersion
+    targetCompatibility engine.javaVersion
+  }
+
+  kotlinOptions {
+    jvmTarget = engine.jvmTarget
+  }
+}
+
+dependencies {
+  implementation project(':feature-home')
+  implementation project(':feature-radar')
+  implementation project(':feature-benchmark')
+  implementation project(':feature-settings')
+  implementation project(':feature-report')
+  implementation project(':core-ui')
+
+  implementation project(':engine-ui')        // design system (porta con se' Compose e engine-foundation)
+  implementation project(':engine-storage')   // impostazioni su DataStore
+  implementation project(':engine-config')    // feature flag remoti
+  implementation project(':engine-update')    // aggiornamento in-app
+
+  implementation "androidx.activity:activity-compose:${engine.activityCompose}"
+  implementation "androidx.navigation:navigation-compose:${engine.navigation}"
+}

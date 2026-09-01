@@ -1,0 +1,16 @@
+// Puro Kotlin/JVM, zero Android: la pipeline a 5 stadi si compila, si prova e si tara sul
+// computer. Qualsiasi dipendenza Android aggiunta qui e' un errore di architettura, non una
+// comodita'.
+plugins {
+  id 'org.jetbrains.kotlin.jvm'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+
+kotlin {
+  jvmToolchain(17)
+}
+
+dependencies {
+  testImplementation "junit:junit:${engine.junit}"
+}
