@@ -24,5 +24,18 @@ android {
 }
 
 dependencies {
+  api project(':core-model')
+  api project(':core-data')
+  // NowcastContext: il livello provider e' cio' che porta il contesto vero al verdetto.
+  api project(':nowcast')
+  // EngineHttp: le due chiamate HTTP dell'engine bastano anche a noi.
+  implementation project(':engine-net')
+
+  // Solo il runtime (JsonElement): niente plugin del compilatore, i JSON dei provider si
+  // navigano a mano perche' ogni campo mancante e' una decisione, non un default.
+  implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:${engine.serialization}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
+
   testImplementation "junit:junit:${engine.junit}"
+  testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"
 }

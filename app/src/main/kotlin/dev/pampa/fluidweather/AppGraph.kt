@@ -1,10 +1,17 @@
 package dev.pampa.fluidweather
 
 import android.content.Context
+import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.ProviderKeysStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
+import dev.pampa.fluidweather.core.weather.ProviderHttp
+import dev.pampa.fluidweather.core.weather.UrlCache
+import dev.pampa.fluidweather.core.weather.WeatherRepository
+import dev.pampa.fluidweather.core.weather.buildWeatherClients
+import java.io.File
 import dev.pampa.fluidweather.core.sensor.ActivityRecognizer
 import dev.pampa.fluidweather.core.sensor.Barometer
 import dev.pampa.fluidweather.core.sensor.ContinuousMonitor
@@ -34,8 +41,20 @@ class AppGraph(context: Context) {
   val latestActivityStore = LatestActivityStore(context)
 
   val barometer = Barometer(context)
-  private val locationProvider = LocationProvider(context)
+  val locationProvider = LocationProvider(context)
   private val surveillanceController = SurveillanceController(context)
+
+  // Il livello provider (fase 6): un solo EngineHttp con lo User-Agent descrittivo che
+  // MET Norway pretende e gli altri apprezzano; cache per-URL nella cacheDir.
+  val providerKeysStore = ProviderKeysStore(context)
+  private val providerHttp = ProviderHttp(
+    http = EngineHttp(userAgent = "FluidWeather/0.1 (dev.pampa.fluidweather; uso personale non commerciale)"),
+    cache = UrlCache(File(context.cacheDir, "providers")),
+  )
+  val weatherRepository = WeatherRepository(
+    clients = buildWeatherClients(providerHttp),
+    keysStore = providerKeysStore,
+  )
 
   /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */
   val cleaningPipeline = CleaningPipeline()

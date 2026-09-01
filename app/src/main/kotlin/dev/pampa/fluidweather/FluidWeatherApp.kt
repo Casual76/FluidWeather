@@ -27,6 +27,22 @@ class FluidWeatherApp : Application(), SensorRuntime {
     graph.activityRecognizer.start()
     graph.applicationScope.launch {
       graph.samplingScheduler.applyCurrentMode()
+      seedDebugProviderKeys()
+    }
+  }
+
+  /**
+   * Solo per il collaudo in debug: le chiavi personali da local.properties entrano nel
+   * DataStore la prima volta, come le inserirebbe l'utente dalle impostazioni (fase 15).
+   * In release i campi sono vuoti per costruzione: nessun segreto nell'APK.
+   */
+  private suspend fun seedDebugProviderKeys() {
+    val existing = graph.providerKeysStore.current()
+    if (BuildConfig.SEED_OWM_KEY.isNotBlank() && "openweathermap" !in existing) {
+      graph.providerKeysStore.set("openweathermap", BuildConfig.SEED_OWM_KEY)
+    }
+    if (BuildConfig.SEED_METEOSOURCE_KEY.isNotBlank() && "meteosource" !in existing) {
+      graph.providerKeysStore.set("meteosource", BuildConfig.SEED_METEOSOURCE_KEY)
     }
   }
 }

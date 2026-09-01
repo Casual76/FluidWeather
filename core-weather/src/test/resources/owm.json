@@ -1,0 +1,4 @@
+{"cod":"200","message":0,"cnt":2,"list":[
+ {"dt":1788292800,"main":{"temp":24.5,"feels_like":24.9,"temp_min":24.5,"temp_max":25.1,"pressure":1018,"sea_level":1018,"grnd_level":1011,"humidity":70},"weather":[{"id":500,"main":"Rain","description":"light rain","icon":"10d"}],"clouds":{"all":40},"wind":{"speed":2.5,"deg":180,"gust":4.0},"visibility":10000,"pop":0.35,"rain":{"3h":0.6},"sys":{"pod":"d"},"dt_txt":"2026-09-01 20:00:00"},
+ {"dt":1788303600,"main":{"temp":22.0,"pressure":1019,"humidity":75},"weather":[{"id":800,"main":"Clear","description":"clear sky","icon":"01n"}],"clouds":{"all":5},"wind":{"speed":1.0,"deg":90},"visibility":10000,"pop":0,"sys":{"pod":"n"},"dt_txt":"2026-09-01 23:00:00"}],
+"city":{"id":3176959,"name":"Florence","coord":{"lat":43.83,"lon":11.2},"country":"IT","timezone":7200}}

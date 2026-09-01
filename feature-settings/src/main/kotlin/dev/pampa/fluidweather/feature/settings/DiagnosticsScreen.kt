@@ -37,9 +37,12 @@ import dev.pampa.fluidweather.core.model.SampleSource
 import dev.pampa.fluidweather.core.model.SamplingMode
 import dev.pampa.fluidweather.core.sensor.ActivityRecognizer
 import dev.pampa.fluidweather.core.sensor.Barometer
+import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.sensor.ManualBurstController
 import dev.pampa.fluidweather.core.sensor.MaximaAlarm
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
+import dev.pampa.fluidweather.core.weather.ProviderFetch
+import dev.pampa.fluidweather.core.weather.WeatherRepository
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.cleaning.RejectionReason
@@ -66,6 +69,8 @@ class DiagnosticsDependencies(
   val scheduler: SamplingScheduler,
   val activityRecognizer: ActivityRecognizer,
   val cleaningPipeline: CleaningPipeline,
+  val weatherRepository: WeatherRepository,
+  val locationProvider: LocationProvider,
 )
 
 /**
@@ -387,6 +392,61 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
               )
             },
           )
+        }
+      }
+    }
+
+    item { FluidSectionHeader(title = "Provider — piu' fonti per un punto") }
+    item {
+      var fetching by remember { androidx.compose.runtime.mutableStateOf(false) }
+      var fetches by remember { androidx.compose.runtime.mutableStateOf<List<ProviderFetch>?>(null) }
+      FluidListGroup {
+        FluidListRow(
+          title = "Interroga la costellazione",
+          subtitle = "Tutti i provider che coprono la tua posizione, in parallelo",
+          badge = {
+            FluidButton(
+              text = if (fetching) "..." else "Vai",
+              style = FluidButtonStyle.Tinted,
+              enabled = !fetching,
+              onClick = {
+                fetching = true
+                scope.launch {
+                  try {
+                    val here = deps.locationProvider.snapshot()
+                    fetches = if (here == null) {
+                      emptyList()
+                    } else {
+                      deps.weatherRepository.fetchAll(here.latitude, here.longitude)
+                    }
+                  } finally {
+                    fetching = false
+                  }
+                }
+              },
+            )
+          },
+        )
+        val results = fetches
+        if (results != null) {
+          if (results.isEmpty()) {
+            FluidListDivider()
+            FluidListRow(
+              title = "Posizione non disponibile",
+              subtitle = "Serve il permesso di posizione (o un fix GPS) per scegliere i provider",
+            )
+          }
+          results.forEach { fetch ->
+            FluidListDivider()
+            FluidListRow(
+              title = fetch.descriptor.label,
+              subtitle = fetch.descriptor.why,
+              meta = when {
+                fetch.bundle != null -> "${fetch.bundle!!.hourly.size} ore"
+                else -> fetch.error ?: "errore"
+              },
+            )
+          }
         }
       }
     }
