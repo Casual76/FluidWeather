@@ -6,14 +6,6 @@ plugins {
 
 apply from: "${rootDir}/engine/versions.gradle"
 
-// Le chiavi personali dell'utente per il collaudo: vivono in local.properties (git-ignorato)
-// ed entrano SOLO nella build di debug. La release non contiene segreti per costruzione.
-def localProps = new Properties()
-def localPropsFile = rootProject.file('local.properties')
-if (localPropsFile.exists()) {
-  localPropsFile.withInputStream { localProps.load(it) }
-}
-
 android {
   namespace 'dev.pampa.fluidweather'
   compileSdk engine.compileSdk
@@ -31,21 +23,16 @@ android {
       // Un suffisso, così una build di lavoro convive sul telefono con quella dello store.
       applicationIdSuffix '.debug'
       minifyEnabled false
-      buildConfigField 'String', 'SEED_OWM_KEY', "\"${localProps.getProperty('fluidweather.owmKey', '')}\""
-      buildConfigField 'String', 'SEED_METEOSOURCE_KEY', "\"${localProps.getProperty('fluidweather.meteosourceKey', '')}\""
     }
     release {
       minifyEnabled true
       shrinkResources true
       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-      buildConfigField 'String', 'SEED_OWM_KEY', '""'
-      buildConfigField 'String', 'SEED_METEOSOURCE_KEY', '""'
     }
   }
 
   buildFeatures {
     compose true
-    buildConfig true
   }
 
   compileOptions {

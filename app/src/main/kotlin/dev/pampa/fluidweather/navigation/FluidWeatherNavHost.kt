@@ -95,7 +95,7 @@ fun FluidWeatherNavHost(graph: AppGraph) {
           scheduler = graph.samplingScheduler,
           activityRecognizer = graph.activityRecognizer,
           cleaningPipeline = graph.cleaningPipeline,
-          weatherRepository = graph.weatherRepository,
+          fusionCoordinator = graph.fusionCoordinator,
           locationProvider = graph.locationProvider,
         )
       }

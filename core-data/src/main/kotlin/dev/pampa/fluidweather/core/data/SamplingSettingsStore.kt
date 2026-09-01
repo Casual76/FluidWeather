@@ -56,6 +56,29 @@ class SamplingSettingsStore(private val context: Context) {
   }
 }
 
+/**
+ * L'override della fusione: "usa solo questo dove e' supportato". Null = cascata normale.
+ * Vive accanto alle altre impostazioni dell'app; la UI arriva con Benchmark e Impostazioni.
+ */
+class FusionSettingsStore(private val context: Context) {
+
+  val onlyProviderId: Flow<String?> = context.fluidWeatherStore.data.map { preferences ->
+    preferences[OnlyProvider]?.takeIf { it.isNotBlank() }
+  }
+
+  suspend fun currentOnlyProviderId(): String? = onlyProviderId.first()
+
+  suspend fun setOnlyProvider(providerId: String?) {
+    context.fluidWeatherStore.edit { preferences ->
+      if (providerId.isNullOrBlank()) preferences.remove(OnlyProvider) else preferences[OnlyProvider] = providerId
+    }
+  }
+
+  private companion object {
+    val OnlyProvider = stringPreferencesKey("fusion_only_provider")
+  }
+}
+
 data class LatestActivity(
   val kind: ActivityKind,
   val confidence: Int,

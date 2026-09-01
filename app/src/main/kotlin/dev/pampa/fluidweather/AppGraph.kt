@@ -5,9 +5,15 @@ import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
+import dev.pampa.fluidweather.core.data.RoomVerificationStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
+import dev.pampa.fluidweather.core.weather.ForecastFusion
+import dev.pampa.fluidweather.core.weather.ForecastVerifier
+import dev.pampa.fluidweather.core.weather.FusionCoordinator
 import dev.pampa.fluidweather.core.weather.ProviderHttp
+import dev.pampa.fluidweather.core.weather.ProviderScoreboard
 import dev.pampa.fluidweather.core.weather.UrlCache
 import dev.pampa.fluidweather.core.weather.WeatherRepository
 import dev.pampa.fluidweather.core.weather.buildWeatherClients
@@ -54,6 +60,16 @@ class AppGraph(context: Context) {
   val weatherRepository = WeatherRepository(
     clients = buildWeatherClients(providerHttp),
     keysStore = providerKeysStore,
+  )
+
+  // Fusione e punteggi (fase 7): verifiche in Room, pesi in cascata, override dell'utente.
+  private val verificationStore = RoomVerificationStore(database.verificationDao())
+  val fusionSettingsStore = FusionSettingsStore(context)
+  val fusionCoordinator = FusionCoordinator(
+    repository = weatherRepository,
+    verifier = ForecastVerifier(verificationStore),
+    fusion = ForecastFusion(ProviderScoreboard(verificationStore)),
+    fusionSettings = fusionSettingsStore,
   )
 
   /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */

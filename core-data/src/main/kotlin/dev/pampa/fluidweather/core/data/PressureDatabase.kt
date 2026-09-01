@@ -52,13 +52,27 @@ interface PressureDao {
   suspend fun deleteOlderThan(beforeMillis: Long)
 }
 
-@Database(entities = [PressureSampleEntity::class], version = 1, exportSchema = false)
+@Database(
+  entities = [
+    PressureSampleEntity::class,
+    PendingPredictionEntity::class,
+    ForecastVerificationEntity::class,
+  ],
+  version = 2,
+  exportSchema = false,
+)
 abstract class FluidWeatherDatabase : RoomDatabase() {
 
   abstract fun pressureDao(): PressureDao
 
+  abstract fun verificationDao(): VerificationDao
+
   companion object {
     fun build(context: Context): FluidWeatherDatabase =
-      Room.databaseBuilder(context, FluidWeatherDatabase::class.java, "fluidweather.db").build()
+      Room.databaseBuilder(context, FluidWeatherDatabase::class.java, "fluidweather.db")
+        // Fino alla prima release le migrazioni sono distruttive per dichiarazione: nessun
+        // utente ha ancora un archivio da proteggere. Questa riga SPARISCE con la fase 18.
+        .fallbackToDestructiveMigration()
+        .build()
   }
 }

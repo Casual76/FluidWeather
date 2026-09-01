@@ -41,8 +41,8 @@ import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.sensor.ManualBurstController
 import dev.pampa.fluidweather.core.sensor.MaximaAlarm
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
-import dev.pampa.fluidweather.core.weather.ProviderFetch
-import dev.pampa.fluidweather.core.weather.WeatherRepository
+import dev.pampa.fluidweather.core.weather.FusionCoordinator
+import dev.pampa.fluidweather.core.weather.WeatherRound
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.cleaning.RejectionReason
@@ -69,7 +69,7 @@ class DiagnosticsDependencies(
   val scheduler: SamplingScheduler,
   val activityRecognizer: ActivityRecognizer,
   val cleaningPipeline: CleaningPipeline,
-  val weatherRepository: WeatherRepository,
+  val fusionCoordinator: FusionCoordinator,
   val locationProvider: LocationProvider,
 )
 
@@ -396,14 +396,15 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Provider — piu' fonti per un punto") }
+    item { FluidSectionHeader(title = "Provider e fusione — piu' fonti per un punto") }
     item {
       var fetching by remember { androidx.compose.runtime.mutableStateOf(false) }
-      var fetches by remember { androidx.compose.runtime.mutableStateOf<List<ProviderFetch>?>(null) }
+      var round by remember { androidx.compose.runtime.mutableStateOf<WeatherRound?>(null) }
+      var roundFailed by remember { androidx.compose.runtime.mutableStateOf(false) }
       FluidListGroup {
         FluidListRow(
           title = "Interroga la costellazione",
-          subtitle = "Tutti i provider che coprono la tua posizione, in parallelo",
+          subtitle = "Fetch parallelo, verifica dei giudizi scaduti, fusione pesata",
           badge = {
             FluidButton(
               text = if (fetching) "..." else "Vai",
@@ -411,13 +412,15 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
               enabled = !fetching,
               onClick = {
                 fetching = true
+                roundFailed = false
                 scope.launch {
                   try {
                     val here = deps.locationProvider.snapshot()
-                    fetches = if (here == null) {
-                      emptyList()
+                    if (here == null) {
+                      roundFailed = true
+                      round = null
                     } else {
-                      deps.weatherRepository.fetchAll(here.latitude, here.longitude)
+                      round = deps.fusionCoordinator.refresh(here.latitude, here.longitude)
                     }
                   } finally {
                     fetching = false
@@ -427,26 +430,35 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
             )
           },
         )
-        val results = fetches
-        if (results != null) {
-          if (results.isEmpty()) {
+        if (roundFailed) {
+          FluidListDivider()
+          FluidListRow(
+            title = "Posizione non disponibile",
+            subtitle = "Serve il permesso di posizione (o un fix GPS) per scegliere i provider",
+          )
+        }
+        val result = round
+        if (result != null) {
+          result.fetches.forEach { fetch ->
             FluidListDivider()
-            FluidListRow(
-              title = "Posizione non disponibile",
-              subtitle = "Serve il permesso di posizione (o un fix GPS) per scegliere i provider",
-            )
-          }
-          results.forEach { fetch ->
-            FluidListDivider()
+            val weight = result.fused.providerWeights[fetch.descriptor.id]
             FluidListRow(
               title = fetch.descriptor.label,
               subtitle = fetch.descriptor.why,
               meta = when {
+                fetch.bundle != null && weight != null ->
+                  "${fetch.bundle!!.hourly.size} ore · ${(weight * 100).toInt()}%"
                 fetch.bundle != null -> "${fetch.bundle!!.hourly.size} ore"
                 else -> fetch.error ?: "errore"
               },
             )
           }
+          FluidListDivider()
+          FluidListRow(
+            title = "Forecast fuso",
+            subtitle = "Ogni valore tracciabile alla sua fonte e al suo peso",
+            meta = "${result.fused.hours.size} ore",
+          )
         }
       }
     }
