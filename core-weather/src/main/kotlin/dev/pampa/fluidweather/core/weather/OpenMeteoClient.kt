@@ -80,7 +80,7 @@ class OpenMeteoClient(
     )
   }
 
-  private companion object {
+  companion object {
     /** La tabella WMO 4677 ridotta al vocabolario comune. */
     fun wmoKind(code: Int): WeatherKind = when (code) {
       0 -> WeatherKind.CLEAR

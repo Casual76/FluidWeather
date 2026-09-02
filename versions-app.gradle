@@ -4,4 +4,10 @@ ext.appVersions = [
   room                : '2.8.4',
   work                : '2.11.2',
   playServicesLocation: '21.4.0',
+  // Radar (fase 12): Google Maps SDK e il suo binding Compose.
+  // maps-compose 8.2.2: l'ultima che compila contro android-36 con Kotlin <= 2.3 (le 8.3+
+  // pretendono compileSdk 37, le 8.4+ anche Kotlin 2.4 e AGP 9.1). play-services-maps la
+  // decide maps-ktx; 19.2.0 e' il minimo che chiediamo noi.
+  playServicesMaps    : '19.2.0',
+  mapsCompose         : '8.2.2',
 ]

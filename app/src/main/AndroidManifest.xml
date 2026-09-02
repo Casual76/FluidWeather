@@ -9,6 +9,10 @@
       android:label="@string/app_name"
       android:supportsRtl="true"
       android:theme="@style/Theme.FluidWeather">
+    <!-- Google Maps SDK (radar): la chiave arriva da local.properties via manifestPlaceholders. -->
+    <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="${mapsApiKey}" />
     <activity
         android:name=".MainActivity"
         android:exported="true"

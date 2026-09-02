@@ -5,6 +5,7 @@ plugins {
 }
 
 apply from: "${rootDir}/engine/versions.gradle"
+apply from: "${rootDir}/versions-app.gradle"
 
 android {
   namespace 'dev.pampa.fluidweather.feature.radar'
@@ -31,6 +32,12 @@ android {
 dependencies {
   implementation project(':engine-ui')
   implementation project(':core-ui')
+  api project(':core-sensor')
+  api project(':core-weather')
+
+  implementation "com.google.maps.android:maps-compose:${appVersions.mapsCompose}"
+  implementation "com.google.android.gms:play-services-maps:${appVersions.playServicesMaps}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
 
   testImplementation "junit:junit:${engine.junit}"
 }

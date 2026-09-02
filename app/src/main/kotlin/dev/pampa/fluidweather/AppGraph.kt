@@ -30,8 +30,10 @@ import dev.pampa.fluidweather.core.weather.ForecastVerifier
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
 import dev.pampa.fluidweather.core.weather.GeocodingClient
 import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
+import dev.pampa.fluidweather.core.weather.PointWeatherClient
 import dev.pampa.fluidweather.core.weather.ProviderHttp
 import dev.pampa.fluidweather.core.weather.ProviderScoreboard
+import dev.pampa.fluidweather.core.weather.RainViewerClient
 import dev.pampa.fluidweather.core.weather.UrlCache
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
@@ -86,6 +88,10 @@ class AppGraph(context: Context) {
     keysStore = providerKeysStore,
   )
   val airQualityClient = AirQualityClient(providerHttp)
+
+  // Radar (fase 12): i fotogrammi RainViewer e il "adesso" dei pin in una chiamata sola.
+  val rainViewerClient = RainViewerClient(providerHttp)
+  val pointWeatherClient = PointWeatherClient(providerHttp)
 
   // Fusione e punteggi (fase 7): verifiche in Room, pesi in cascata, override dell'utente.
   private val verificationStore = RoomVerificationStore(database.verificationDao())

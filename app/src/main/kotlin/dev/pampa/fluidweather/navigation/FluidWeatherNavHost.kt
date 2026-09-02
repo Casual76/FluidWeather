@@ -17,6 +17,7 @@ import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeScreen
+import dev.pampa.fluidweather.feature.radar.RadarDependencies
 import dev.pampa.fluidweather.feature.radar.RadarScreen
 import dev.pampa.fluidweather.feature.report.ReportSheet
 import dev.pampa.fluidweather.feature.settings.DiagnosticsDependencies
@@ -110,7 +111,19 @@ fun FluidWeatherNavHost(graph: AppGraph) {
       BenchmarkSheet(open = benchmarkOpen, onDismiss = { benchmarkOpen = false })
       ReportSheet(open = reportOpen, onDismiss = { reportOpen = false })
     }
-    composable(Routes.Radar) { RadarScreen(onBack = { navController.popBackStack() }) }
+    composable(Routes.Radar) {
+      val deps = remember(graph) {
+        RadarDependencies(
+          rainViewer = graph.rainViewerClient,
+          pointWeather = graph.pointWeatherClient,
+          savedLocations = graph.savedLocationsRepository,
+          selectedPlaceStore = graph.selectedPlaceStore,
+          locationProvider = graph.locationProvider,
+          providerKeys = graph.providerKeysStore,
+        )
+      }
+      RadarScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
     composable(Routes.Settings) {
       SettingsScreen(
         onBack = { navController.popBackStack() },

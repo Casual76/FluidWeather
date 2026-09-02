@@ -6,6 +6,15 @@ plugins {
 
 apply from: "${rootDir}/engine/versions.gradle"
 
+// La chiave Google Maps del radar vive in local.properties (fuori da git) ed entra nel
+// manifest come meta-data: e' l'unico modo in cui l'SDK la legge. Assente = radar che
+// spiega il motivo, non build rotta.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+  localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+
 android {
   namespace 'dev.pampa.fluidweather'
   compileSdk engine.compileSdk
@@ -16,6 +25,7 @@ android {
     targetSdk engine.compileSdk
     versionCode 1
     versionName '0.1.0'
+    manifestPlaceholders = [mapsApiKey: localProperties.getProperty('maps.apiKey', '')]
   }
 
   buildTypes {
