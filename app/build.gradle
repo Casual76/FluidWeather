@@ -54,6 +54,10 @@ android {
         storePassword releaseStorePassword
         keyAlias localProperties.getProperty('pampa.keyAlias', 'pampa')
         keyPassword (localProperties.getProperty('pampa.keyPassword') ?: releaseStorePassword)
+        // Anche la firma v1 (JAR): il publisher del Pampa Store la cerca per dire "firmato".
+        // Android da 7.0 in su verifica comunque la v2, che resta la firma che conta.
+        enableV1Signing true
+        enableV2Signing true
       }
     }
   }
