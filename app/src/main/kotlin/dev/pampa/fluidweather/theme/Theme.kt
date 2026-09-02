@@ -1,26 +1,16 @@
 package dev.pampa.fluidweather.theme
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.antigravity.fluidengine.ui.theme.FluidTheme
+import dev.pampa.fluidweather.core.ui.WeatherAccent
 
 /**
- * Ametista: il colore del marchio finche' il meteo non ne detta uno.
- *
- * Il piano prevede come default un accento derivato dalle condizioni attuali della posizione; quel
- * derivatore arriva con la scena meteo. Prima di allora — e come base della palette scelta a mano —
- * l'app e' color ametista, con la coppia chiaro/scuro separata perche' lo stesso viola non regge
- * su entrambi gli sfondi.
+ * Il tema dell'app: le impostazioni persistite dell'engine (tema delle pagine, modo dell'accento,
+ * Material You, palette) e il marchio del momento — l'accento derivato dal meteo quando c'e',
+ * ametista altrimenti. Le palette scelte a mano sono quelle di [WeatherAccent.palettes].
  */
-private val AmethystBrand = AccentPreset(
-  name = "amethyst",
-  label = "Ametista",
-  light = Color(0xFF8C52D9),
-  dark = Color(0xFFB88CF2),
-)
-
 @Composable
 fun FluidWeatherTheme(
   settings: EngineSettings = EngineSettings(),
@@ -30,7 +20,8 @@ fun FluidWeatherTheme(
 ) {
   FluidTheme(
     settings = settings,
-    brand = brand ?: AmethystBrand,
+    brand = brand ?: WeatherAccent.Amethyst,
+    presets = WeatherAccent.palettes,
     content = content,
   )
 }

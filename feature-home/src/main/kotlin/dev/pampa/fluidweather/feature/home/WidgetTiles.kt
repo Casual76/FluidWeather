@@ -42,6 +42,7 @@ import dev.pampa.fluidweather.core.model.Moon
 import dev.pampa.fluidweather.core.model.MoonPhase
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.ui.Charts
+import dev.antigravity.fluidengine.ui.fluid.FluidProgressBar
 import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import java.time.Instant
@@ -80,7 +81,26 @@ internal fun WidgetTileContent(widget: HomeWidget, state: HomeUiState) {
 private fun NowcastTile(state: HomeUiState) {
   val verdict = state.verdict
   if (verdict == null) {
-    EmptyTileBody("Il barometro sta ancora accumulando storia (~13 ore).")
+    val readiness = state.readiness
+    if (readiness == null) {
+      EmptyTileBody("Il barometro sta ancora accumulando storia (~13 ore).")
+      return
+    }
+    // La barra unica chiesta sul telefono: raffica iniziale, poi le ore di storia.
+    Spacer(Modifier.height(6.dp))
+    Text(readiness.stageLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    Spacer(Modifier.height(8.dp))
+    FluidProgressBar(progress = { readiness.overallFraction })
+    Spacer(Modifier.height(6.dp))
+    Text(
+      text = if (readiness.calibrationRunning) {
+        "La raffica di taratura gira in sottofondo: puoi chiudere l'app."
+      } else {
+        "Il modello vuole ${readiness.requiredHours.toInt()} ore di segnale pulito prima del primo verdetto."
+      },
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+    )
     return
   }
   Text(

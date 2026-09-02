@@ -31,6 +31,16 @@
           android:value="Campionamento barometrico ad alta frequenza mentre la pressione cambia rapidamente" />
     </service>
 
+    <!-- La taratura iniziale: dieci minuti di raffica in un servizio, cosi' il processo vive. -->
+    <service
+        android:name=".CalibrationService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Raffica di taratura del barometro al primo avvio (dieci minuti a 1 Hz)" />
+    </service>
+
     <receiver
         android:name=".ActivityUpdateReceiver"
         android:exported="false" />

@@ -325,6 +325,13 @@ class WeatherSnapshotStore(private val directory: File) {
     updatesState.value = updatesState.value + (snapshot.placeKey to snapshot.fetchedAtMillis)
   }
 
+  /** Dati e privacy: memoria e file, e chi osserva vede il vuoto. */
+  suspend fun clear() {
+    synchronized(lock) { memory.clear() }
+    withContext(Dispatchers.IO) { runCatching { directory.deleteRecursively() } }
+    updatesState.value = emptyMap()
+  }
+
   private fun fileFor(placeKey: String): File = File(directory, "$placeKey.json")
 }
 

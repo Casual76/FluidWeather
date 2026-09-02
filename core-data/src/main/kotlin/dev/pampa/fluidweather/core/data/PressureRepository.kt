@@ -22,6 +22,9 @@ class PressureRepository(private val dao: PressureDao) {
 
   fun count(): Flow<Long> = dao.count()
 
+  /** Dati e privacy: l'archivio intero. */
+  suspend fun clear() = dao.deleteOlderThan(Long.MAX_VALUE)
+
   private fun PressureSample.toEntity() = PressureSampleEntity(
     timestampMillis = timestampMillis,
     pressureHpa = pressureHpa,

@@ -43,6 +43,8 @@ android {
 
   buildFeatures {
     compose true
+    // BuildConfig.VERSION_NAME per la pagina Informazioni.
+    buildConfig true
   }
 
   compileOptions {

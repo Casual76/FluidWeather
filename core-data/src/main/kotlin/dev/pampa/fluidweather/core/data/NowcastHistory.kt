@@ -65,6 +65,10 @@ class NowcastHistoryStore(private val dao: NowcastHistoryDao) {
     dao.pruneOlderThan(nowMillis - KEEP_MILLIS)
   }
 
+  suspend fun clear() {
+    dao.pruneOlderThan(Long.MAX_VALUE)
+  }
+
   companion object {
     const val MIN_GAP_MILLIS: Long = 10 * 60_000L
 

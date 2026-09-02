@@ -5,6 +5,7 @@ import dev.pampa.fluidweather.core.cycle.BackgroundCycle
 import dev.pampa.fluidweather.core.cycle.CycleRuntime
 import dev.pampa.fluidweather.core.cycle.NotificationChannels
 import dev.pampa.fluidweather.core.data.LatestActivityStore
+import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.SamplingEngine
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.sensor.SensorRuntime
@@ -23,6 +24,7 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
   override val samplingEngine: SamplingEngine get() = graph.samplingEngine
   override val samplingScheduler: SamplingScheduler get() = graph.samplingScheduler
   override val latestActivityStore: LatestActivityStore get() = graph.latestActivityStore
+  override val calibrationController: CalibrationController get() = graph.calibrationController
   override val backgroundCycle: BackgroundCycle get() = graph.backgroundCycle
 
   override suspend fun rescheduleDailySummary() = graph.rescheduleDailySummary()

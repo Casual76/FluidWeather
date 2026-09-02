@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.pampa.fluidweather.AppGraph
+import dev.pampa.fluidweather.BuildConfig
 import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkDependencies
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
@@ -22,10 +23,22 @@ import dev.pampa.fluidweather.feature.radar.RadarDependencies
 import dev.pampa.fluidweather.feature.radar.RadarScreen
 import dev.pampa.fluidweather.feature.report.ReportDependencies
 import dev.pampa.fluidweather.feature.report.ReportSheet
+import dev.pampa.fluidweather.feature.settings.AboutDependencies
+import dev.pampa.fluidweather.feature.settings.AboutScreen
+import dev.pampa.fluidweather.feature.settings.AppearanceDependencies
+import dev.pampa.fluidweather.feature.settings.AppearanceScreen
+import dev.pampa.fluidweather.feature.settings.DataPrivacyDependencies
+import dev.pampa.fluidweather.feature.settings.DataPrivacyScreen
 import dev.pampa.fluidweather.feature.settings.DiagnosticsDependencies
 import dev.pampa.fluidweather.feature.settings.DiagnosticsScreen
+import dev.pampa.fluidweather.feature.settings.EngineAccuracyDependencies
+import dev.pampa.fluidweather.feature.settings.EngineAccuracyScreen
 import dev.pampa.fluidweather.feature.settings.NotificationsDependencies
 import dev.pampa.fluidweather.feature.settings.NotificationsSettingsScreen
+import dev.pampa.fluidweather.feature.settings.OnboardingDependencies
+import dev.pampa.fluidweather.feature.settings.OnboardingScreen
+import dev.pampa.fluidweather.feature.settings.ProvidersDependencies
+import dev.pampa.fluidweather.feature.settings.ProvidersScreen
 import dev.pampa.fluidweather.feature.settings.SettingsScreen
 
 /**
@@ -33,11 +46,17 @@ import dev.pampa.fluidweather.feature.settings.SettingsScreen
  * basso sopra la home (decisione del 2026-09-02), quindi vivono come stato della home.
  */
 private object Routes {
+  const val Onboarding = "onboarding"
   const val Home = "home"
   const val Radar = "radar"
   const val Settings = "settings"
-  const val Diagnostics = "settings/diagnostics"
+  const val Engine = "settings/engine"
+  const val Providers = "settings/providers"
   const val Notifications = "settings/notifications"
+  const val Appearance = "settings/appearance"
+  const val Diagnostics = "settings/diagnostics"
+  const val Data = "settings/data"
+  const val About = "settings/about"
 }
 
 /**
@@ -52,11 +71,11 @@ private const val CoveredParallax = 0.25f
  * gerarchia. I tempi sono i budget di [FluidMotion], cosi' "aprire qualcosa" dura uguale ovunque.
  */
 @Composable
-fun FluidWeatherNavHost(graph: AppGraph) {
+fun FluidWeatherNavHost(graph: AppGraph, startAtOnboarding: Boolean) {
   val navController = rememberNavController()
   NavHost(
     navController = navController,
-    startDestination = Routes.Home,
+    startDestination = if (startAtOnboarding) Routes.Onboarding else Routes.Home,
     enterTransition = {
       slideInHorizontally(
         animationSpec = tween(FluidMotion.DurationExpand, easing = FluidMotion.EaseEmphasized),
@@ -82,6 +101,26 @@ fun FluidWeatherNavHost(graph: AppGraph) {
       )
     },
   ) {
+    composable(Routes.Onboarding) {
+      val deps = remember(graph) {
+        OnboardingDependencies(
+          appearanceStore = graph.appearanceSettingsStore,
+          samplingSettings = graph.samplingSettingsStore,
+          scheduler = graph.samplingScheduler,
+          activityRecognizer = graph.activityRecognizer,
+          onboardingStore = graph.onboardingStore,
+          calibrationController = graph.calibrationController,
+        )
+      }
+      OnboardingScreen(
+        deps = deps,
+        onFinished = {
+          navController.navigate(Routes.Home) {
+            popUpTo(Routes.Onboarding) { inclusive = true }
+          }
+        },
+      )
+    }
     composable(Routes.Home) {
       val homeDeps = remember(graph) {
         HomeDependencies(
@@ -91,6 +130,8 @@ fun FluidWeatherNavHost(graph: AppGraph) {
           locationProvider = graph.locationProvider,
           pressureRepository = graph.pressureRepository,
           nowcastHistory = graph.nowcastHistoryStore,
+          calibrationStore = graph.calibrationStore,
+          calibrationController = graph.calibrationController,
           cleaningPipeline = graph.cleaningPipeline,
           airQualityClient = graph.airQualityClient,
           appearanceStore = graph.appearanceSettingsStore,
@@ -142,9 +183,33 @@ fun FluidWeatherNavHost(graph: AppGraph) {
     composable(Routes.Settings) {
       SettingsScreen(
         onBack = { navController.popBackStack() },
-        onOpenDiagnostics = { navController.navigate(Routes.Diagnostics) },
+        onOpenEngine = { navController.navigate(Routes.Engine) },
+        onOpenProviders = { navController.navigate(Routes.Providers) },
         onOpenNotifications = { navController.navigate(Routes.Notifications) },
+        onOpenAppearance = { navController.navigate(Routes.Appearance) },
+        onOpenDiagnostics = { navController.navigate(Routes.Diagnostics) },
+        onOpenData = { navController.navigate(Routes.Data) },
+        onOpenAbout = { navController.navigate(Routes.About) },
       )
+    }
+    composable(Routes.Engine) {
+      val deps = remember(graph) {
+        EngineAccuracyDependencies(
+          samplingSettings = graph.samplingSettingsStore,
+          scheduler = graph.samplingScheduler,
+          calibrationStore = graph.calibrationStore,
+          calibrationController = graph.calibrationController,
+          pressureRepository = graph.pressureRepository,
+          cleaningPipeline = graph.cleaningPipeline,
+        )
+      }
+      EngineAccuracyScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
+    composable(Routes.Providers) {
+      val deps = remember(graph) {
+        ProvidersDependencies(providerKeys = graph.providerKeysStore, fusionSettings = graph.fusionSettingsStore)
+      }
+      ProvidersScreen(deps = deps, onBack = { navController.popBackStack() })
     }
     composable(Routes.Notifications) {
       val deps = remember(graph) {
@@ -157,6 +222,12 @@ fun FluidWeatherNavHost(graph: AppGraph) {
         )
       }
       NotificationsSettingsScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
+    composable(Routes.Appearance) {
+      val deps = remember(graph) {
+        AppearanceDependencies(engineSettings = graph.engineSettingsStore, appearanceStore = graph.appearanceSettingsStore)
+      }
+      AppearanceScreen(deps = deps, onBack = { navController.popBackStack() })
     }
     composable(Routes.Diagnostics) {
       val deps = remember(graph) {
@@ -173,6 +244,26 @@ fun FluidWeatherNavHost(graph: AppGraph) {
         )
       }
       DiagnosticsScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
+    composable(Routes.Data) {
+      val deps = remember(graph) {
+        DataPrivacyDependencies(
+          pressureRepository = graph.pressureRepository,
+          verificationStore = graph.verificationStore,
+          observations = graph.observationRepository,
+          wipeAll = { graph.wipeAllData() },
+        )
+      }
+      DataPrivacyScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
+    composable(Routes.About) {
+      val deps = remember(graph) {
+        AboutDependencies(
+          appVersion = BuildConfig.VERSION_NAME,
+          onReviewOnboarding = { navController.navigate(Routes.Onboarding) },
+        )
+      }
+      AboutScreen(deps = deps, onBack = { navController.popBackStack() })
     }
   }
 }

@@ -12,6 +12,7 @@ interface SensorRuntime {
   val samplingEngine: SamplingEngine
   val samplingScheduler: SamplingScheduler
   val latestActivityStore: LatestActivityStore
+  val calibrationController: CalibrationController
 }
 
 fun Context.sensorRuntime(): SensorRuntime = applicationContext as SensorRuntime

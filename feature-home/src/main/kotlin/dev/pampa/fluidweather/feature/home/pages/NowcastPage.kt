@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
+import dev.antigravity.fluidengine.ui.fluid.FluidProgressBar
 import dev.pampa.fluidweather.core.ui.PageCharts
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import dev.pampa.fluidweather.nowcast.tide.TideSource
@@ -40,8 +41,16 @@ internal fun NowcastPage(state: HomeUiState) {
       "Il verdetto compare dopo circa 13 ore di campionamento continuo: il modello vuole vedere " +
         "la tendenza a 12 ore prima di parlare, e un verdetto costruito sul vuoto sarebbe un'invenzione.",
     )
+    val readiness = state.readiness
+    if (readiness != null) {
+      Spacer(Modifier.height(10.dp))
+      Text(readiness.stageLabel, style = MaterialTheme.typography.titleSmall, color = White)
+      Spacer(Modifier.height(6.dp))
+      FluidProgressBar(progress = { readiness.overallFraction }, color = PageBlue)
+      Spacer(Modifier.height(6.dp))
+    }
     val points = state.cleaning?.filtered?.size ?: 0
-    if (points > 0) StatRow("Punti puliti in archivio", "$points", "ultime 12 ore")
+    if (points > 0) StatRow("Punti puliti in archivio", "$points", "ultime 24 ore")
   } else {
     val (title, body, color) = when (verdict.level) {
       AlertLevel.QUIETE -> Triple(

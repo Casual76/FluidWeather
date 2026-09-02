@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.ui
 
 import androidx.compose.ui.graphics.Color
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
+import dev.antigravity.fluidengine.ui.theme.fluidAccentPresets
 import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.WeatherKind
 
@@ -11,6 +12,12 @@ import dev.pampa.fluidweather.core.model.WeatherKind
  * anche nelle impostazioni. L'ametista resta il marchio di riserva quando il meteo non c'e'.
  */
 object WeatherAccent {
+
+  /** Ametista: il marchio finche' il meteo non ne detta uno, e la base della palette scelta a mano. */
+  val Amethyst: AccentPreset = AccentPreset("amethyst", "Ametista", Color(0xFF8C52D9), Color(0xFFB88CF2))
+
+  /** Le palette che l'utente puo' scegliere in Aspetto: ametista prima, poi quelle dell'engine. */
+  val palettes: List<AccentPreset> = listOf(Amethyst) + fluidAccentPresets
 
   fun presetFor(kind: WeatherKind?, phase: DayPhase): AccentPreset {
     val (name, light, dark) = when {

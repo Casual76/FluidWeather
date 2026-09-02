@@ -16,6 +16,9 @@ enum class SampleSource {
 
   /** Il monitoraggio continuo mentre l'app e' aperta (toggle). */
   CONTINUOUS,
+
+  /** La raffica di taratura del primo avvio: dieci minuti a 1 Hz (fase 15). */
+  CALIBRATION,
 }
 
 /** Lo stato di attivita' al momento della lettura, per scartare ascensori/auto/aereo in pulizia. */

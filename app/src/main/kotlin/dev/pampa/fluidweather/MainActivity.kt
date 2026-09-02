@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -13,9 +14,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.antigravity.fluidengine.ui.fluid.FluidNotification
 import dev.antigravity.fluidengine.ui.fluid.FluidNotificationHost
 import dev.antigravity.fluidengine.ui.fluid.FluidNotificationHostState
@@ -36,19 +39,28 @@ class MainActivity : ComponentActivity() {
     val graph = graph
     setContent {
       val accent by graph.weatherAccent.collectAsState()
-      FluidWeatherTheme(brand = accent) {
-        ContinuousSamplingEffect(graph)
-        // Con l'app in primo piano un'allerta e' un banner di vetro in cima, non una notifica
-        // di sistema (decisione 2026-09-02): l'host sta alla radice, sopra la navigazione.
-        val notificationHost = rememberFluidNotificationHostState()
-        InAppAlertsEffect(graph, notificationHost)
-        CompositionLocalProvider(LocalFluidNotificationHostState provides notificationHost) {
-          Box(Modifier.fillMaxSize()) {
-            FluidWeatherNavHost(graph)
-            FluidNotificationHost(
-              state = notificationHost,
-              modifier = Modifier.align(Alignment.TopCenter),
-            )
+      val engineSettings by graph.engineSettingsStore.settings.collectAsState(initial = null)
+      val onboardingDone by graph.onboardingStore.done.collectAsState(initial = null)
+      val settings: EngineSettings? = engineSettings
+      val done: Boolean? = onboardingDone
+      if (settings == null || done == null) {
+        // Il primo fotogramma, prima che le preferenze rispondano: nero, non un lampo di tema.
+        Box(Modifier.fillMaxSize().background(Color(0xFF0B0B0E)))
+      } else {
+        FluidWeatherTheme(settings = settings, brand = accent) {
+          ContinuousSamplingEffect(graph)
+          // Con l'app in primo piano un'allerta e' un banner di vetro in cima, non una notifica
+          // di sistema (decisione 2026-09-02): l'host sta alla radice, sopra la navigazione.
+          val notificationHost = rememberFluidNotificationHostState()
+          InAppAlertsEffect(graph, notificationHost)
+          CompositionLocalProvider(LocalFluidNotificationHostState provides notificationHost) {
+            Box(Modifier.fillMaxSize()) {
+              FluidWeatherNavHost(graph, startAtOnboarding = !done)
+              FluidNotificationHost(
+                state = notificationHost,
+                modifier = Modifier.align(Alignment.TopCenter),
+              )
+            }
           }
         }
       }

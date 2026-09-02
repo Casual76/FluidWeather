@@ -93,7 +93,7 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
   val cleaning by produceState<CleaningResult?>(initialValue = null, sampleCount) {
     value = withContext(Dispatchers.Default) {
       deps.cleaningPipeline.process(
-        deps.repository.samplesSince(System.currentTimeMillis() - 12 * 60 * 60_000L),
+        deps.repository.samplesSince(System.currentTimeMillis() - 24 * 60 * 60_000L),
       )
     }
   }
@@ -276,96 +276,9 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Modalita' di campionamento") }
-    item {
-      FluidListGroup {
-        SamplingMode.entries.forEachIndexed { index, mode ->
-          if (index > 0) FluidListDivider()
-          FluidListRow(
-            title = mode.label(),
-            subtitle = mode.description(),
-            badge = if (settings.mode == mode) {
-              {
-                Icon(
-                  imageVector = Icons.Rounded.Check,
-                  contentDescription = "Selezionata",
-                  tint = MaterialTheme.colorScheme.primary,
-                )
-              }
-            } else {
-              null
-            },
-            onClick = {
-              scope.launch {
-                deps.settingsStore.setMode(mode)
-                deps.scheduler.apply(mode)
-              }
-            },
-          )
-        }
-      }
-    }
-
-    if (settings.mode == SamplingMode.MASSIMA) {
-      item {
-        FluidListGroup {
-          if (!MaximaAlarm.canSchedule(context)) {
-            FluidListRow(
-              title = "Allarmi esatti non consentiti",
-              subtitle = "Senza, Massima degrada a un giro ogni 15 minuti. Tocca per concederli.",
-              onClick = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                  context.startActivity(
-                    Intent(
-                      Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                      Uri.parse("package:${context.packageName}"),
-                    ),
-                  )
-                }
-              },
-            )
-            FluidListDivider()
-          }
-          val powerManager = context.getSystemService(PowerManager::class.java)
-          if (powerManager?.isIgnoringBatteryOptimizations(context.packageName) == false) {
-            FluidListRow(
-              title = "Esenzione batteria",
-              subtitle = "In Doze profondo il ritmo cala: l'esenzione lo limita. Tocca per chiederla.",
-              onClick = {
-                context.startActivity(
-                  Intent(
-                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                    Uri.parse("package:${context.packageName}"),
-                  ),
-                )
-              },
-            )
-          } else {
-            FluidListRow(
-              title = "Massima attiva",
-              subtitle = "Catena di allarmi esatti ogni 5 minuti, raffica di 30 secondi.",
-            )
-          }
-        }
-      }
-    }
-
     item { FluidSectionHeader(title = "Strumenti") }
     item {
       FluidListGroup {
-        FluidListRow(
-          title = "Monitoraggio continuo",
-          subtitle = "Una lettura ogni 10 s mentre l'app e' aperta",
-          badge = {
-            FluidSwitch(
-              checked = settings.continuousWhileOpen,
-              onCheckedChange = { enabled ->
-                scope.launch { deps.settingsStore.setContinuousWhileOpen(enabled) }
-              },
-            )
-          },
-        )
-        FluidListDivider()
         val burstProgress = burst
         if (burstProgress == null) {
           FluidListRow(
@@ -495,25 +408,12 @@ private fun SampleRow(sample: PressureSample) {
 private val TimeFormatter: DateTimeFormatter =
   DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 
-private fun SamplingMode.label(): String = when (this) {
-  SamplingMode.MASSIMA -> "Massima"
-  SamplingMode.BILANCIATA -> "Bilanciata"
-  SamplingMode.RISPARMIO -> "Risparmio"
-  SamplingMode.MINIMA -> "Minima"
-}
-
-private fun SamplingMode.description(): String = when (this) {
-  SamplingMode.MASSIMA -> "Ogni 5 min, raffica 30 s — allarmi esatti, piu' batteria"
-  SamplingMode.BILANCIATA -> "Ogni 15 min, raffica 30 s — il compromesso suggerito"
-  SamplingMode.RISPARMIO -> "Ogni 30 min, raffica 15 s — qualita' in calo dichiarata"
-  SamplingMode.MINIMA -> "Ogni 20 min, lettura secca — consumo ~nullo, accuratezza scarsa"
-}
-
 private fun SampleSource.label(): String = when (this) {
   SampleSource.PERIODIC -> "giro periodico"
   SampleSource.SURVEILLANCE -> "sorveglianza"
   SampleSource.MANUAL_BURST -> "raffica manuale"
   SampleSource.CONTINUOUS -> "continuo"
+  SampleSource.CALIBRATION -> "taratura"
 }
 
 private fun RejectionReason.label(): String = when (this) {

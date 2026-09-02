@@ -37,6 +37,9 @@ interface ObservationDao {
 
   @Query("DELETE FROM observations WHERE id = :id")
   suspend fun delete(id: Long)
+
+  @Query("DELETE FROM observations")
+  suspend fun deleteAll()
 }
 
 /** L'archivio delle osservazioni: poche righe, ma sono le uniche scritte da un essere umano. */
@@ -66,6 +69,8 @@ class ObservationRepository(private val dao: ObservationDao) {
   }
 
   suspend fun delete(id: Long) = dao.delete(id)
+
+  suspend fun clear() = dao.deleteAll()
 
   private fun ObservationEntity.toModel(): Observation? {
     val parsed = runCatching { ObservedCondition.valueOf(condition) }.getOrNull() ?: return null

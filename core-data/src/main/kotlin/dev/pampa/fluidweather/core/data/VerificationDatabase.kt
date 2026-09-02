@@ -61,6 +61,12 @@ interface VerificationDao {
 
   @Query("SELECT * FROM forecast_verifications WHERE verifiedAtMillis >= :sinceMillis ORDER BY verifiedAtMillis ASC")
   suspend fun allSince(sinceMillis: Long): List<ForecastVerificationEntity>
+
+  @Query("DELETE FROM pending_predictions")
+  suspend fun clearPending()
+
+  @Query("DELETE FROM forecast_verifications")
+  suspend fun clearVerifications()
 }
 
 /** L'implementazione Room del magazzino: la matematica dei pesi non sa che esiste. */
@@ -121,6 +127,12 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
 
   override suspend fun allVerifications(sinceMillis: Long): List<ForecastVerification> =
     dao.allSince(sinceMillis).map { it.toModel() }
+
+  /** Dati e privacy: via tutto, pendenti comprese. */
+  suspend fun clear() {
+    dao.clearPending()
+    dao.clearVerifications()
+  }
 
   private fun ForecastVerificationEntity.toModel() = ForecastVerification(
     providerId = providerId,

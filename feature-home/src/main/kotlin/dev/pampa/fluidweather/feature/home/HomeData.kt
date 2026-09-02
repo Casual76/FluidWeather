@@ -8,6 +8,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
+import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.PressureRepository
@@ -15,6 +16,10 @@ import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.data.SelectedPlaceStore
 import dev.pampa.fluidweather.core.model.AirQualityNow
+import dev.pampa.fluidweather.core.model.BarometerReadiness
+import dev.pampa.fluidweather.core.model.CalibrationBurst
+import dev.pampa.fluidweather.core.model.DeviceCalibration
+import dev.pampa.fluidweather.core.model.NowcastReadiness
 import dev.pampa.fluidweather.core.model.Place
 import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.FusedForecast
@@ -24,6 +29,7 @@ import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
 import dev.pampa.fluidweather.core.model.SolarEphemeris
 import dev.pampa.fluidweather.core.model.SunTimes
 import dev.pampa.fluidweather.core.model.WeatherKind
+import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import dev.pampa.fluidweather.core.weather.AirQualityClient
@@ -44,6 +50,7 @@ import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Tutto quello che la home tocca; lo costruisce :app dal suo grafo. */
@@ -55,6 +62,8 @@ class HomeDependencies(
   val locationProvider: LocationProvider,
   val pressureRepository: PressureRepository,
   val nowcastHistory: NowcastHistoryStore,
+  val calibrationStore: CalibrationStore,
+  val calibrationController: CalibrationController,
   val cleaningPipeline: CleaningPipeline,
   val airQualityClient: AirQualityClient,
   val appearanceStore: AppearanceSettingsStore,
@@ -92,12 +101,21 @@ data class HomeUiState(
   val observedPrecipitation: List<Pair<Long, Double>> = emptyList(),
   /** I verdetti delle ultime 24 ore, dallo storico: la pagina del nowcast li disegna. */
   val verdictHistory: List<NowcastVerdictRecord> = emptyList(),
+  /** A che punto e' il barometro: la barra unica (raffica, poi storia) finche' non c'e' verdetto. */
+  val readiness: BarometerReadiness? = null,
   val dayLengthTodayMillis: Long? = null,
   val dayLengthYesterdayMillis: Long? = null,
 )
 
 /** Un'istantanea piu' vecchia di cosi' non si mostra nemmeno come ripiego. */
 private const val SHOWABLE_AGE_MILLIS = 12 * 3_600_000L
+
+/**
+ * La storia data alla pipeline: ventiquattro ore. Il modello vuole vedere tredici ore di segnale
+ * pulito, e con una finestra di dodici il verdetto non poteva esistere — era il baco visto sul
+ * telefono dopo diciassette ore (2026-09-02).
+ */
+private const val HISTORY_WINDOW_MILLIS = 24 * 3_600_000L
 
 /**
  * Il caricamento della home: posizione -> l'ISTANTANEA del ciclo in background, subito -> il
@@ -158,10 +176,15 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
 
     // Il verdetto locale: barometro pulito + contesto dell'opinione piu' completa (dall'istantanea).
     val bundle = snapshot?.context
-    val samples = runCatching { deps.pressureRepository.samplesSince(now - 12 * 3_600_000L) }
+    val calibrationRecord = runCatching { deps.calibrationStore.current() }.getOrNull()
+    val samples = runCatching { deps.pressureRepository.samplesSince(now - HISTORY_WINDOW_MILLIS) }
       .getOrDefault(emptyList())
     val cleaning = runCatching {
-      deps.cleaningPipeline.process(samples, temperatureCelsius = value.temperatureC)
+      deps.cleaningPipeline.process(
+        samples,
+        calibration = calibrationRecord?.toDeviceCalibration() ?: DeviceCalibration(),
+        temperatureCelsius = value.temperatureC,
+      )
     }.getOrNull()
     val verdict = cleaning?.let {
       FeatureExtractor.extract(it, bundle?.toContext(now), normalHpa = null, nowMillis = now)
@@ -171,11 +194,21 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
     if (verdict != null) runCatching { deps.nowcastHistory.record(verdict.toRecord(now)) }
     val history = runCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
 
+    val historyHours = cleaning?.filtered
+      ?.takeIf { it.size >= 2 }
+      ?.let { (it.last().timestampMillis - it.first().timestampMillis) / 3_600_000.0 }
+      ?: 0.0
     value = value.copy(
       verdict = verdict,
       cleaning = cleaning,
       latestRawPressureHpa = latestRaw,
       verdictHistory = history,
+      readiness = NowcastReadiness.of(
+        calibration = calibrationRecord,
+        calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
+        historyHours = historyHours,
+        requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
+      ),
       loading = false,
     )
 
@@ -185,6 +218,22 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
     if (presetName == null) {
       val name = reverseGeocode(context, latitude, longitude)
       if (name != null) value = value.copy(locationName = name)
+    }
+
+    // La raffica di taratura, se gira, muove la barra in tempo reale.
+    launch {
+      deps.calibrationController.progress.collect { progress ->
+        val current = value.readiness ?: return@collect
+        val calibrated = current.calibrated || (progress == null && runCatching { deps.calibrationStore.current() }.getOrNull() != null)
+        value = value.copy(
+          readiness = current.copy(
+            calibrationRunning = progress != null,
+            calibrationCompletedSeconds = progress?.completedSeconds ?: 0,
+            calibrationTotalSeconds = progress?.totalSeconds ?: CalibrationBurst.DURATION_SECONDS,
+            calibrated = calibrated,
+          ),
+        )
+      }
     }
 
     // 3) Il ciclo in background continua a scrivere: finche' la home e' aperta, lo segue.

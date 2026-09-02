@@ -34,6 +34,9 @@ class SamplingEngine(
   private val afterPass: suspend () -> Unit = {},
 ) {
 
+  /** Senza sensore niente raffiche: chi vuole tarare lo sa prima di partire. */
+  val barometerAvailable: Boolean get() = barometer.isAvailable
+
   /** Il giro periodico: raffica o lettura secca secondo la modalita', poi il cambio di marcia. */
   suspend fun runScheduledPass() {
     val mode = settingsStore.current().mode

@@ -34,6 +34,8 @@ dependencies {
   api project(':core-sensor')
   api project(':core-weather')
   api project(':core-cycle')
+  implementation project(':engine-storage')
+  implementation project(':engine-foundation')
 
   // rememberLauncherForActivityResult per i permessi dalla diagnostica.
   implementation "androidx.activity:activity-compose:${engine.activityCompose}"

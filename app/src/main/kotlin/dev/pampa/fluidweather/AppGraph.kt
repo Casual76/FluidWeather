@@ -2,6 +2,7 @@ package dev.pampa.fluidweather
 
 import android.content.Context
 import dev.antigravity.fluidengine.net.EngineHttp
+import dev.antigravity.fluidengine.storage.EngineSettingsStore
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.cycle.AppVisibility
 import dev.pampa.fluidweather.core.cycle.BackgroundCycle
@@ -15,10 +16,14 @@ import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
+import dev.pampa.fluidweather.core.data.OnboardingStore
+import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.data.ObservationRepository
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
+import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
@@ -40,10 +45,13 @@ import dev.pampa.fluidweather.core.weather.UrlCache
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
 import dev.pampa.fluidweather.core.weather.WeatherRepository
+import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.buildWeatherClients
 import java.io.File
 import dev.pampa.fluidweather.core.sensor.ActivityRecognizer
 import dev.pampa.fluidweather.core.sensor.Barometer
+import dev.pampa.fluidweather.core.sensor.CalibrationController
+import dev.pampa.fluidweather.core.sensor.CalibrationReference
 import dev.pampa.fluidweather.core.sensor.ContinuousMonitor
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.sensor.ManualBurstController
@@ -55,6 +63,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.math.abs
 
 /**
  * La DI dell'app, a mano: un grafo costruito una volta nell'Application. Niente framework —
@@ -73,6 +82,9 @@ class AppGraph(context: Context) {
   val nowcastHistoryStore = NowcastHistoryStore(database.nowcastHistoryDao())
   val observationRepository = ObservationRepository(database.observationDao())
   val samplingSettingsStore = SamplingSettingsStore(context)
+  val engineSettingsStore = EngineSettingsStore(context)
+  val calibrationStore = CalibrationStore(context)
+  val onboardingStore = OnboardingStore(context)
   val latestActivityStore = LatestActivityStore(context)
 
   val barometer = Barometer(context)
@@ -152,6 +164,7 @@ class AppGraph(context: Context) {
     refresher = snapshotRefresher,
     pressureRepository = pressureRepository,
     cleaningPipeline = cleaningPipeline,
+    calibrationStore = calibrationStore,
     samplingSettings = samplingSettingsStore,
     notificationSettings = notificationSettingsStore,
     ledgerStore = notificationLedgerStore,
@@ -163,6 +176,43 @@ class AppGraph(context: Context) {
     inAppAlerts = inAppAlerts,
     appVisibility = appVisibility,
   )
+
+  // Taratura iniziale (fase 15): dieci minuti in un foreground service, riferimento dai provider.
+  val calibrationController = CalibrationController(
+    context = appContext,
+    engine = samplingEngine,
+    repository = pressureRepository,
+    store = calibrationStore,
+    reference = { calibrationReference() },
+  )
+
+  /** La pressione al mare dei provider adesso, per il punto del telefono: il riferimento. */
+  private suspend fun calibrationReference(): CalibrationReference? {
+    val now = System.currentTimeMillis()
+    val here = locationProvider.snapshot()
+    val snapshot = if (here != null) {
+      snapshotRefresher.fresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude, maxAgeMillis = 3 * 3_600_000L)
+        ?: runCatching { snapshotRefresher.refresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude) }.getOrNull()
+    } else {
+      weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY)
+    } ?: return null
+    val hour = snapshot.fused.hours.minByOrNull { abs(it.timestampMillis - now) } ?: return null
+    if (abs(hour.timestampMillis - now) > 90 * 60_000L) return null
+    val msl = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return null
+    return CalibrationReference(msl, hour.values[FusionVariables.TEMPERATURE]?.value)
+  }
+
+  /** Dati e privacy: via tutto l'archivio locale; le impostazioni restano. */
+  suspend fun wipeAllData() {
+    pressureRepository.clear()
+    verificationStore.clear()
+    nowcastHistoryStore.clear()
+    observationRepository.clear()
+    calibrationStore.clear()
+    notificationLedgerStore.update { NotificationLedger() }
+    weatherSnapshotStore.clear()
+    File(appContext.cacheDir, "providers").deleteRecursively()
+  }
 
   /** Il riepilogo giornaliero segue l'impostazione: programmato all'ora scelta, o cancellato. */
   suspend fun rescheduleDailySummary() {

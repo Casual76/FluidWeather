@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.cycle
 
 import android.content.Context
 import android.location.Geocoder
+import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
@@ -9,6 +10,7 @@ import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.model.AppNotification
+import dev.pampa.fluidweather.core.model.DeviceCalibration
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.OfficialAlert
 import dev.pampa.fluidweather.core.sensor.LocationProvider
@@ -116,6 +118,7 @@ class BackgroundCycle(
   private val refresher: WeatherSnapshotRefresher,
   private val pressureRepository: PressureRepository,
   private val cleaningPipeline: CleaningPipeline,
+  private val calibrationStore: CalibrationStore,
   private val samplingSettings: SamplingSettingsStore,
   private val notificationSettings: NotificationSettingsStore,
   private val ledgerStore: NotificationLedgerStore,
@@ -159,8 +162,13 @@ class BackgroundCycle(
     val temperature = snapshot?.fused?.hours
       ?.minByOrNull { abs(it.timestampMillis - now) }
       ?.values?.get(FusionVariables.TEMPERATURE)?.value
-    val samples = runCatching { pressureRepository.samplesSince(now - 12 * 3_600_000L) }.getOrDefault(emptyList())
-    val cleaning = runCatching { cleaningPipeline.process(samples, temperatureCelsius = temperature) }.getOrNull()
+    // Ventiquattro ore, non dodici: il modello vuole tredici ore di storia (era il baco del
+    // verdetto che non arrivava mai, visto sul telefono dopo diciassette ore).
+    val samples = runCatching { pressureRepository.samplesSince(now - HISTORY_WINDOW_MILLIS) }.getOrDefault(emptyList())
+    val calibration = runCatching { calibrationStore.current()?.toDeviceCalibration() }.getOrNull() ?: DeviceCalibration()
+    val cleaning = runCatching {
+      cleaningPipeline.process(samples, calibration = calibration, temperatureCelsius = temperature)
+    }.getOrNull()
     val verdict = cleaning?.let {
       FeatureExtractor.extract(it, snapshot?.context?.toContext(now), normalHpa = null, nowMillis = now)
         ?.let { features -> NowcastModel.trained().verdict(features) }
@@ -283,6 +291,9 @@ class BackgroundCycle(
     const val SHOWABLE_AGE_MILLIS = 12 * 3_600_000L
 
     const val LOCATION_TIMEOUT_MILLIS = 15_000L
+
+    /** La storia che si da' alla pipeline: piu' delle 13 ore che il modello pretende. */
+    const val HISTORY_WINDOW_MILLIS = 24 * 3_600_000L
 
     val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
   }
