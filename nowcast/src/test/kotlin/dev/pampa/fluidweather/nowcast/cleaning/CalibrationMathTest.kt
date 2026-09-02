@@ -40,4 +40,17 @@ class CalibrationMathTest {
     assertEquals(CalibrationMath.CONFIDENCE_WITH_ALTITUDE * 0.1, few.confidence, 1e-9)
     assertNull(CalibrationMath.estimate(emptyList(), 0.0, 15.0, 1013.0, 0L))
   }
+
+  @Test
+  fun `ogni confronto sposta il bias di un ventesimo del residuo e alza la fiducia di un passo`() {
+    val record = CalibrationMath.estimate(List(600) { 1013.0 }, 0.0, 15.0, 1012.2, 0L)!!
+    // Il locale corretto legge ancora 0,4 hPa sopra il riferimento: il bias sale di 0,02.
+    val refined = CalibrationMath.refine(record, localMslHpa = 1012.6, referenceMslHpa = 1012.2, nowMillis = 1L)
+    assertEquals(record.biasHpa + 0.02, refined.biasHpa, 1e-9)
+    assertEquals(record.confidence + CalibrationMath.CONFIDENCE_STEP, refined.confidence, 1e-9)
+    var current = refined
+    repeat(200) { current = CalibrationMath.refine(current, 1012.2, 1012.2, 2L) }
+    assertEquals(CalibrationMath.MAX_CONFIDENCE, current.confidence, 1e-9)
+    assertEquals(refined.biasHpa, current.biasHpa, 1e-9)
+  }
 }

@@ -132,6 +132,8 @@ fun FluidWeatherNavHost(graph: AppGraph, startAtOnboarding: Boolean) {
           nowcastHistory = graph.nowcastHistoryStore,
           calibrationStore = graph.calibrationStore,
           calibrationController = graph.calibrationController,
+          learningRepository = graph.learningRepository,
+          learningStore = graph.learningStore,
           cleaningPipeline = graph.cleaningPipeline,
           airQualityClient = graph.airQualityClient,
           appearanceStore = graph.appearanceSettingsStore,
@@ -201,6 +203,8 @@ fun FluidWeatherNavHost(graph: AppGraph, startAtOnboarding: Boolean) {
           calibrationController = graph.calibrationController,
           pressureRepository = graph.pressureRepository,
           cleaningPipeline = graph.cleaningPipeline,
+          learningStore = graph.learningStore,
+          learningRepository = graph.learningRepository,
         )
       }
       EngineAccuracyScreen(deps = deps, onBack = { navController.popBackStack() })

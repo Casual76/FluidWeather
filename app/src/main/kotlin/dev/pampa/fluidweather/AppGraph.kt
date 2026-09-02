@@ -13,12 +13,15 @@ import dev.pampa.fluidweather.core.cycle.InAppAlertBus
 import dev.pampa.fluidweather.core.cycle.PlaceContextResolver
 import dev.pampa.fluidweather.core.cycle.SystemNotifier
 import dev.pampa.fluidweather.core.data.LatestActivityStore
+import dev.pampa.fluidweather.core.data.LearningRepository
+import dev.pampa.fluidweather.core.data.LearningStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.OnboardingStore
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NotificationLedger
+import dev.pampa.fluidweather.core.model.NowcastOutcomeRecord
 import dev.pampa.fluidweather.core.data.ObservationRepository
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
@@ -40,6 +43,7 @@ import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
 import dev.pampa.fluidweather.core.weather.PointWeatherClient
 import dev.pampa.fluidweather.core.weather.ProviderHttp
 import dev.pampa.fluidweather.core.weather.ProviderScoreboard
+import dev.pampa.fluidweather.core.weather.RainEvent
 import dev.pampa.fluidweather.core.weather.RainViewerClient
 import dev.pampa.fluidweather.core.weather.UrlCache
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
@@ -81,6 +85,9 @@ class AppGraph(context: Context) {
   val pressureRepository = PressureRepository(database.pressureDao())
   val nowcastHistoryStore = NowcastHistoryStore(database.nowcastHistoryDao())
   val observationRepository = ObservationRepository(database.observationDao())
+  // Apprendimento on-device (fase 16): l'archivio da cui si impara e le mappe di ricalibrazione.
+  val learningRepository = LearningRepository(database.learningDao())
+  val learningStore = LearningStore(context)
   val samplingSettingsStore = SamplingSettingsStore(context)
   val engineSettingsStore = EngineSettingsStore(context)
   val calibrationStore = CalibrationStore(context)
@@ -113,7 +120,17 @@ class AppGraph(context: Context) {
   val fusionSettingsStore = FusionSettingsStore(context)
   val fusionCoordinator = FusionCoordinator(
     repository = weatherRepository,
-    verifier = ForecastVerifier(verificationStore),
+    verifier = ForecastVerifier(
+      store = verificationStore,
+      // Ogni giudizio sul barometro diventa un esito da cui imparare (fase 16).
+      onJudged = { prediction, truth ->
+        if (prediction.providerId == RainEvent.LOCAL_BAROMETER_ID) {
+          RainEvent.windowOf(prediction.variable)?.let { window ->
+            learningRepository.recordOutcome(NowcastOutcomeRecord(prediction.issuedAtMillis, window.nowcastLabel, truth >= 0.5))
+          }
+        }
+      },
+    ),
     fusion = ForecastFusion(ProviderScoreboard(verificationStore)),
     fusionSettings = fusionSettingsStore,
     observations = { since -> observationRepository.since(since) },
@@ -165,6 +182,8 @@ class AppGraph(context: Context) {
     pressureRepository = pressureRepository,
     cleaningPipeline = cleaningPipeline,
     calibrationStore = calibrationStore,
+    learningRepository = learningRepository,
+    learningStore = learningStore,
     samplingSettings = samplingSettingsStore,
     notificationSettings = notificationSettingsStore,
     ledgerStore = notificationLedgerStore,
@@ -209,6 +228,8 @@ class AppGraph(context: Context) {
     nowcastHistoryStore.clear()
     observationRepository.clear()
     calibrationStore.clear()
+    learningRepository.clear()
+    learningStore.clear()
     notificationLedgerStore.update { NotificationLedger() }
     weatherSnapshotStore.clear()
     File(appContext.cacheDir, "providers").deleteRecursively()

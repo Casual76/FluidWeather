@@ -56,6 +56,8 @@ class ForecastVerifier(
   private val store: VerificationStore,
   private val minTruthOpinions: Int = 3,
   private val clock: () -> Long = System::currentTimeMillis,
+  /** Chiamato per ogni giudizio emesso (previsione, verita'): l'apprendimento on-device ascolta qui. */
+  private val onJudged: suspend (PendingPrediction, Double) -> Unit = { _, _ -> },
 ) {
 
   /** Le previsioni dei bundle appena arrivati entrano in attesa di giudizio. */
@@ -146,6 +148,7 @@ class ForecastVerifier(
         if (now - prediction.targetTimestampMillis > TRUTH_WINDOW_MILLIS) settled += prediction
         continue
       }
+      runCatching { onJudged(prediction, truth) }
       verifications += ForecastVerification(
         providerId = prediction.providerId,
         variable = prediction.variable,

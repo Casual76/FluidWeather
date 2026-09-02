@@ -60,8 +60,10 @@ interface PressureDao {
     SavedLocationEntity::class,
     NowcastVerdictEntity::class,
     ObservationEntity::class,
+    NowcastIssueEntity::class,
+    NowcastOutcomeEntity::class,
   ],
-  version = 5,
+  version = 6,
   exportSchema = false,
 )
 abstract class FluidWeatherDatabase : RoomDatabase() {
@@ -75,6 +77,8 @@ abstract class FluidWeatherDatabase : RoomDatabase() {
   abstract fun nowcastHistoryDao(): NowcastHistoryDao
 
   abstract fun observationDao(): ObservationDao
+
+  abstract fun learningDao(): LearningDao
 
   companion object {
     fun build(context: Context): FluidWeatherDatabase =

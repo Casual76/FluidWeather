@@ -33,6 +33,8 @@ import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.pampa.fluidweather.core.data.CalibrationStore
+import dev.pampa.fluidweather.core.data.LearningRepository
+import dev.pampa.fluidweather.core.data.LearningStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettings
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
@@ -59,6 +61,8 @@ class EngineAccuracyDependencies(
   val calibrationController: CalibrationController,
   val pressureRepository: PressureRepository,
   val cleaningPipeline: CleaningPipeline,
+  val learningStore: LearningStore,
+  val learningRepository: LearningRepository,
 )
 
 /**
@@ -158,6 +162,32 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
       }
     }
 
+    item { FluidSectionHeader(title = "Cosa ha imparato il telefono") }
+    item {
+      val platt by deps.learningStore.platt.collectAsState(initial = emptyMap())
+      val outcomes by produceState(initialValue = -1) { value = runCatching { deps.learningRepository.outcomeCount() }.getOrDefault(0) }
+      FluidListGroup {
+        FluidListRow(
+          title = "Verifiche del barometro",
+          subtitle = "Le finestre del verdetto giudicate contro cio' che e' successo",
+          meta = if (outcomes < 0) "…" else outcomes.toString(),
+        )
+        listOf("0-1h", "1-3h", "3-6h").forEach { window ->
+          FluidListDivider()
+          val record = platt[window]
+          FluidListRow(
+            title = "Ricalibrazione $window",
+            subtitle = if (record == null) {
+              "Non ancora: servono trenta verifiche con entrambi gli esiti"
+            } else {
+              "Platt a=${fmt2(record.a)} b=${fmt2(record.b)} su ${record.samples} verifiche"
+            },
+            meta = record?.let { fmtDayTime(it.fittedAtMillis) } ?: "—",
+          )
+        }
+      }
+    }
+
     item { FluidSectionHeader(title = "Modalita' di campionamento") }
     item {
       FluidListGroup {
@@ -232,6 +262,8 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
 }
 
 private fun fmt1(value: Double) = String.format(Locale.getDefault(), "%.1f", value)
+
+private fun fmt2(value: Double) = String.format(Locale.ROOT, "%.2f", value)
 
 private fun fmt0(value: Double) = String.format(Locale.getDefault(), "%.0f", value)
 

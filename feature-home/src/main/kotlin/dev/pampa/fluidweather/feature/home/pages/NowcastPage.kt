@@ -96,6 +96,35 @@ internal fun NowcastPage(state: HomeUiState) {
     }
   }
 
+  val explanation = state.nowcastExplanation
+  if (explanation != null) {
+    PageSection("Cosa ha imparato il telefono")
+    explanation.verdict.windows.forEach { window ->
+      val raw = explanation.rawVerdict.forWindow(window.window)
+      val analogs = explanation.analogs[window.window]
+      val recalibrated = window.window in explanation.recalibrated
+      StatRow(
+        windowLabel(window.window),
+        "${(window.probability * 100).toInt()}%",
+        buildString {
+          append("modello " + ((raw?.probability ?: 0.0) * 100).toInt() + "%")
+          if (recalibrated) append(" · ricalibrato")
+          if (analogs != null) append(" · analoghi ${analogs.rained}/${analogs.neighbours}")
+        },
+      )
+    }
+    PageNote(
+      if (explanation.recalibrated.isEmpty() && explanation.analogs.isEmpty()) {
+        "Ancora niente da imparare: servono almeno trenta verifiche per finestra per ricalibrare, e " +
+          "situazioni passate con esito noto per gli analoghi. Il telefono le raccoglie da solo."
+      } else {
+        "Ricalibrato = la probabilita' del modello portata sulla frequenza vera delle tue verifiche " +
+          "(Platt scaling). Analoghi = fra le situazioni bariche piu' simili nel tuo archivio, quante " +
+          "sono finite in pioggia; pesano N/(N+40)."
+      },
+    )
+  }
+
   val cleaning = state.cleaning
   if (cleaning != null && cleaning.filtered.size >= 2) {
     PageSection("Il segnale pulito (12 ore, livello del mare)")

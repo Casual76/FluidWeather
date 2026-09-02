@@ -10,6 +10,8 @@ import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
+import dev.pampa.fluidweather.core.data.LearningRepository
+import dev.pampa.fluidweather.core.data.LearningStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
@@ -41,7 +43,10 @@ import dev.pampa.fluidweather.core.weather.toContext
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
-import dev.pampa.fluidweather.nowcast.verdict.NowcastModel
+import dev.pampa.fluidweather.nowcast.learning.LearningState
+import dev.pampa.fluidweather.nowcast.learning.LearningStateBuilder
+import dev.pampa.fluidweather.nowcast.learning.NowcastEngine
+import dev.pampa.fluidweather.nowcast.learning.NowcastExplanation
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import dev.pampa.fluidweather.nowcast.verdict.toRecord
 import java.time.Instant
@@ -64,6 +69,8 @@ class HomeDependencies(
   val nowcastHistory: NowcastHistoryStore,
   val calibrationStore: CalibrationStore,
   val calibrationController: CalibrationController,
+  val learningRepository: LearningRepository,
+  val learningStore: LearningStore,
   val cleaningPipeline: CleaningPipeline,
   val airQualityClient: AirQualityClient,
   val appearanceStore: AppearanceSettingsStore,
@@ -103,6 +110,8 @@ data class HomeUiState(
   val verdictHistory: List<NowcastVerdictRecord> = emptyList(),
   /** A che punto e' il barometro: la barra unica (raffica, poi storia) finche' non c'e' verdetto. */
   val readiness: BarometerReadiness? = null,
+  /** Il verdetto spiegato: grezzo, ricalibrato, analoghi (fase 16). */
+  val nowcastExplanation: NowcastExplanation? = null,
   val dayLengthTodayMillis: Long? = null,
   val dayLengthYesterdayMillis: Long? = null,
 )
@@ -186,10 +195,11 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
         temperatureCelsius = value.temperatureC,
       )
     }.getOrNull()
-    val verdict = cleaning?.let {
+    val features = cleaning?.let {
       FeatureExtractor.extract(it, bundle?.toContext(now), normalHpa = null, nowMillis = now)
-        ?.let { features -> NowcastModel.trained().verdict(features) }
     }
+    val explanation = features?.let { NowcastEngine.trained().evaluate(it, loadLearningState(deps, now)) }
+    val verdict = explanation?.verdict
     val latestRaw = samples.maxByOrNull { it.timestampMillis }?.pressureHpa
     if (verdict != null) runCatching { deps.nowcastHistory.record(verdict.toRecord(now)) }
     val history = runCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
@@ -203,6 +213,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
       cleaning = cleaning,
       latestRawPressureHpa = latestRaw,
       verdictHistory = history,
+      nowcastExplanation = explanation,
       readiness = NowcastReadiness.of(
         calibration = calibrationRecord,
         calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
@@ -248,6 +259,15 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
     }
   }
 }
+
+/** Lo stesso stato dell'apprendimento che usa il ciclo: mappe di Platt e archivio degli analoghi. */
+private suspend fun loadLearningState(deps: HomeDependencies, nowMillis: Long): LearningState = runCatching {
+  LearningStateBuilder.build(
+    platt = deps.learningStore.current(),
+    issues = deps.learningRepository.issuesSince(nowMillis - LearningRepository.KEEP_MILLIS),
+    outcomes = deps.learningRepository.outcomesSince(nowMillis - LearningRepository.KEEP_MILLIS),
+  )
+}.getOrDefault(LearningState.EMPTY)
 
 /** Le ore fuse dell'istantanea dentro lo stato: testata, cielo, dispensa dei widget, accento. */
 private fun HomeUiState.applySnapshot(

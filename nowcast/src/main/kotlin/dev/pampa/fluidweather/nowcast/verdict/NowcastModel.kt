@@ -109,16 +109,7 @@ class NowcastModel(
    * correggere col banco: ALLERTA quando la pioggia a breve e' piu' probabile che no, e
    * SORVEGLIANZA quando una finestra qualsiasi esce chiaramente dalla climatologia.
    */
-  private fun levelOf(verdicts: List<WindowVerdict>): AlertLevel {
-    val shortTerm = verdicts.firstOrNull { it.window == "0-1h" }?.probability ?: 0.0
-    val medium = verdicts.firstOrNull { it.window == "1-3h" }?.probability ?: 0.0
-    val maxAny = verdicts.maxOfOrNull { it.probability } ?: 0.0
-    return when {
-      shortTerm >= 0.55 || medium >= 0.6 -> AlertLevel.ALLERTA
-      maxAny >= 0.35 -> AlertLevel.SORVEGLIANZA
-      else -> AlertLevel.QUIETE
-    }
-  }
+  private fun levelOf(verdicts: List<WindowVerdict>): AlertLevel = alertLevelOf(verdicts)
 
   companion object {
     private const val FACTOR_FLOOR = 0.05
@@ -129,6 +120,22 @@ class NowcastModel(
       featureSds = TrainedNowcastV1.sds,
       windows = TrainedNowcastV1.windows,
     )
+  }
+}
+
+/**
+ * La mappa dichiarata fra probabilita' e parole, condivisa dal modello e dal motore che lo
+ * ricalibra (fase 16): ALLERTA quando la pioggia a breve e' piu' probabile che no, SORVEGLIANZA
+ * quando una finestra qualsiasi esce chiaramente dalla climatologia.
+ */
+fun alertLevelOf(verdicts: List<WindowVerdict>): AlertLevel {
+  val shortTerm = verdicts.firstOrNull { it.window == "0-1h" }?.probability ?: 0.0
+  val medium = verdicts.firstOrNull { it.window == "1-3h" }?.probability ?: 0.0
+  val maxAny = verdicts.maxOfOrNull { it.probability } ?: 0.0
+  return when {
+    shortTerm >= 0.55 || medium >= 0.6 -> AlertLevel.ALLERTA
+    maxAny >= 0.35 -> AlertLevel.SORVEGLIANZA
+    else -> AlertLevel.QUIETE
   }
 }
 

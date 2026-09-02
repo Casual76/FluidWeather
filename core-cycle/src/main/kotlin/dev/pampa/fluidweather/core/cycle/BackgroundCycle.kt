@@ -3,6 +3,8 @@ package dev.pampa.fluidweather.core.cycle
 import android.content.Context
 import android.location.Geocoder
 import dev.pampa.fluidweather.core.data.CalibrationStore
+import dev.pampa.fluidweather.core.data.LearningRepository
+import dev.pampa.fluidweather.core.data.LearningStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
@@ -12,16 +14,22 @@ import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.model.AppNotification
 import dev.pampa.fluidweather.core.model.DeviceCalibration
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.NowcastIssueRecord
+import dev.pampa.fluidweather.core.model.PlattParamsRecord
 import dev.pampa.fluidweather.core.model.OfficialAlert
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.core.weather.toContext
+import dev.pampa.fluidweather.nowcast.cleaning.CalibrationMath
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
+import dev.pampa.fluidweather.nowcast.learning.LearningState
+import dev.pampa.fluidweather.nowcast.learning.LearningStateBuilder
+import dev.pampa.fluidweather.nowcast.learning.NowcastEngine
+import dev.pampa.fluidweather.nowcast.learning.PlattCalibration
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
-import dev.pampa.fluidweather.nowcast.verdict.NowcastModel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import dev.pampa.fluidweather.nowcast.verdict.toRecord
 import java.time.Instant
@@ -119,6 +127,8 @@ class BackgroundCycle(
   private val pressureRepository: PressureRepository,
   private val cleaningPipeline: CleaningPipeline,
   private val calibrationStore: CalibrationStore,
+  private val learningRepository: LearningRepository,
+  private val learningStore: LearningStore,
   private val samplingSettings: SamplingSettingsStore,
   private val notificationSettings: NotificationSettingsStore,
   private val ledgerStore: NotificationLedgerStore,
@@ -135,6 +145,8 @@ class BackgroundCycle(
 
   private val mutex = Mutex()
   private var lastTickMillis = 0L
+  private val engine = NowcastEngine.trained()
+  private var learningCache: Pair<Long, LearningState>? = null
 
   suspend fun run(trigger: CycleTrigger): CycleOutcome = mutex.withLock {
     val now = clock()
@@ -169,16 +181,35 @@ class BackgroundCycle(
     val cleaning = runCatching {
       cleaningPipeline.process(samples, calibration = calibration, temperatureCelsius = temperature)
     }.getOrNull()
-    val verdict = cleaning?.let {
+    val features = cleaning?.let {
       FeatureExtractor.extract(it, snapshot?.context?.toContext(now), normalHpa = null, nowMillis = now)
-        ?.let { features -> NowcastModel.trained().verdict(features) }
     }
+    // Fase 16: il modello del banco, ricalibrato sulle verifiche locali e corretto dagli analoghi.
+    val explanation = features?.let { engine.evaluate(it, loadLearning(now)) }
+    val verdict = explanation?.verdict
     // Lo storico dei verdetti: la pagina del nowcast lo mostra, la pagella lo giudichera'.
     if (verdict != null) runCatching { nowcastHistory.record(verdict.toRecord(now)) }
     // In classifica alla pari: il barometro si iscrive alla verifica quando si iscrivono i
     // provider (una volta l'ora, lo decide il refresher), cosi' i conti sono confrontabili.
     val registeredNow = snapshot?.predictionsRegisteredAtMillis?.let { abs(now - it) < 5 * 60_000L } == true
     if (verdict != null && registeredNow) runCatching { barometerRegistrar.register(verdict, now) }
+    if (explanation != null && features != null && registeredNow) {
+      // L'archivio da cui si impara: feature e probabilita' GREZZE del verdetto iscritto.
+      val raw = explanation.rawVerdict
+      runCatching {
+        learningRepository.recordIssue(
+          NowcastIssueRecord(
+            issuedAtMillis = now,
+            features = features.toList(),
+            rawProbability01 = raw.forWindow("0-1h")?.probability ?: 0.0,
+            rawProbability13 = raw.forWindow("1-3h")?.probability ?: 0.0,
+            rawProbability36 = raw.forWindow("3-6h")?.probability ?: 0.0,
+          ),
+        )
+      }
+      refineCalibration(cleaning, snapshot, now)
+      maybeRefitPlatt(now)
+    }
 
     // 3) Le allerte ufficiali, solo se il canale e' acceso: niente rete per niente.
     val settings = notificationSettings.current()
@@ -248,6 +279,44 @@ class BackgroundCycle(
     outcome
   }
 
+  /** Lo stato dell'apprendimento, riletto al piu' una volta l'ora: mappe di Platt e archivio degli analoghi. */
+  private suspend fun loadLearning(now: Long): LearningState {
+    learningCache?.let { (at, state) -> if (now - at < LEARNING_CACHE_MILLIS) return state }
+    val state = runCatching {
+      LearningStateBuilder.build(
+        platt = learningStore.current(),
+        issues = learningRepository.issuesSince(now - LearningRepository.KEEP_MILLIS),
+        outcomes = learningRepository.outcomesSince(now - LearningRepository.KEEP_MILLIS),
+      )
+    }.getOrDefault(LearningState.EMPTY)
+    learningCache = now to state
+    return state
+  }
+
+  /** Ogni sei ore la ricalibrazione si ristima sulle coppie (grezza, esito) raccolte. */
+  private suspend fun maybeRefitPlatt(now: Long) {
+    if (now - runCatching { learningStore.lastFitMillis() }.getOrDefault(0L) < REFIT_INTERVAL_MILLIS) return
+    runCatching {
+      val issues = learningRepository.issuesSince(now - LearningRepository.KEEP_MILLIS)
+      val outcomes = learningRepository.outcomesSince(now - LearningRepository.KEEP_MILLIS)
+      val fitted = listOf("0-1h", "1-3h", "3-6h").mapNotNull { window ->
+        val samples = LearningStateBuilder.samples(window, issues, outcomes)
+        PlattCalibration.fit(samples)?.let { PlattParamsRecord(window, it.a, it.b, samples.size, now) }
+      }
+      learningStore.save(fitted, fittedAtMillis = now)
+      learningCache = null
+    }
+  }
+
+  /** Un confronto l'ora fra locale corretto e riferimento: il bias insegue, la fiducia sale. */
+  private suspend fun refineCalibration(cleaning: dev.pampa.fluidweather.nowcast.cleaning.CleaningResult?, snapshot: WeatherSnapshot?, now: Long) {
+    val record = runCatching { calibrationStore.current() }.getOrNull() ?: return
+    val local = cleaning?.cleaned?.lastOrNull()?.takeIf { abs(it.timestampMillis - now) <= 30 * 60_000L } ?: return
+    val hour = snapshot?.fused?.hours?.minByOrNull { abs(it.timestampMillis - now) }?.takeIf { abs(it.timestampMillis - now) <= 90 * 60_000L } ?: return
+    val reference = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return
+    runCatching { calibrationStore.save(CalibrationMath.refine(record, local.seaLevelPressureHpa, reference, now)) }
+  }
+
   /** In primo piano il banner in-app, altrimenti la tendina (decisione 2026-09-02). */
   private fun deliver(notification: AppNotification): Boolean =
     if (appVisibility.inForeground.value) inAppAlerts.emit(notification) else notifier.post(notification)
@@ -291,6 +360,10 @@ class BackgroundCycle(
     const val SHOWABLE_AGE_MILLIS = 12 * 3_600_000L
 
     const val LOCATION_TIMEOUT_MILLIS = 15_000L
+
+    const val LEARNING_CACHE_MILLIS = 60 * 60_000L
+
+    const val REFIT_INTERVAL_MILLIS = 6 * 3_600_000L
 
     /** La storia che si da' alla pipeline: piu' delle 13 ore che il modello pretende. */
     const val HISTORY_WINDOW_MILLIS = 24 * 3_600_000L
