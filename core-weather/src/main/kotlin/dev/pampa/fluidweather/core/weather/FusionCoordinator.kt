@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.model.FusedForecast
+import dev.pampa.fluidweather.core.model.Observation
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 
 /** L'esito completo di un giro: le opinioni, il fuso, e chi ha pesato quanto. */
@@ -32,6 +33,8 @@ class FusionCoordinator(
   private val fusion: ForecastFusion,
   private val fusionSettings: FusionSettingsStore,
   private val clock: () -> Long = System::currentTimeMillis,
+  /** Le osservazioni dell'utente da [sinceMillis]: la verita' che entra da lui (fase 14). */
+  private val observations: suspend (sinceMillis: Long) -> List<Observation> = { emptyList() },
 ) : RoundSource {
 
   /**
@@ -41,7 +44,7 @@ class FusionCoordinator(
    */
   override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
     val fetches = repository.fetchAll(latitude, longitude)
-    verifier.settle(fetches)
+    verifier.settle(fetches, runCatching { observations(clock() - 24 * 3_600_000L) }.getOrDefault(emptyList()))
     if (registerPredictions) {
       verifier.registerPending(fetches)
       verifier.registerRainEvents(fetches)

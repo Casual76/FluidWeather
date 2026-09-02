@@ -20,6 +20,7 @@ import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeScreen
 import dev.pampa.fluidweather.feature.radar.RadarDependencies
 import dev.pampa.fluidweather.feature.radar.RadarScreen
+import dev.pampa.fluidweather.feature.report.ReportDependencies
 import dev.pampa.fluidweather.feature.report.ReportSheet
 import dev.pampa.fluidweather.feature.settings.DiagnosticsDependencies
 import dev.pampa.fluidweather.feature.settings.DiagnosticsScreen
@@ -117,7 +118,13 @@ fun FluidWeatherNavHost(graph: AppGraph) {
         )
       }
       BenchmarkSheet(open = benchmarkOpen, deps = benchmarkDeps, onDismiss = { benchmarkOpen = false })
-      ReportSheet(open = reportOpen, onDismiss = { reportOpen = false })
+      val reportDeps = remember(graph) {
+        ReportDependencies(
+          observations = graph.observationRepository,
+          locationProvider = graph.locationProvider,
+        )
+      }
+      ReportSheet(open = reportOpen, deps = reportDeps, onDismiss = { reportOpen = false })
     }
     composable(Routes.Radar) {
       val deps = remember(graph) {

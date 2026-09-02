@@ -15,6 +15,7 @@ import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
+import dev.pampa.fluidweather.core.data.ObservationRepository
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
@@ -70,6 +71,7 @@ class AppGraph(context: Context) {
 
   val pressureRepository = PressureRepository(database.pressureDao())
   val nowcastHistoryStore = NowcastHistoryStore(database.nowcastHistoryDao())
+  val observationRepository = ObservationRepository(database.observationDao())
   val samplingSettingsStore = SamplingSettingsStore(context)
   val latestActivityStore = LatestActivityStore(context)
 
@@ -102,6 +104,7 @@ class AppGraph(context: Context) {
     verifier = ForecastVerifier(verificationStore),
     fusion = ForecastFusion(ProviderScoreboard(verificationStore)),
     fusionSettings = fusionSettingsStore,
+    observations = { since -> observationRepository.since(since) },
   )
 
   /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */

@@ -4,6 +4,7 @@ import dev.pampa.fluidweather.core.model.ForecastBundle
 import dev.pampa.fluidweather.core.model.ForecastVerification
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HorizonBucket
+import dev.pampa.fluidweather.core.model.Observation
 import dev.pampa.fluidweather.core.model.PendingPrediction
 import dev.pampa.fluidweather.core.model.VerificationStore
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
@@ -119,8 +120,12 @@ class ForecastVerifier(
     store.addPending(pending)
   }
 
-  /** Giudica tutte le previsioni scadute usando i bundle freschi come fonte di verita'. */
-  suspend fun settle(fetches: List<ProviderFetch>) {
+  /**
+   * Giudica tutte le previsioni scadute usando i bundle freschi come fonte di verita'. Le
+   * [observations] dell'utente (fase 14) valgono piu' della mediana per l'ora in cui sono
+   * state fatte: chi ha guardato fuori sa se piove.
+   */
+  suspend fun settle(fetches: List<ProviderFetch>, observations: List<Observation> = emptyList()) {
     val now = clock()
     val due = store.duePending(now)
     if (due.isEmpty()) return
@@ -131,7 +136,7 @@ class ForecastVerifier(
 
     for (prediction in due) {
       val truth = if (RainEvent.isRainEvent(prediction.variable)) {
-        rainEventTruth(bundles, prediction)
+        rainEventTruth(bundles, prediction, observations)
       } else {
         medianTruth(bundles, prediction.variable, prediction.targetTimestampMillis)
       }
@@ -170,13 +175,22 @@ class ForecastVerifier(
    * nessuna; null se anche una sola ora e' senza quorum — un "no" costruito su un buco sarebbe
    * un giudizio inventato.
    */
-  private fun rainEventTruth(bundles: List<ForecastBundle>, prediction: PendingPrediction): Double? {
+  private fun rainEventTruth(
+    bundles: List<ForecastBundle>,
+    prediction: PendingPrediction,
+    observations: List<Observation>,
+  ): Double? {
     val window = RainEvent.windowOf(prediction.variable) ?: return null
     var wet = false
     for (hour in (window.fromHour + 1)..window.toHour) {
       val timestamp = prediction.issuedAtMillis + hour * 3_600_000L
-      val precipitation = medianTruth(bundles, FusionVariables.PRECIPITATION, timestamp) ?: return null
-      if (precipitation >= RainEvent.WET_MM) wet = true
+      val seen = observations.filter { abs(it.timestampMillis - timestamp) <= OBSERVATION_WINDOW_MILLIS }
+      val hourWet = if (seen.isNotEmpty()) {
+        seen.any { it.condition.wet }
+      } else {
+        (medianTruth(bundles, FusionVariables.PRECIPITATION, timestamp) ?: return null) >= RainEvent.WET_MM
+      }
+      if (hourWet) wet = true
     }
     return if (wet) 1.0 else 0.0
   }
@@ -186,5 +200,8 @@ class ForecastVerifier(
 
     /** Oltre sei ore nel passato le analisi dei bundle freschi non arrivano piu'. */
     const val TRUTH_WINDOW_MILLIS = 6 * 3_600_000L
+
+    /** Un'osservazione vale per l'ora a cui e' piu' vicina: mezz'ora di qua e di la'. */
+    const val OBSERVATION_WINDOW_MILLIS = 30 * 60_000L
   }
 }
