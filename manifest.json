@@ -12,9 +12,17 @@
       "repoOwner": "Casual76",
       "repoName": "FluidWeather",
       "manifestPath": "manifest.json",
-      "ref": ""
+      "ref": "main"
     },
-    "history": []
+    "history": [],
+    "beta": {
+      "version": "1.0.0",
+      "releaseDate": "2026-09-02",
+      "changelog": "Prima versione: nowcast 0-6 ore dal barometro del telefono, costellazione di provider fusi con pesi appresi, radar, qualita' dell'aria, sole e luna, notifiche, benchmark, segnalazioni, apprendimento on-device, italiano e inglese, unita' a scelta.",
+      "releaseTag": "beta-fluidweather-v1.0.0",
+      "apkAsset": "fluidweather-1.0.0.apk",
+      "sizeBytes": 3594343
+    }
   },
   "engine": {
     "schema": 1,
