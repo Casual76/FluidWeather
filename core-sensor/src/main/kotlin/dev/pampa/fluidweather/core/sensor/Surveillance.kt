@@ -71,6 +71,7 @@ class SurveillanceService : Service() {
     var quietMinutes = 0
     while (scope.isActive) {
       engine.collect(source = SampleSource.SURVEILLANCE, durationSeconds = 0)
+      engine.notifyPassCompleted()
       val calm = !PressureTrend.callsForSurveillance(engine.currentTrend())
       quietMinutes = if (calm) quietMinutes + 1 else 0
       val expired = System.currentTimeMillis() - startedAt > MAX_RUNTIME_MILLIS

@@ -26,6 +26,12 @@ class SamplingEngine(
   private val settingsStore: SamplingSettingsStore,
   private val surveillance: SurveillanceController,
   private val cleaningPipeline: CleaningPipeline,
+  /**
+   * Cosa succede DOPO ogni passata: il ciclo in background (giro meteo, verdetto, notifiche)
+   * si aggancia qui, cosi' il meteo si aggiorna al ritmo del barometro. Un errore li' dentro
+   * non tocca il campionamento, che e' gia' in archivio.
+   */
+  private val afterPass: suspend () -> Unit = {},
 ) {
 
   /** Il giro periodico: raffica o lettura secca secondo la modalita', poi il cambio di marcia. */
@@ -35,6 +41,12 @@ class SamplingEngine(
     if (mode.surveillanceCapable && PressureTrend.callsForSurveillance(currentTrend())) {
       surveillance.start()
     }
+    notifyPassCompleted()
+  }
+
+  /** Il gancio, anche per chi campiona per conto suo (la sorveglianza): mai un'eccezione fuori. */
+  suspend fun notifyPassCompleted() {
+    runCatching { afterPass() }
   }
 
   /**

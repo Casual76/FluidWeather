@@ -25,12 +25,14 @@ class WeatherRepository(
 ) {
 
   suspend fun fetchAll(latitude: Double, longitude: Double): List<ProviderFetch> = coroutineScope {
+    // Al millesimo di grado: un fix GPS che balla di qualche metro non vale un URL nuovo.
+    val (lat, lon) = WeatherPoint.round(latitude, longitude)
     val keys = keysStore.current()
-    ProviderRegistry.available(latitude, longitude, keys)
+    ProviderRegistry.available(lat, lon, keys)
       .mapNotNull { descriptor -> clients[descriptor.id]?.let { descriptor to it } }
       .map { (descriptor, client) ->
         async {
-          runCatching { client.fetch(latitude, longitude, keys[descriptor.id]) }
+          runCatching { client.fetch(lat, lon, keys[descriptor.id]) }
             .fold(
               onSuccess = { ProviderFetch(descriptor, it, null) },
               onFailure = { ProviderFetch(descriptor, null, it.message ?: it.javaClass.simpleName) },

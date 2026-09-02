@@ -27,6 +27,8 @@ include ':core-sensor'
 include ':core-model'
 include ':core-data'
 include ':core-weather'
+// Il ciclo in background: giro meteo, verdetto, notifiche (fase 11).
+include ':core-cycle'
 // Puro Kotlin/JVM, zero Android: la pipeline di nowcast si verifica sul computer.
 include ':nowcast'
 // Banco di prova JVM: dataset, replay, metriche. Non spedito nell'APK.

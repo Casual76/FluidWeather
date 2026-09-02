@@ -1,0 +1,38 @@
+plugins {
+  id 'com.android.library'
+  id 'org.jetbrains.kotlin.android'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+apply from: "${rootDir}/versions-app.gradle"
+
+android {
+  namespace 'dev.pampa.fluidweather.core.cycle'
+  compileSdk engine.compileSdk
+
+  defaultConfig {
+    minSdk engine.minSdk
+  }
+
+  compileOptions {
+    sourceCompatibility engine.javaVersion
+    targetCompatibility engine.javaVersion
+  }
+
+  kotlinOptions {
+    jvmTarget = engine.jvmTarget
+  }
+}
+
+dependencies {
+  // Il ciclo in background tocca il sensore (posizione, campioni) e il livello meteo (giro,
+  // istantanea, allerte ufficiali); la politica delle notifiche e' pura e si prova sul computer.
+  api project(':core-sensor')
+  api project(':core-weather')
+
+  implementation "androidx.core:core-ktx:${engine.coreKtx}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
+
+  testImplementation "junit:junit:${engine.junit}"
+  testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"
+}

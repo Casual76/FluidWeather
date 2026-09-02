@@ -3,7 +3,16 @@ package dev.pampa.fluidweather
 import android.content.Context
 import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
+import dev.pampa.fluidweather.core.cycle.AppVisibility
+import dev.pampa.fluidweather.core.cycle.BackgroundCycle
+import dev.pampa.fluidweather.core.cycle.CycleTrigger
+import dev.pampa.fluidweather.core.cycle.DailySummaryAlarm
+import dev.pampa.fluidweather.core.cycle.InAppAlertBus
+import dev.pampa.fluidweather.core.cycle.PlaceContextResolver
+import dev.pampa.fluidweather.core.cycle.SystemNotifier
 import dev.pampa.fluidweather.core.data.LatestActivityStore
+import dev.pampa.fluidweather.core.data.NotificationLedgerStore
+import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
@@ -19,9 +28,12 @@ import dev.pampa.fluidweather.core.weather.ForecastFusion
 import dev.pampa.fluidweather.core.weather.ForecastVerifier
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
 import dev.pampa.fluidweather.core.weather.GeocodingClient
+import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
 import dev.pampa.fluidweather.core.weather.ProviderHttp
 import dev.pampa.fluidweather.core.weather.ProviderScoreboard
 import dev.pampa.fluidweather.core.weather.UrlCache
+import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
+import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
 import dev.pampa.fluidweather.core.weather.WeatherRepository
 import dev.pampa.fluidweather.core.weather.buildWeatherClients
 import java.io.File
@@ -44,6 +56,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * ogni dipendenza si legge, si segue e si sostituisce con un costruttore.
  */
 class AppGraph(context: Context) {
+
+  private val appContext: Context = context.applicationContext
 
   /** Vive quanto il processo: quello che parte qui non ha nessuno da cui essere cancellato. */
   val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -92,6 +106,8 @@ class AppGraph(context: Context) {
     settingsStore = samplingSettingsStore,
     surveillance = surveillanceController,
     cleaningPipeline = cleaningPipeline,
+    // Il meteo al ritmo del barometro: dopo ogni passata, il ciclo (costruito qui sotto).
+    afterPass = { backgroundCycle.run(CycleTrigger.SAMPLING_PASS) },
   )
   val samplingScheduler = SamplingScheduler(context, samplingSettingsStore)
   val manualBurstController = ManualBurstController(samplingEngine, applicationScope)
@@ -107,4 +123,40 @@ class AppGraph(context: Context) {
   val savedLocationsRepository = SavedLocationsRepository(database.savedLocationsDao())
   val selectedPlaceStore = SelectedPlaceStore()
   val geocodingClient = GeocodingClient(providerHttp)
+
+  // Ciclo in background e notifiche (fase 11): l'istantanea che la home legge subito, i
+  // quattro canali, la memoria di cio' che e' gia' stato detto.
+  val weatherSnapshotStore = WeatherSnapshotStore(File(context.filesDir, "snapshots"))
+  val snapshotRefresher = WeatherSnapshotRefresher(fusionCoordinator, weatherSnapshotStore)
+  val officialAlertsClient = OfficialAlertsClient(providerHttp)
+  val notificationSettingsStore = NotificationSettingsStore(context)
+  val notificationLedgerStore = NotificationLedgerStore(context)
+  val systemNotifier = SystemNotifier(context)
+  val inAppAlerts = InAppAlertBus()
+  val appVisibility = AppVisibility()
+  val backgroundCycle = BackgroundCycle(
+    locationProvider = locationProvider,
+    savedLocations = savedLocationsRepository,
+    refresher = snapshotRefresher,
+    pressureRepository = pressureRepository,
+    cleaningPipeline = cleaningPipeline,
+    samplingSettings = samplingSettingsStore,
+    notificationSettings = notificationSettingsStore,
+    ledgerStore = notificationLedgerStore,
+    officialAlerts = officialAlertsClient,
+    placeContext = PlaceContextResolver(context),
+    notifier = systemNotifier,
+    inAppAlerts = inAppAlerts,
+    appVisibility = appVisibility,
+  )
+
+  /** Il riepilogo giornaliero segue l'impostazione: programmato all'ora scelta, o cancellato. */
+  suspend fun rescheduleDailySummary() {
+    val settings = notificationSettingsStore.current()
+    if (settings.dailySummary) {
+      DailySummaryAlarm.schedule(appContext, settings.summaryHour, settings.summaryMinute)
+    } else {
+      DailySummaryAlarm.cancel(appContext)
+    }
+  }
 }

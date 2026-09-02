@@ -1,0 +1,285 @@
+{
+ "@context": [
+  "https://geojson.org/geojson-ld/geojson-context.jsonld",
+  {
+   "@version": "1.1",
+   "wx": "https://api.weather.gov/ontology#",
+   "@vocab": "https://api.weather.gov/ontology#"
+  }
+ ],
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.bffbf513a1ab6ab1b2fafc27fe9a404f5793fac4.001.1",
+   "type": "Feature",
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -94.34,
+       30.1
+      ],
+      [
+       -94.22,
+       30.28
+      ],
+      [
+       -94.21,
+       30.28
+      ],
+      [
+       -94.07,
+       30.34
+      ],
+      [
+       -93.91,
+       30.31
+      ],
+      [
+       -94.01,
+       30.01
+      ],
+      [
+       -94.3,
+       29.88
+      ],
+      [
+       -94.36,
+       30.08
+      ],
+      [
+       -94.34,
+       30.1
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.bffbf513a1ab6ab1b2fafc27fe9a404f5793fac4.001.1",
+    "@type": "wx:Alert",
+    "id": "urn:oid:2.49.0.1.840.0.bffbf513a1ab6ab1b2fafc27fe9a404f5793fac4.001.1",
+    "areaDesc": "Hardin, TX; Jasper, TX; Jefferson, TX; Orange, TX",
+    "geocode": {
+     "SAME": [
+      "048199",
+      "048241",
+      "048245",
+      "048361"
+     ],
+     "UGC": [
+      "TXC199",
+      "TXC241",
+      "TXC245",
+      "TXC361"
+     ]
+    },
+    "affectedZones": [
+     "https://api.weather.gov/zones/county/TXC199",
+     "https://api.weather.gov/zones/county/TXC241",
+     "https://api.weather.gov/zones/county/TXC245",
+     "https://api.weather.gov/zones/county/TXC361"
+    ],
+    "references": [],
+    "sent": "2026-09-02T00:58:00-05:00",
+    "effective": "2026-09-02T00:58:00-05:00",
+    "onset": "2026-09-02T00:58:00-05:00",
+    "expires": "2026-09-02T04:00:00-05:00",
+    "ends": "2026-09-02T04:00:00-05:00",
+    "status": "Actual",
+    "messageType": "Alert",
+    "category": "Met",
+    "severity": "Severe",
+    "certainty": "Likely",
+    "urgency": "Immediate",
+    "event": "Flash Flood Warning",
+    "sender": "w-nws.webmaster@noaa.gov",
+    "senderName": "NWS Lake Charles LA",
+    "headline": "Flash Flood Warning issued September 2 at 12:58AM CDT until September 2 at 4:00AM CDT by NWS Lake Charles LA",
+    "description": "FFWLCH\n\nThe National Weather Service in Lake Charles has issued a\n\n* Flash Flood Warning for...\nSoutheastern Hardin County in southeastern Texas...\nSouth Central Jasper County in southeastern Texas...\nNorthwestern Jefferson County in southeastern Texas...\nWestern Orange County in southeastern Texas...\n\n* Until 400 AM CDT.\n\n* At 1258 AM CDT, Doppler radar indicated thunderstorms producing\nheavy rain across the warned area. Between 2 and 5 inches of rain\nhave fallen over the past couple of hours. Flash flooding is\nongoing or expected to begin shortly.\n\nHAZARD...Flash flooding caused by thunderstorms.\n\nSOURCE...Radar indicated.\n\nIMPACT...Flash flooding of small creeks and streams, urban areas,\nhighways, streets and underpasses as well as other poor\ndrainage and low-lying areas.\n\n* Some locations that will experience flash flooding include...\nBeaumont, Lumberton, Vidor, Bevil Oaks, China, Rose City, Pine\nForest, Lakeview, Weiss Bluff and Fannett.",
+    "instruction": "Turn around, don't drown when encountering flooded roads. Most flood\ndeaths occur in vehicles.",
+    "response": "Avoid",
+    "note": null,
+    "parameters": {
+     "AWIPSidentifier": [
+      "FFWLCH"
+     ],
+     "WMOidentifier": [
+      "WGUS54 KLCH 020558"
+     ],
+     "flashFloodDetection": [
+      "RADAR INDICATED"
+     ],
+     "BLOCKCHANNEL": [
+      "EAS",
+      "NWEM",
+      "CMAS"
+     ],
+     "EAS-ORG": [
+      "WXR"
+     ],
+     "VTEC": [
+      "/O.NEW.KLCH.FF.W.0065.260902T0558Z-260902T0900Z/"
+     ],
+     "eventEndingTime": [
+      "2026-09-02T04:00:00-05:00"
+     ]
+    },
+    "scope": "Public",
+    "code": "IPAWSv1.0",
+    "language": "en-US",
+    "web": "http://www.weather.gov",
+    "eventCode": {
+     "SAME": [
+      "FFW"
+     ],
+     "NationalWeatherService": [
+      "FFW"
+     ]
+    }
+   }
+  },
+  {
+   "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.8a3e813eb98a0a24e151bdc967201155583456f2.001.1",
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.8a3e813eb98a0a24e151bdc967201155583456f2.001.1",
+    "@type": "wx:Alert",
+    "id": "urn:oid:2.49.0.1.840.0.8a3e813eb98a0a24e151bdc967201155583456f2.001.1",
+    "areaDesc": "Hughes; Jackson; Tillman; Comanche; Stephens; Murray; Pontotoc; Coal; Cotton; Jefferson; Carter; Johnston; Atoka; Love; Marshall; Bryan; Wilbarger; Wichita; Archer; Clay",
+    "geocode": {
+     "SAME": [
+      "040063",
+      "040065",
+      "040141",
+      "040031",
+      "040137",
+      "040099",
+      "040123",
+      "040029",
+      "040033",
+      "040067",
+      "040019",
+      "040069",
+      "040005",
+      "040085",
+      "040095",
+      "040013",
+      "048487",
+      "048485",
+      "048009",
+      "048077"
+     ],
+     "UGC": [
+      "OKZ032",
+      "OKZ036",
+      "OKZ037",
+      "OKZ038",
+      "OKZ039",
+      "OKZ041",
+      "OKZ042",
+      "OKZ043",
+      "OKZ044",
+      "OKZ045",
+      "OKZ046",
+      "OKZ047",
+      "OKZ048",
+      "OKZ050",
+      "OKZ051",
+      "OKZ052",
+      "TXZ085",
+      "TXZ086",
+      "TXZ089",
+      "TXZ090"
+     ]
+    },
+    "affectedZones": [
+     "https://api.weather.gov/zones/forecast/OKZ032",
+     "https://api.weather.gov/zones/forecast/OKZ036",
+     "https://api.weather.gov/zones/forecast/OKZ037",
+     "https://api.weather.gov/zones/forecast/OKZ038",
+     "https://api.weather.gov/zones/forecast/OKZ039",
+     "https://api.weather.gov/zones/forecast/OKZ041",
+     "https://api.weather.gov/zones/forecast/OKZ042",
+     "https://api.weather.gov/zones/forecast/OKZ043",
+     "https://api.weather.gov/zones/forecast/OKZ044",
+     "https://api.weather.gov/zones/forecast/OKZ045",
+     "https://api.weather.gov/zones/forecast/OKZ046",
+     "https://api.weather.gov/zones/forecast/OKZ047",
+     "https://api.weather.gov/zones/forecast/OKZ048",
+     "https://api.weather.gov/zones/forecast/OKZ050",
+     "https://api.weather.gov/zones/forecast/OKZ051",
+     "https://api.weather.gov/zones/forecast/OKZ052",
+     "https://api.weather.gov/zones/forecast/TXZ085",
+     "https://api.weather.gov/zones/forecast/TXZ086",
+     "https://api.weather.gov/zones/forecast/TXZ089",
+     "https://api.weather.gov/zones/forecast/TXZ090"
+    ],
+    "references": [
+     {
+      "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.a247c348e09795cbc9a083ab215f86a8f06fc60f.001.1",
+      "identifier": "urn:oid:2.49.0.1.840.0.a247c348e09795cbc9a083ab215f86a8f06fc60f.001.1",
+      "sender": "w-nws.webmaster@noaa.gov",
+      "sent": "2026-09-01T12:10:00-05:00"
+     }
+    ],
+    "sent": "2026-09-02T00:50:00-05:00",
+    "effective": "2026-09-02T00:50:00-05:00",
+    "onset": "2026-09-02T13:00:00-05:00",
+    "expires": "2026-09-02T19:00:00-05:00",
+    "ends": "2026-09-02T19:00:00-05:00",
+    "status": "Actual",
+    "messageType": "Update",
+    "category": "Met",
+    "severity": "Moderate",
+    "certainty": "Likely",
+    "urgency": "Expected",
+    "event": "Heat Advisory",
+    "sender": "w-nws.webmaster@noaa.gov",
+    "senderName": "NWS Norman OK",
+    "headline": "Heat Advisory issued September 2 at 12:50AM CDT until September 2 at 7:00PM CDT by NWS Norman OK",
+    "description": "* WHAT...Heat index values up to 109 expected.\n\n* WHERE...Portions of east central, southeast, southern, and\nsouthwest Oklahoma and northern Texas.\n\n* WHEN...From 1 PM this afternoon to 7 PM CDT this evening.\n\n* IMPACTS...Hot temperatures and high humidity may cause heat\nillnesses.",
+    "instruction": "Drink plenty of fluids, stay in an air-conditioned room, stay out of\nthe sun, and check up on relatives and neighbors.",
+    "response": "Execute",
+    "note": null,
+    "parameters": {
+     "AWIPSidentifier": [
+      "NPWOUN"
+     ],
+     "WMOidentifier": [
+      "WWUS74 KOUN 020550"
+     ],
+     "NWSheadline": [
+      "HEAT ADVISORY REMAINS IN EFFECT FROM 1 PM THIS AFTERNOON TO 7 PM CDT THIS EVENING"
+     ],
+     "BLOCKCHANNEL": [
+      "EAS",
+      "NWEM",
+      "CMAS"
+     ],
+     "VTEC": [
+      "/O.CON.KOUN.HT.Y.0047.260902T1800Z-260903T0000Z/"
+     ],
+     "eventEndingTime": [
+      "2026-09-02T19:00:00-05:00"
+     ]
+    },
+    "scope": "Public",
+    "code": "IPAWSv1.0",
+    "language": "en-US",
+    "web": "http://www.weather.gov",
+    "eventCode": {
+     "SAME": [
+      "NWS"
+     ],
+     "NationalWeatherService": [
+      "HTY"
+     ]
+    }
+   }
+  }
+ ],
+ "title": "Current watches, warnings, and advisories for Texas",
+ "updated": "2026-09-02T06:21:52+00:00"
+}

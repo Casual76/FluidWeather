@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.pampa.fluidweather.AppGraph
+import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeScreen
@@ -20,6 +21,8 @@ import dev.pampa.fluidweather.feature.radar.RadarScreen
 import dev.pampa.fluidweather.feature.report.ReportSheet
 import dev.pampa.fluidweather.feature.settings.DiagnosticsDependencies
 import dev.pampa.fluidweather.feature.settings.DiagnosticsScreen
+import dev.pampa.fluidweather.feature.settings.NotificationsDependencies
+import dev.pampa.fluidweather.feature.settings.NotificationsSettingsScreen
 import dev.pampa.fluidweather.feature.settings.SettingsScreen
 
 /**
@@ -31,6 +34,7 @@ private object Routes {
   const val Radar = "radar"
   const val Settings = "settings"
   const val Diagnostics = "settings/diagnostics"
+  const val Notifications = "settings/notifications"
 }
 
 /**
@@ -78,7 +82,9 @@ fun FluidWeatherNavHost(graph: AppGraph) {
     composable(Routes.Home) {
       val homeDeps = remember(graph) {
         HomeDependencies(
-          fusionCoordinator = graph.fusionCoordinator,
+          snapshotRefresher = graph.snapshotRefresher,
+          snapshotStore = graph.weatherSnapshotStore,
+          samplingSettings = graph.samplingSettingsStore,
           locationProvider = graph.locationProvider,
           pressureRepository = graph.pressureRepository,
           cleaningPipeline = graph.cleaningPipeline,
@@ -108,7 +114,20 @@ fun FluidWeatherNavHost(graph: AppGraph) {
       SettingsScreen(
         onBack = { navController.popBackStack() },
         onOpenDiagnostics = { navController.navigate(Routes.Diagnostics) },
+        onOpenNotifications = { navController.navigate(Routes.Notifications) },
       )
+    }
+    composable(Routes.Notifications) {
+      val deps = remember(graph) {
+        NotificationsDependencies(
+          settingsStore = graph.notificationSettingsStore,
+          ledgerStore = graph.notificationLedgerStore,
+          notifier = graph.systemNotifier,
+          onSettingsChanged = { graph.rescheduleDailySummary() },
+          runCycleNow = { graph.backgroundCycle.run(CycleTrigger.MANUAL).note },
+        )
+      }
+      NotificationsSettingsScreen(deps = deps, onBack = { navController.popBackStack() })
     }
     composable(Routes.Diagnostics) {
       val deps = remember(graph) {

@@ -8,13 +8,14 @@ import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.pampa.fluidweather.core.ui.PlaceholderRow
 
 /**
- * L'indice: ogni categoria e' una schermata separata. Per ora esiste solo la diagnostica
- * (fase 1); le altre voci arrivano con la fase 15.
+ * L'indice: ogni categoria e' una schermata separata. Esistono la diagnostica (fase 1) e le
+ * notifiche (fase 11); le altre voci arrivano con la fase 15.
  */
 @Composable
 fun SettingsScreen(
   onBack: () -> Unit,
   onOpenDiagnostics: () -> Unit,
+  onOpenNotifications: () -> Unit,
 ) {
   FluidScreen(title = "Impostazioni", onBack = onBack) {
     item {
@@ -25,7 +26,13 @@ fun SettingsScreen(
           onClick = onOpenDiagnostics,
         )
         FluidListDivider()
-        PlaceholderRow(phase = 15, subtitle = "Motore, provider, notifiche, aspetto, dati")
+        FluidListRow(
+          title = "Notifiche",
+          subtitle = "Allerta del barometro, pioggia in arrivo, allerte ufficiali, riepilogo",
+          onClick = onOpenNotifications,
+        )
+        FluidListDivider()
+        PlaceholderRow(phase = 15, subtitle = "Motore, provider, aspetto, dati")
       }
     }
   }

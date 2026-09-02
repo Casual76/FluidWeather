@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <application>
+    <!-- Il riepilogo giornaliero: un allarme inesatto all'ora scelta, riprogrammato a ogni scatto. -->
+    <receiver
+        android:name=".DailySummaryReceiver"
+        android:exported="false" />
+
+    <!-- Gli allarmi non sopravvivono al riavvio: il riepilogo si riprogramma da solo. -->
+    <receiver
+        android:name=".CycleBootReceiver"
+        android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
+  </application>
+
+</manifest>

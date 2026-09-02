@@ -4,29 +4,66 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import dev.antigravity.fluidengine.ui.fluid.FluidNotification
+import dev.antigravity.fluidengine.ui.fluid.FluidNotificationHost
+import dev.antigravity.fluidengine.ui.fluid.FluidNotificationHostState
+import dev.antigravity.fluidengine.ui.fluid.FluidNotificationTone
+import dev.antigravity.fluidengine.ui.fluid.LocalFluidNotificationHostState
+import dev.antigravity.fluidengine.ui.fluid.rememberFluidNotificationHostState
+import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.navigation.FluidWeatherNavHost
 import dev.pampa.fluidweather.theme.FluidWeatherTheme
 
 class MainActivity : ComponentActivity() {
 
+  private val graph: AppGraph get() = (application as FluidWeatherApp).graph
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
-    val graph = (application as FluidWeatherApp).graph
+    val graph = graph
     setContent {
       val accent by graph.weatherAccent.collectAsState()
       FluidWeatherTheme(brand = accent) {
         ContinuousSamplingEffect(graph)
-        FluidWeatherNavHost(graph)
+        // Con l'app in primo piano un'allerta e' un banner di vetro in cima, non una notifica
+        // di sistema (decisione 2026-09-02): l'host sta alla radice, sopra la navigazione.
+        val notificationHost = rememberFluidNotificationHostState()
+        InAppAlertsEffect(graph, notificationHost)
+        CompositionLocalProvider(LocalFluidNotificationHostState provides notificationHost) {
+          Box(Modifier.fillMaxSize()) {
+            FluidWeatherNavHost(graph)
+            FluidNotificationHost(
+              state = notificationHost,
+              modifier = Modifier.align(Alignment.TopCenter),
+            )
+          }
+        }
       }
     }
+  }
+
+  // Il ciclo in background legge questo per scegliere il mezzo: banner o tendina.
+  override fun onStart() {
+    super.onStart()
+    graph.appVisibility.set(true)
+  }
+
+  override fun onStop() {
+    graph.appVisibility.set(false)
+    super.onStop()
   }
 }
 
@@ -41,6 +78,29 @@ private fun ContinuousSamplingEffect(graph: AppGraph) {
   LaunchedEffect(lifecycle) {
     lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
       graph.continuousMonitor.run()
+    }
+  }
+}
+
+/** Le notifiche decise dal ciclo mentre l'app e' aperta, come banner dell'engine. */
+@Composable
+private fun InAppAlertsEffect(graph: AppGraph, host: FluidNotificationHostState) {
+  LaunchedEffect(graph, host) {
+    graph.inAppAlerts.events.collect { alert ->
+      host.show(
+        FluidNotification(
+          id = "${alert.channel.id}-${alert.id}-${System.currentTimeMillis()}",
+          title = alert.title,
+          message = alert.text,
+          tone = when (alert.channel) {
+            NotificationChannelKind.NOWCAST_ALERT, NotificationChannelKind.OFFICIAL_ALERTS ->
+              FluidNotificationTone.Warning
+            NotificationChannelKind.PRECIPITATION, NotificationChannelKind.DAILY_SUMMARY ->
+              FluidNotificationTone.Info
+          },
+          durationMillis = 9_000L,
+        ),
+      )
     }
   }
 }

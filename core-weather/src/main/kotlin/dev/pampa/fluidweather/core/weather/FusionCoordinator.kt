@@ -20,18 +20,28 @@ data class WeatherRound(
  *
  * E' il ciclo che fa "cambiare la classifica con l'esperienza" senza che nessuno la tocchi.
  */
+/** Chi sa fare un giro: il coordinatore vero, o un finto nei test del refresher. */
+interface RoundSource {
+  suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean = true): WeatherRound
+}
+
 class FusionCoordinator(
   private val repository: WeatherRepository,
   private val verifier: ForecastVerifier,
   private val fusion: ForecastFusion,
   private val fusionSettings: FusionSettingsStore,
   private val clock: () -> Long = System::currentTimeMillis,
-) {
+) : RoundSource {
 
-  suspend fun refresh(latitude: Double, longitude: Double): WeatherRound {
+  /**
+   * [registerPredictions] false = si giudica ma non si semina: il ciclo in background gira
+   * ogni quarto d'ora e seminare quattro volte le stesse previsioni gonfierebbe le tabelle
+   * senza aggiungere informazione (gli orizzonti sono a ore intere).
+   */
+  override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
     val fetches = repository.fetchAll(latitude, longitude)
     verifier.settle(fetches)
-    verifier.registerPending(fetches)
+    if (registerPredictions) verifier.registerPending(fetches)
     val fused = fusion.fuse(
       fetches = fetches,
       latitude = latitude,

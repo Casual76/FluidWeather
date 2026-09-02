@@ -33,6 +33,7 @@ dependencies {
   implementation project(':core-ui')
   api project(':core-sensor')
   api project(':core-weather')
+  api project(':core-cycle')
 
   // rememberLauncherForActivityResult per i permessi dalla diagnostica.
   implementation "androidx.activity:activity-compose:${engine.activityCompose}"

@@ -10,6 +10,7 @@ import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.data.SelectedPlaceStore
 import dev.pampa.fluidweather.core.model.AirQualityNow
@@ -24,9 +25,10 @@ import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import dev.pampa.fluidweather.core.weather.AirQualityClient
-import dev.pampa.fluidweather.core.weather.FusionCoordinator
 import dev.pampa.fluidweather.core.weather.GeocodingClient
-import dev.pampa.fluidweather.core.weather.ProviderRegistry
+import dev.pampa.fluidweather.core.weather.WeatherSnapshot
+import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
+import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
 import dev.pampa.fluidweather.core.weather.toContext
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
@@ -43,7 +45,10 @@ import kotlinx.coroutines.withContext
 
 /** Tutto quello che la home tocca; lo costruisce :app dal suo grafo. */
 class HomeDependencies(
-  val fusionCoordinator: FusionCoordinator,
+  /** L'istantanea del ciclo in background e il giro quando serve (fase 11). */
+  val snapshotRefresher: WeatherSnapshotRefresher,
+  val snapshotStore: WeatherSnapshotStore,
+  val samplingSettings: SamplingSettingsStore,
   val locationProvider: LocationProvider,
   val pressureRepository: PressureRepository,
   val cleaningPipeline: CleaningPipeline,
@@ -83,10 +88,16 @@ data class HomeUiState(
   val dayLengthYesterdayMillis: Long? = null,
 )
 
+/** Un'istantanea piu' vecchia di cosi' non si mostra nemmeno come ripiego. */
+private const val SHOWABLE_AGE_MILLIS = 12 * 3_600_000L
+
 /**
- * Il caricamento della home: posizione -> giro completo del meteo (fase 7) -> verdetto locale
- * (fasi 2-5, col contesto del provider migliore) -> nome del posto. Ogni passo aggiorna lo
- * stato appena sa qualcosa: il cielo cambia colore prima che arrivi l'ultimo dettaglio.
+ * Il caricamento della home: posizione -> l'ISTANTANEA del ciclo in background, subito -> il
+ * giro dei provider solo se l'istantanea e' piu' vecchia della cadenza del barometro -> verdetto
+ * locale (fasi 2-5, col contesto dell'opinione piu' completa) -> nome del posto. Poi la home
+ * resta in ascolto: ogni istantanea nuova scritta dal ciclo la aggiorna mentre e' aperta.
+ * Ogni passo aggiorna lo stato appena sa qualcosa: il cielo cambia colore prima dell'ultimo
+ * dettaglio.
  */
 @Composable
 fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> {
@@ -105,54 +116,44 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
       return@produceState
     }
     val (latitude, longitude, presetName) = resolved
-    val here = object {
-      val latitude = latitude
-      val longitude = longitude
-    }
     if (presetName != null) value = value.copy(locationName = presetName)
 
-    val phase = SolarEphemeris.phaseAt(now, here.latitude, here.longitude)
-    value = value.copy(phase = phase, latitude = here.latitude, longitude = here.longitude)
+    val phase = SolarEphemeris.phaseAt(now, latitude, longitude)
+    value = value.copy(phase = phase, latitude = latitude, longitude = longitude)
 
-    val round = runCatching { deps.fusionCoordinator.refresh(here.latitude, here.longitude) }
-      .getOrNull()
-    val fused = round?.fused
-    val nowValues = fused?.at(now)
-    val temperature = nowValues?.get(FusionVariables.TEMPERATURE)
-    val kind = fused?.kindAt(now)
-    val (minToday, maxToday) = fused?.todayRange(now) ?: (null to null)
-    val cloud = nowValues?.get(FusionVariables.CLOUD_COVER)
+    val key = if (place.isGps) WeatherSnapshot.GPS_KEY else WeatherSnapshot.keyFor(place.id)
 
-    deps.onWeatherAccent(WeatherAccent.presetFor(kind, phase))
-    value = value.copy(
-      temperatureC = temperature,
-      kind = kind,
-      minC = minToday,
-      maxC = maxToday,
-      cloudCover = cloud,
-      providersResponding = round?.fetches?.count { it.bundle != null } ?: 0,
-      fusedHours = fused?.hours ?: emptyList(),
-    )
+    // 1) L'istantanea del ciclo in background, SUBITO: la home non rifa' il giro davanti all'utente.
+    val cached = deps.snapshotRefresher.fresh(key, latitude, longitude, maxAgeMillis = SHOWABLE_AGE_MILLIS)
+    if (cached != null) value = value.applySnapshot(cached, now, deps)
+
+    // 2) Se e' piu' vecchia della cadenza del barometro, il giro si rifa' dietro ai dati in scena.
+    val cadenceMillis = deps.samplingSettings.current().mode.cadenceMinutes * 60_000L
+    val snapshot = if (cached != null && cached.ageMillis(now) <= cadenceMillis) {
+      cached
+    } else {
+      runCatching { deps.snapshotRefresher.refresh(key, latitude, longitude) }.getOrNull() ?: cached
+    }
+    if (snapshot != null && snapshot !== cached) value = value.applySnapshot(snapshot, now, deps)
 
     // Sole: oggi e ieri, per il "piu' corto/lungo di ieri" del widget.
     val zone = ZoneId.systemDefault()
     val todayStartUtc = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
       .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
-    val sunToday = SunTimes.forDay(todayStartUtc, here.latitude, here.longitude)
-    val sunYesterday = SunTimes.forDay(todayStartUtc - 86_400_000L, here.latitude, here.longitude)
+    val sunToday = SunTimes.forDay(todayStartUtc, latitude, longitude)
+    val sunYesterday = SunTimes.forDay(todayStartUtc - 86_400_000L, latitude, longitude)
     value = value.copy(
       sunTimesToday = sunToday,
       dayLengthTodayMillis = sunToday.lengthMillis(),
       dayLengthYesterdayMillis = sunYesterday.lengthMillis(),
     )
 
-    // Il verdetto locale: barometro pulito + contesto del provider piu' completo.
-    val bundle = round?.fetches
-      ?.firstOrNull { it.descriptor.id == ProviderRegistry.OPEN_METEO }?.bundle
+    // Il verdetto locale: barometro pulito + contesto dell'opinione piu' completa (dall'istantanea).
+    val bundle = snapshot?.context
     val samples = runCatching { deps.pressureRepository.samplesSince(now - 12 * 3_600_000L) }
       .getOrDefault(emptyList())
     val cleaning = runCatching {
-      deps.cleaningPipeline.process(samples, temperatureCelsius = temperature)
+      deps.cleaningPipeline.process(samples, temperatureCelsius = value.temperatureC)
     }.getOrNull()
     val verdict = cleaning?.let {
       FeatureExtractor.extract(it, bundle?.toContext(now), normalHpa = null, nowMillis = now)
@@ -167,14 +168,47 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
       loading = false,
     )
 
-    val air = runCatching { deps.airQualityClient.now(here.latitude, here.longitude) }.getOrNull()
+    val air = runCatching { deps.airQualityClient.now(latitude, longitude) }.getOrNull()
     if (air != null) value = value.copy(airQuality = air)
 
     if (presetName == null) {
-      val name = reverseGeocode(context, here.latitude, here.longitude)
+      val name = reverseGeocode(context, latitude, longitude)
       if (name != null) value = value.copy(locationName = name)
     }
+
+    // 3) Il ciclo in background continua a scrivere: finche' la home e' aperta, lo segue.
+    var applied = snapshot?.fetchedAtMillis ?: 0L
+    deps.snapshotStore.updates.collect { updates ->
+      val at = updates[key] ?: return@collect
+      if (at <= applied) return@collect
+      val fresh = deps.snapshotRefresher.fresh(key, latitude, longitude, maxAgeMillis = SHOWABLE_AGE_MILLIS)
+        ?: return@collect
+      applied = at
+      value = value.applySnapshot(fresh, System.currentTimeMillis(), deps)
+    }
   }
+}
+
+/** Le ore fuse dell'istantanea dentro lo stato: testata, cielo, dispensa dei widget, accento. */
+private fun HomeUiState.applySnapshot(
+  snapshot: WeatherSnapshot,
+  nowMillis: Long,
+  deps: HomeDependencies,
+): HomeUiState {
+  val fused = snapshot.fused
+  val nowValues = fused.at(nowMillis)
+  val kind = fused.kindAt(nowMillis)
+  val (minToday, maxToday) = fused.todayRange(nowMillis)
+  deps.onWeatherAccent(WeatherAccent.presetFor(kind, phase))
+  return copy(
+    temperatureC = nowValues?.get(FusionVariables.TEMPERATURE),
+    kind = kind,
+    minC = minToday,
+    maxC = maxToday,
+    cloudCover = nowValues?.get(FusionVariables.CLOUD_COVER),
+    providersResponding = snapshot.providersResponding,
+    fusedHours = fused.hours,
+  )
 }
 
 private fun SunTimes.Times.lengthMillis(): Long? {
