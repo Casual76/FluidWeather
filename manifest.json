@@ -1,0 +1,31 @@
+{
+  "app": {
+    "id": "fluidweather",
+    "name": "FluidWeather",
+    "description": "Il meteo che parte dal tuo telefono. Il barometro del dispositivo diventa un motore di previsione a breve termine, tarato su anni di dati reali, e si aggiunge a una costellazione di servizi meteo fusi con pesi che imparano dove sei: nowcast 0-6 ore, orario e giornaliero, precipitazioni, pressione, qualita' dell'aria, sole e luna, radar, benchmark dei provider, notifiche, segnalazioni. Italiano e inglese, unita' a scelta.",
+    "packageName": "dev.pampa.fluidweather",
+    "iconUrl": "https://raw.githubusercontent.com/Casual76/FluidWeather/main/store/icon.png",
+    "category": "Meteo",
+    "developer": "Pampa",
+    "screenshots": [],
+    "repository": {
+      "repoOwner": "Casual76",
+      "repoName": "FluidWeather",
+      "manifestPath": "manifest.json",
+      "ref": ""
+    },
+    "history": []
+  },
+  "engine": {
+    "schema": 1,
+    "minimumVersion": null,
+    "recommendedVersion": null,
+    "notice": null,
+    "flags": {},
+    "killSwitch": {
+      "enabled": false,
+      "message": null
+    },
+    "overrides": {}
+  }
+}

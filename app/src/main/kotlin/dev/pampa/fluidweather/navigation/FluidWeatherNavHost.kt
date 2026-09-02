@@ -47,6 +47,7 @@ import dev.pampa.fluidweather.core.ui.LocalUnits
 import dev.pampa.fluidweather.feature.settings.UnitsDependencies
 import dev.pampa.fluidweather.feature.settings.UnitsScreen
 import java.util.Locale
+import dev.pampa.fluidweather.Release
 
 /**
  * Le rotte laterali. Benchmark e Segnalazione NON sono rotte: sono fogli neri che salgono dal
@@ -292,7 +293,9 @@ private fun FluidWeatherRoutes(
       val deps = remember(graph) {
         AboutDependencies(
           appVersion = BuildConfig.VERSION_NAME,
+          repositoryUrl = Release.REPOSITORY_URL,
           onReviewOnboarding = { navController.navigate(Routes.Onboarding) },
+          updates = graph.updateDependencies(),
         )
       }
       AboutScreen(deps = deps, onBack = { navController.popBackStack() })

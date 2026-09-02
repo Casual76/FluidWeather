@@ -36,6 +36,9 @@ dependencies {
   api project(':core-cycle')
   implementation project(':engine-storage')
   implementation project(':engine-foundation')
+  // L'aggiornamento in-app e l'avviso remoto nella pagina Informazioni (fase 18).
+  implementation project(':engine-config')
+  implementation "androidx.datastore:datastore-preferences:${engine.datastore}"
 
   // rememberLauncherForActivityResult per i permessi dalla diagnostica.
   implementation "androidx.activity:activity-compose:${engine.activityCompose}"

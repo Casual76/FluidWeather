@@ -72,6 +72,8 @@ import dev.pampa.fluidweather.core.cycle.ResourceNotificationTexts
 import dev.pampa.fluidweather.core.data.UnitsStore
 import dev.pampa.fluidweather.strings.UnitFormatter
 import kotlinx.coroutines.runBlocking
+import dev.pampa.fluidweather.feature.settings.ReleaseSettingsStore
+import dev.pampa.fluidweather.feature.settings.UpdateDependencies
 
 /**
  * La DI dell'app, a mano: un grafo costruito una volta nell'Application. Niente framework —
@@ -102,11 +104,30 @@ class AppGraph(context: Context) {
   val locationProvider = LocationProvider(context)
   private val surveillanceController = SurveillanceController(context)
 
-  // Il livello provider (fase 6): un solo EngineHttp con lo User-Agent descrittivo che
-  // MET Norway pretende e gli altri apprezzano; cache per-URL nella cacheDir.
+  // Un solo EngineHttp per tutta l'app, con lo User-Agent descrittivo che MET Norway pretende
+  // e gli altri apprezzano: lo usano i provider (fase 6), l'updater e la config remota (fase 18).
+  private val engineHttp = EngineHttp(userAgent = Release.userAgent)
+
+  // Il rilascio (fase 18): l'aggiornamento in-app e la meta' remota dell'engine leggono lo
+  // stesso manifest.json del Pampa Store; il canale seguito e' una scelta dell'utente.
+  val updater = fluidWeatherUpdater(appContext, engineHttp)
+  val remoteConfig = fluidWeatherRemoteConfig(appContext, engineHttp)
+  val releaseSettings = ReleaseSettingsStore(
+    appContext,
+    defaultChannel = ReleaseSettingsStore.channelFromName(BuildConfig.DEFAULT_UPDATE_CHANNEL),
+  )
+
+  fun updateDependencies() = UpdateDependencies(
+    appVersion = BuildConfig.VERSION_NAME,
+    updater = updater,
+    releaseSettings = releaseSettings,
+    remoteConfig = remoteConfig,
+  )
+
+  // Il livello provider (fase 6): cache per-URL nella cacheDir.
   val providerKeysStore = ProviderKeysStore(context)
   private val providerHttp = ProviderHttp(
-    http = EngineHttp(userAgent = "FluidWeather/0.1 (dev.pampa.fluidweather; uso personale non commerciale)"),
+    http = engineHttp,
     cache = UrlCache(File(context.cacheDir, "providers")),
   )
   val weatherRepository = WeatherRepository(

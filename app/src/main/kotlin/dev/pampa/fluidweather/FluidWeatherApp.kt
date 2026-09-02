@@ -39,5 +39,8 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
       graph.samplingScheduler.applyCurrentMode()
       graph.rescheduleDailySummary()
     }
+    // La config remota (fase 18): si rinfresca solo se la copia in cache ha piu' di sei ore,
+    // mai davanti al primo fotogramma; un download fallito lascia l'ultima risposta valida.
+    graph.applicationScope.launch { runCatching { graph.remoteConfig.refreshIfStale() } }
   }
 }

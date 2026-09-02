@@ -28,6 +28,8 @@ import dev.antigravity.fluidengine.ui.fluid.rememberFluidNotificationHostState
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.navigation.FluidWeatherNavHost
 import dev.pampa.fluidweather.theme.FluidWeatherTheme
+import androidx.compose.runtime.remember
+import dev.antigravity.fluidengine.foundation.EngineConfig
 
 class MainActivity : ComponentActivity() {
 
@@ -41,11 +43,18 @@ class MainActivity : ComponentActivity() {
       val accent by graph.weatherAccent.collectAsState()
       val engineSettings by graph.engineSettingsStore.settings.collectAsState(initial = null)
       val onboardingDone by graph.onboardingStore.done.collectAsState(initial = null)
+      val remote by graph.remoteConfig.config.collectAsState(initial = EngineConfig.Fallback)
       val settings: EngineSettings? = engineSettings
       val done: Boolean? = onboardingDone
+      val gate = remember(remote) { ReleaseGate.of(remote) }
       if (settings == null || done == null) {
         // Il primo fotogramma, prima che le preferenze rispondano: nero, non un lampo di tema.
         Box(Modifier.fillMaxSize().background(Color(0xFF0B0B0E)))
+      } else if (gate != null) {
+        // Il manifest ha detto di fermarsi (fase 18): niente home, solo la frase e l'aggiornamento.
+        FluidWeatherTheme(settings = settings, brand = accent) {
+          ReleaseGateScreen(gate = gate, updates = graph.updateDependencies())
+        }
       } else {
         FluidWeatherTheme(settings = settings, brand = accent) {
           ContinuousSamplingEffect(graph)
