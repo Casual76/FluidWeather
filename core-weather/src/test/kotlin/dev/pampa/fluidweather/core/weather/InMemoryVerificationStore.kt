@@ -44,4 +44,7 @@ class InMemoryVerificationStore : VerificationStore {
     bucket: HorizonBucket,
   ): List<ForecastVerification> =
     verifications.filter { it.variable == variable && it.horizonBucket == bucket }
+
+  override suspend fun allVerifications(sinceMillis: Long): List<ForecastVerification> =
+    verifications.filter { it.verifiedAtMillis >= sinceMillis }
 }

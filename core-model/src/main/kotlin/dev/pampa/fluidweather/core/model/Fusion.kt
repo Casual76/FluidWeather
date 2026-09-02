@@ -86,6 +86,9 @@ interface VerificationStore {
   suspend fun removePending(predictions: List<PendingPrediction>)
   suspend fun addVerifications(verifications: List<ForecastVerification>)
   suspend fun verificationsFor(variable: String, bucket: HorizonBucket): List<ForecastVerification>
+
+  /** Tutte le verifiche da [sinceMillis]: la pagella del Benchmark le legge in un colpo solo. */
+  suspend fun allVerifications(sinceMillis: Long): List<ForecastVerification>
 }
 
 // ------------------------------------------------------------------------- il risultato fuso

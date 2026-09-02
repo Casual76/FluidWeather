@@ -6,7 +6,40 @@ import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.PendingPrediction
 import dev.pampa.fluidweather.core.model.VerificationStore
+import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import kotlin.math.abs
+
+/**
+ * L'evento "piove?" sulle tre finestre del nowcast: e' la variabile su cui il barometro del
+ * telefono e i provider si confrontano ALLA PARI (piano, pagina Benchmark). La previsione e' una
+ * probabilita' [0,1], la verita' e' 0/1 (almeno un'ora della finestra con pioggia misurabile
+ * nelle analisi), l'errore e' |p - y|: e' il Brier "in valore assoluto", e vale per chiunque.
+ *
+ * I provider parlano per ore, il barometro per finestre: la probabilita' di un provider sulla
+ * finestra e' il MASSIMO delle sue probabilita' orarie dentro la finestra (la convenzione delle
+ * app meteo per la "probabilita' di pioggia nel periodo"), e lo si dichiara.
+ */
+object RainEvent {
+  const val PREFIX = "rain_event_"
+
+  /** Il barometro del telefono, come provider fra i provider. */
+  const val LOCAL_BAROMETER_ID = "barometro"
+
+  data class Window(val variable: String, val nowcastLabel: String, val fromHour: Int, val toHour: Int)
+
+  val windows: List<Window> = listOf(
+    Window("${PREFIX}0_1", "0-1h", 0, 1),
+    Window("${PREFIX}1_3", "1-3h", 1, 3),
+    Window("${PREFIX}3_6", "3-6h", 3, 6),
+  )
+
+  fun isRainEvent(variable: String): Boolean = variable.startsWith(PREFIX)
+
+  fun windowOf(variable: String): Window? = windows.firstOrNull { it.variable == variable }
+
+  /** Pioggia "misurabile": sotto 0,1 mm/h le analisi dicono umido, non piovoso. */
+  const val WET_MM: Double = 0.1
+}
 
 /**
  * La verifica automatica: ogni fetch semina previsioni "in attesa" a +1/+3/+6/+12/+24 ore, e
@@ -15,8 +48,8 @@ import kotlin.math.abs
  * La verita' automatica e' la MEDIANA delle analisi dei provider per quell'ora (l'ora appena
  * passata di un fetch fresco e' analisi, non previsione): robusta, senza un giudice unico che
  * possa portare acqua al suo mulino. Serve il quorum di [minTruthOpinions] opinioni — sotto,
- * meglio nessun giudizio che un giudizio di parte. Il barometro locale entrera' in classifica
- * alla pari sulla pressione nella pagina Benchmark (fase 13).
+ * meglio nessun giudizio che un giudizio di parte. Il barometro locale entra in classifica
+ * alla pari sull'evento pioggia ([RainEvent]), con [registerBarometer].
  */
 class ForecastVerifier(
   private val store: VerificationStore,
@@ -48,6 +81,44 @@ class ForecastVerifier(
     store.addPending(pending)
   }
 
+  /** L'evento pioggia dei provider sulle tre finestre: il massimo delle probabilita' orarie. */
+  suspend fun registerRainEvents(fetches: List<ProviderFetch>) {
+    val now = clock()
+    val pending = mutableListOf<PendingPrediction>()
+    for (fetch in fetches) {
+      val bundle = fetch.bundle ?: continue
+      for (window in RainEvent.windows) {
+        val probabilities = ((window.fromHour + 1)..window.toHour).mapNotNull { hour ->
+          bundle.at(now + hour * 3_600_000L)?.precipitationProbabilityPercent
+        }
+        if (probabilities.isEmpty()) continue
+        pending += PendingPrediction(
+          providerId = bundle.providerId,
+          variable = window.variable,
+          targetTimestampMillis = now + window.toHour * 3_600_000L,
+          predictedValue = (probabilities.max() / 100.0).coerceIn(0.0, 1.0),
+          issuedAtMillis = now,
+        )
+      }
+    }
+    store.addPending(pending)
+  }
+
+  /** Il verdetto del barometro, finestra per finestra, in attesa dello stesso giudizio. */
+  suspend fun registerBarometer(verdict: NowcastVerdict, nowMillis: Long = clock()) {
+    val pending = RainEvent.windows.mapNotNull { window ->
+      val probability = verdict.forWindow(window.nowcastLabel)?.probability ?: return@mapNotNull null
+      PendingPrediction(
+        providerId = RainEvent.LOCAL_BAROMETER_ID,
+        variable = window.variable,
+        targetTimestampMillis = nowMillis + window.toHour * 3_600_000L,
+        predictedValue = probability.coerceIn(0.0, 1.0),
+        issuedAtMillis = nowMillis,
+      )
+    }
+    store.addPending(pending)
+  }
+
   /** Giudica tutte le previsioni scadute usando i bundle freschi come fonte di verita'. */
   suspend fun settle(fetches: List<ProviderFetch>) {
     val now = clock()
@@ -59,7 +130,11 @@ class ForecastVerifier(
     val settled = mutableListOf<PendingPrediction>()
 
     for (prediction in due) {
-      val truth = medianTruth(bundles, prediction.variable, prediction.targetTimestampMillis)
+      val truth = if (RainEvent.isRainEvent(prediction.variable)) {
+        rainEventTruth(bundles, prediction)
+      } else {
+        medianTruth(bundles, prediction.variable, prediction.targetTimestampMillis)
+      }
       if (truth == null) {
         // Nessun quorum (offline, ora troppo vecchia per le analisi): la si lascia decadere
         // quando e' piu' vecchia dell'orizzonte delle analisi, senza inventare un giudizio.
@@ -88,6 +163,22 @@ class ForecastVerifier(
     val sorted = opinions.sorted()
     val middle = sorted.size / 2
     return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2.0
+  }
+
+  /**
+   * 1 se almeno un'ora della finestra ha pioggia misurabile nella mediana delle analisi, 0 se
+   * nessuna; null se anche una sola ora e' senza quorum — un "no" costruito su un buco sarebbe
+   * un giudizio inventato.
+   */
+  private fun rainEventTruth(bundles: List<ForecastBundle>, prediction: PendingPrediction): Double? {
+    val window = RainEvent.windowOf(prediction.variable) ?: return null
+    var wet = false
+    for (hour in (window.fromHour + 1)..window.toHour) {
+      val timestamp = prediction.issuedAtMillis + hour * 3_600_000L
+      val precipitation = medianTruth(bundles, FusionVariables.PRECIPITATION, timestamp) ?: return null
+      if (precipitation >= RainEvent.WET_MM) wet = true
+    }
+    return if (wet) 1.0 else 0.0
   }
 
   private companion object {

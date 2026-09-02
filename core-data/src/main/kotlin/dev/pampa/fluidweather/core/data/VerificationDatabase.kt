@@ -58,6 +58,9 @@ interface VerificationDao {
 
   @Query("DELETE FROM forecast_verifications WHERE verifiedAtMillis < :beforeMillis")
   suspend fun pruneOlderThan(beforeMillis: Long)
+
+  @Query("SELECT * FROM forecast_verifications WHERE verifiedAtMillis >= :sinceMillis ORDER BY verifiedAtMillis ASC")
+  suspend fun allSince(sinceMillis: Long): List<ForecastVerificationEntity>
 }
 
 /** L'implementazione Room del magazzino: la matematica dei pesi non sa che esiste. */
@@ -114,13 +117,16 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
     variable: String,
     bucket: HorizonBucket,
   ): List<ForecastVerification> =
-    dao.verificationsFor(variable, bucket.name).map {
-      ForecastVerification(
-        providerId = it.providerId,
-        variable = it.variable,
-        horizonBucket = HorizonBucket.valueOf(it.horizonBucket),
-        absoluteError = it.absoluteError,
-        verifiedAtMillis = it.verifiedAtMillis,
-      )
-    }
+    dao.verificationsFor(variable, bucket.name).map { it.toModel() }
+
+  override suspend fun allVerifications(sinceMillis: Long): List<ForecastVerification> =
+    dao.allSince(sinceMillis).map { it.toModel() }
+
+  private fun ForecastVerificationEntity.toModel() = ForecastVerification(
+    providerId = providerId,
+    variable = variable,
+    horizonBucket = HorizonBucket.valueOf(horizonBucket),
+    absoluteError = absoluteError,
+    verifiedAtMillis = verifiedAtMillis,
+  )
 }

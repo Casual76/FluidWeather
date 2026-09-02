@@ -37,6 +37,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/** Chi iscrive il verdetto del barometro alla verifica (il coordinatore della fusione). */
+fun interface BarometerRegistrar {
+  suspend fun register(verdict: NowcastVerdict, nowMillis: Long)
+}
+
 /** Chi ha chiesto il giro: ogni innesco ha il suo appetito di rete e di GPS. */
 enum class CycleTrigger { SAMPLING_PASS, SURVEILLANCE_TICK, DAILY_SUMMARY, MANUAL }
 
@@ -115,6 +120,7 @@ class BackgroundCycle(
   private val notificationSettings: NotificationSettingsStore,
   private val ledgerStore: NotificationLedgerStore,
   private val nowcastHistory: NowcastHistoryStore,
+  private val barometerRegistrar: BarometerRegistrar,
   private val officialAlerts: OfficialAlertsClient,
   private val placeContext: PlaceContextResolver,
   private val notifier: SystemNotifier,
@@ -161,6 +167,10 @@ class BackgroundCycle(
     }
     // Lo storico dei verdetti: la pagina del nowcast lo mostra, la pagella lo giudichera'.
     if (verdict != null) runCatching { nowcastHistory.record(verdict.toRecord(now)) }
+    // In classifica alla pari: il barometro si iscrive alla verifica quando si iscrivono i
+    // provider (una volta l'ora, lo decide il refresher), cosi' i conti sono confrontabili.
+    val registeredNow = snapshot?.predictionsRegisteredAtMillis?.let { abs(now - it) < 5 * 60_000L } == true
+    if (verdict != null && registeredNow) runCatching { barometerRegistrar.register(verdict, now) }
 
     // 3) Le allerte ufficiali, solo se il canale e' acceso: niente rete per niente.
     val settings = notificationSettings.current()

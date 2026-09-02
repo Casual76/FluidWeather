@@ -5,6 +5,7 @@ import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.cycle.AppVisibility
 import dev.pampa.fluidweather.core.cycle.BackgroundCycle
+import dev.pampa.fluidweather.core.cycle.BarometerRegistrar
 import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.core.cycle.DailySummaryAlarm
 import dev.pampa.fluidweather.core.cycle.InAppAlertBus
@@ -94,7 +95,7 @@ class AppGraph(context: Context) {
   val pointWeatherClient = PointWeatherClient(providerHttp)
 
   // Fusione e punteggi (fase 7): verifiche in Room, pesi in cascata, override dell'utente.
-  private val verificationStore = RoomVerificationStore(database.verificationDao())
+  val verificationStore = RoomVerificationStore(database.verificationDao())
   val fusionSettingsStore = FusionSettingsStore(context)
   val fusionCoordinator = FusionCoordinator(
     repository = weatherRepository,
@@ -152,6 +153,7 @@ class AppGraph(context: Context) {
     notificationSettings = notificationSettingsStore,
     ledgerStore = notificationLedgerStore,
     nowcastHistory = nowcastHistoryStore,
+    barometerRegistrar = BarometerRegistrar { verdict, at -> fusionCoordinator.registerBarometer(verdict, at) },
     officialAlerts = officialAlertsClient,
     placeContext = PlaceContextResolver(context),
     notifier = systemNotifier,

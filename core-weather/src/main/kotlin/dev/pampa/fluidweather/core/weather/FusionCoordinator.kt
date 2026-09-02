@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.model.FusedForecast
+import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 
 /** L'esito completo di un giro: le opinioni, il fuso, e chi ha pesato quanto. */
 data class WeatherRound(
@@ -41,7 +42,10 @@ class FusionCoordinator(
   override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
     val fetches = repository.fetchAll(latitude, longitude)
     verifier.settle(fetches)
-    if (registerPredictions) verifier.registerPending(fetches)
+    if (registerPredictions) {
+      verifier.registerPending(fetches)
+      verifier.registerRainEvents(fetches)
+    }
     val fused = fusion.fuse(
       fetches = fetches,
       latitude = latitude,
@@ -50,5 +54,10 @@ class FusionCoordinator(
       onlyProviderId = fusionSettings.currentOnlyProviderId(),
     )
     return WeatherRound(fetches, fused)
+  }
+
+  /** Il barometro del telefono in classifica alla pari sull'evento pioggia (Benchmark, fase 13). */
+  suspend fun registerBarometer(verdict: NowcastVerdict, nowMillis: Long = clock()) {
+    verifier.registerBarometer(verdict, nowMillis)
   }
 }

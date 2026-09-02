@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.pampa.fluidweather.AppGraph
 import dev.pampa.fluidweather.core.cycle.CycleTrigger
+import dev.pampa.fluidweather.feature.benchmark.BenchmarkDependencies
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeScreen
@@ -108,7 +109,14 @@ fun FluidWeatherNavHost(graph: AppGraph) {
         onOpenSettings = { navController.navigate(Routes.Settings) },
         onOpenReport = { reportOpen = true },
       )
-      BenchmarkSheet(open = benchmarkOpen, onDismiss = { benchmarkOpen = false })
+      val benchmarkDeps = remember(graph) {
+        BenchmarkDependencies(
+          verificationStore = graph.verificationStore,
+          fusionSettings = graph.fusionSettingsStore,
+          snapshotStore = graph.weatherSnapshotStore,
+        )
+      }
+      BenchmarkSheet(open = benchmarkOpen, deps = benchmarkDeps, onDismiss = { benchmarkOpen = false })
       ReportSheet(open = reportOpen, onDismiss = { reportOpen = false })
     }
     composable(Routes.Radar) {
