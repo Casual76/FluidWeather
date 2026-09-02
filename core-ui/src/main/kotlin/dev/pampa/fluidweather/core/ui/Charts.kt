@@ -35,6 +35,8 @@ object Charts {
      * cavalcano nella striscia oraria — e deve sapere dove passa davvero.
      */
     insetPx: Float? = null,
+    /** Un punto evidenziato sulla curva (oggi nell'anno, adesso nel giorno). */
+    markerIndex: Int? = null,
   ) {
     Canvas(modifier) {
       if (values.size < 2) return@Canvas
@@ -78,6 +80,11 @@ object Charts {
         )
       }
       drawPath(path, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
+      if (markerIndex != null && markerIndex in values.indices) {
+        val point = pointAt(markerIndex)
+        drawCircle(color = color, radius = 8f, center = point)
+        drawCircle(color = Color.White, radius = 4f, center = point)
+      }
     }
   }
 

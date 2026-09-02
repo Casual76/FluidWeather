@@ -24,6 +24,18 @@ data class PollenLevels(
   val any: Boolean get() = listOfNotNull(alder, birch, grass, olive, ragweed).any { it > 0 }
 }
 
+/** Un inquinante adesso: concentrazione e sotto-indice EAQI sulla SUA scala. */
+data class Pollutant(
+  val name: String,
+  val valueUgm3: Double,
+  val subIndex: Double,
+) {
+  val band: AqiBand get() = AqiBand.of(subIndex.toInt())
+}
+
+/** Un punto della previsione dell'indice. */
+data class AqiPoint(val timestampMillis: Long, val europeanAqi: Int)
+
 /** L'ora corrente della qualita' dell'aria, gia' interpretata. */
 data class AirQualityNow(
   val europeanAqi: Int,
@@ -33,4 +45,8 @@ data class AirQualityNow(
   val dominantValue: Double?,
   /** Solo Europa: fuori, il modello CAMS non serve pollini e il campo resta null. */
   val pollen: PollenLevels?,
+  /** Tutti gli inquinanti misurati, col loro sotto-indice: la pagina li elenca uno a uno. */
+  val pollutants: List<Pollutant> = emptyList(),
+  /** La previsione dell'indice, ora per ora, da adesso in avanti. */
+  val forecast: List<AqiPoint> = emptyList(),
 )

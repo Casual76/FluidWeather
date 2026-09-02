@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Geocoder
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
+import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
@@ -20,6 +21,7 @@ import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastModel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
+import dev.pampa.fluidweather.nowcast.verdict.toRecord
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -112,6 +114,7 @@ class BackgroundCycle(
   private val samplingSettings: SamplingSettingsStore,
   private val notificationSettings: NotificationSettingsStore,
   private val ledgerStore: NotificationLedgerStore,
+  private val nowcastHistory: NowcastHistoryStore,
   private val officialAlerts: OfficialAlertsClient,
   private val placeContext: PlaceContextResolver,
   private val notifier: SystemNotifier,
@@ -156,6 +159,8 @@ class BackgroundCycle(
       FeatureExtractor.extract(it, snapshot?.context?.toContext(now), normalHpa = null, nowMillis = now)
         ?.let { features -> NowcastModel.trained().verdict(features) }
     }
+    // Lo storico dei verdetti: la pagina del nowcast lo mostra, la pagella lo giudichera'.
+    if (verdict != null) runCatching { nowcastHistory.record(verdict.toRecord(now)) }
 
     // 3) Le allerte ufficiali, solo se il canale e' acceso: niente rete per niente.
     val settings = notificationSettings.current()

@@ -242,6 +242,7 @@ private fun HomeShell(
       WidgetSheetHost(
         selected = selectedWidget,
         state = state,
+        deps = deps,
         onDismiss = { selectedWidget = null },
       )
 

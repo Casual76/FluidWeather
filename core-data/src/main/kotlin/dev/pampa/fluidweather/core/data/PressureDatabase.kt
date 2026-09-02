@@ -58,8 +58,9 @@ interface PressureDao {
     PendingPredictionEntity::class,
     ForecastVerificationEntity::class,
     SavedLocationEntity::class,
+    NowcastVerdictEntity::class,
   ],
-  version = 3,
+  version = 4,
   exportSchema = false,
 )
 abstract class FluidWeatherDatabase : RoomDatabase() {
@@ -69,6 +70,8 @@ abstract class FluidWeatherDatabase : RoomDatabase() {
   abstract fun verificationDao(): VerificationDao
 
   abstract fun savedLocationsDao(): SavedLocationsDao
+
+  abstract fun nowcastHistoryDao(): NowcastHistoryDao
 
   companion object {
     fun build(context: Context): FluidWeatherDatabase =

@@ -2,12 +2,17 @@ package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.model.AirQualityNow
 import dev.pampa.fluidweather.core.model.AqiBand
+import dev.pampa.fluidweather.core.model.AqiPoint
+import dev.pampa.fluidweather.core.model.Eaqi
+import dev.pampa.fluidweather.core.model.Pollutant
 import dev.pampa.fluidweather.core.model.PollenLevels
+import kotlinx.serialization.json.JsonElement
 
 /**
  * La qualita' dell'aria da Open-Meteo (CAMS): keyless, EAQI europeo, inquinanti e — solo in
  * Europa — i pollini. Fuori dalla costellazione della fusione: e' un dato ausiliario con un
- * solo fornitore, non un'opinione da pesare.
+ * solo fornitore, non un'opinione da pesare. Con la pagina (fase 11b) porta anche gli
+ * inquinanti uno a uno, col sotto-indice sulla loro scala, e la previsione dell'indice.
  */
 class AirQualityClient(
   private val http: ProviderHttp,
@@ -15,11 +20,12 @@ class AirQualityClient(
 ) {
 
   suspend fun now(latitude: Double, longitude: Double): AirQualityNow? {
+    val (lat, lon) = WeatherPoint.round(latitude, longitude)
     val url = "https://air-quality-api.open-meteo.com/v1/air-quality" +
-      "?latitude=$latitude&longitude=$longitude" +
+      "?latitude=$lat&longitude=$lon" +
       "&current=european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide" +
-      "&hourly=alder_pollen,birch_pollen,grass_pollen,olive_pollen,ragweed_pollen" +
-      "&timeformat=unixtime&timezone=UTC&forecast_days=1"
+      "&hourly=european_aqi,alder_pollen,birch_pollen,grass_pollen,olive_pollen,ragweed_pollen" +
+      "&timeformat=unixtime&timezone=UTC&forecast_days=2"
     val root = runCatching { http.readJson(url, FORECAST_TTL_MILLIS) }.getOrNull() ?: return null
 
     val current = root["current"]
@@ -31,35 +37,39 @@ class AirQualityClient(
       "Ozono" to current["ozone"].double(),
       "NO2" to current["nitrogen_dioxide"].double(),
       "SO2" to current["sulphur_dioxide"].double(),
-    )
-    // L'inquinante dominante nell'EAQI e' quello col sotto-indice peggiore; le soglie di banda
-    // differiscono per inquinante, quindi si normalizza ciascuno sulla PROPRIA scala EAQI.
-    val dominant = pollutants
-      .mapNotNull { (name, value) -> value?.let { name to it / eaqiScale(name) } }
-      .maxByOrNull { it.second }
-
-    val pollen = pollenNow(root)
+    ).mapNotNull { (name, value) ->
+      val concentration = value ?: return@mapNotNull null
+      Eaqi.subIndex(name, concentration)?.let { Pollutant(name, concentration, it) }
+    }
+    // L'inquinante dominante nell'EAQI e' quello col sotto-indice peggiore: ogni inquinante ha
+    // le sue soglie, quindi si confrontano i sotto-indici, mai le concentrazioni.
+    val dominant = pollutants.maxByOrNull { it.subIndex }
 
     return AirQualityNow(
       europeanAqi = aqi,
       band = AqiBand.of(aqi),
-      dominantPollutant = dominant?.first,
-      dominantValue = pollutants.firstOrNull { it.first == dominant?.first }?.second,
-      pollen = pollen,
+      dominantPollutant = dominant?.name,
+      dominantValue = dominant?.valueUgm3,
+      pollen = pollenNow(root),
+      pollutants = pollutants,
+      forecast = forecast(root),
     )
   }
 
-  /** Il valore (ug/m3) che vale "100 EAQI" per ciascun inquinante: la scala ufficiale EEA. */
-  private fun eaqiScale(pollutant: String): Double = when (pollutant) {
-    "PM2.5" -> 50.0
-    "PM10" -> 100.0
-    "Ozono" -> 240.0
-    "NO2" -> 230.0
-    "SO2" -> 500.0
-    else -> 100.0
+  private fun forecast(root: JsonElement): List<AqiPoint> {
+    val hourly = root["hourly"]
+    val times = hourly["time"].asArray()
+    val values = hourly["european_aqi"].asArray()
+    val fromSeconds = clock() / 1_000 - 3_600
+    return times.indices.mapNotNull { i ->
+      val seconds = times[i].double()?.toLong() ?: return@mapNotNull null
+      if (seconds < fromSeconds) return@mapNotNull null
+      val value = values.getOrNull(i).double() ?: return@mapNotNull null
+      AqiPoint(seconds * 1_000, value.toInt())
+    }
   }
 
-  private fun pollenNow(root: kotlinx.serialization.json.JsonElement): PollenLevels? {
+  private fun pollenNow(root: JsonElement): PollenLevels? {
     val hourly = root["hourly"]
     val times = hourly["time"].asArray()
     if (times.isEmpty()) return null

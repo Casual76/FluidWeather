@@ -54,6 +54,17 @@ object SolarEphemeris {
     return Math.toDegrees(elevation)
   }
 
+  /** La longitudine eclittica vera del sole, in gradi: serve alle fasi vere della luna. */
+  fun eclipticLongitudeDegrees(timestampMillis: Long): Double {
+    val days = timestampMillis / 86_400_000.0
+    val julianCentury = (days - 10957.5) / 36525.0
+    val meanLongitude = (280.46646 + julianCentury * 36000.76983).mod(360.0)
+    val anomalyRad = Math.toRadians(357.52911 + julianCentury * 35999.05029)
+    val equationOfCenter = sin(anomalyRad) * (1.914602 - julianCentury * 0.004817) +
+      sin(2 * anomalyRad) * 0.019993 + sin(3 * anomalyRad) * 0.000289
+    return (meanLongitude + equationOfCenter).mod(360.0)
+  }
+
   /**
    * DAWN e DUSK sono il crepuscolo civile (-6..+6 gradi), separati dal lato del mezzogiorno
    * solare in cui ci si trova: la stessa elevazione all'alba e al tramonto colora due cieli

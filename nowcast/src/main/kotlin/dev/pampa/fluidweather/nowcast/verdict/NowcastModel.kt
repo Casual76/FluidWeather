@@ -1,5 +1,7 @@
 package dev.pampa.fluidweather.nowcast.verdict
 
+import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
+
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import kotlin.math.abs
 import kotlin.math.exp
@@ -129,3 +131,12 @@ class NowcastModel(
     )
   }
 }
+
+/** Il verdetto com'e' adesso, pronto per lo storico: le tre finestre e il livello. */
+fun NowcastVerdict.toRecord(timestampMillis: Long): NowcastVerdictRecord = NowcastVerdictRecord(
+  timestampMillis = timestampMillis,
+  probability01 = forWindow("0-1h")?.probability ?: 0.0,
+  probability13 = forWindow("1-3h")?.probability ?: 0.0,
+  probability36 = forWindow("3-6h")?.probability ?: 0.0,
+  level = level.name,
+)

@@ -13,6 +13,7 @@ import dev.pampa.fluidweather.core.cycle.SystemNotifier
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
+import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
@@ -65,6 +66,7 @@ class AppGraph(context: Context) {
   private val database = FluidWeatherDatabase.build(context)
 
   val pressureRepository = PressureRepository(database.pressureDao())
+  val nowcastHistoryStore = NowcastHistoryStore(database.nowcastHistoryDao())
   val samplingSettingsStore = SamplingSettingsStore(context)
   val latestActivityStore = LatestActivityStore(context)
 
@@ -143,6 +145,7 @@ class AppGraph(context: Context) {
     samplingSettings = samplingSettingsStore,
     notificationSettings = notificationSettingsStore,
     ledgerStore = notificationLedgerStore,
+    nowcastHistory = nowcastHistoryStore,
     officialAlerts = officialAlertsClient,
     placeContext = PlaceContextResolver(context),
     notifier = systemNotifier,

@@ -87,6 +87,7 @@ fun FluidWeatherNavHost(graph: AppGraph) {
           samplingSettings = graph.samplingSettingsStore,
           locationProvider = graph.locationProvider,
           pressureRepository = graph.pressureRepository,
+          nowcastHistory = graph.nowcastHistoryStore,
           cleaningPipeline = graph.cleaningPipeline,
           airQualityClient = graph.airQualityClient,
           appearanceStore = graph.appearanceSettingsStore,

@@ -75,37 +75,100 @@ object Moon {
  */
 object SunTimes {
 
-  private const val HORIZON_DEGREES = -0.833
+  /** Il bordo superiore del sole, rifrazione inclusa: e' l'alba e il tramonto "visti". */
+  const val HORIZON_DEGREES = -0.833
 
   data class Times(val sunriseMillis: Long?, val sunsetMillis: Long?)
 
-  fun forDay(dayStartUtcMillis: Long, latitude: Double, longitude: Double): Times {
+  /**
+   * Gli attraversamenti di [horizonDegrees] nel giorno: con la soglia di default sono alba e
+   * tramonto, con quelle di [Twilight] l'inizio e la fine dei crepuscoli.
+   */
+  fun forDay(
+    dayStartUtcMillis: Long,
+    latitude: Double,
+    longitude: Double,
+    horizonDegrees: Double = HORIZON_DEGREES,
+  ): Times {
     var sunrise: Long? = null
     var sunset: Long? = null
     var previous = SolarEphemeris.elevationDegrees(dayStartUtcMillis, latitude, longitude)
     for (minute in 10..1440 step 10) {
       val t = dayStartUtcMillis + minute * 60_000L
       val elevation = SolarEphemeris.elevationDegrees(t, latitude, longitude)
-      if (previous < HORIZON_DEGREES && elevation >= HORIZON_DEGREES && sunrise == null) {
-        sunrise = refine(t - 10 * 60_000L, t, latitude, longitude, rising = true)
+      if (previous < horizonDegrees && elevation >= horizonDegrees && sunrise == null) {
+        sunrise = refine(t - 10 * 60_000L, t, latitude, longitude, horizonDegrees, rising = true)
       }
-      if (previous >= HORIZON_DEGREES && elevation < HORIZON_DEGREES) {
-        sunset = refine(t - 10 * 60_000L, t, latitude, longitude, rising = false)
+      if (previous >= horizonDegrees && elevation < horizonDegrees) {
+        sunset = refine(t - 10 * 60_000L, t, latitude, longitude, horizonDegrees, rising = false)
       }
       previous = elevation
     }
     return Times(sunrise, sunset)
   }
 
-  private fun refine(fromMillis: Long, toMillis: Long, latitude: Double, longitude: Double, rising: Boolean): Long {
+  /** Il mezzogiorno solare: l'istante di massima elevazione nel giorno, e quanto e' alto. */
+  fun solarNoon(dayStartUtcMillis: Long, latitude: Double, longitude: Double): Pair<Long, Double> {
+    var bestMillis = dayStartUtcMillis
+    var bestElevation = -90.0
+    for (minute in 0 until 1440) {
+      val t = dayStartUtcMillis + minute * 60_000L
+      val elevation = SolarEphemeris.elevationDegrees(t, latitude, longitude)
+      if (elevation > bestElevation) {
+        bestElevation = elevation
+        bestMillis = t
+      }
+    }
+    return bestMillis to bestElevation
+  }
+
+  private fun refine(
+    fromMillis: Long,
+    toMillis: Long,
+    latitude: Double,
+    longitude: Double,
+    horizonDegrees: Double,
+    rising: Boolean,
+  ): Long {
     var low = fromMillis
     var high = toMillis
     repeat(12) {
       val mid = (low + high) / 2
-      val above = SolarEphemeris.elevationDegrees(mid, latitude, longitude) >= HORIZON_DEGREES
+      val above = SolarEphemeris.elevationDegrees(mid, latitude, longitude) >= horizonDegrees
       if (above == rising) high = mid else low = mid
     }
     return (low + high) / 2
+  }
+}
+
+/** Le tre soglie dei crepuscoli: sotto -6 l'occhio dice notte, sotto -18 anche il cielo. */
+object Twilight {
+  const val CIVIL = -6.0
+  const val NAUTICAL = -12.0
+  const val ASTRONOMICAL = -18.0
+}
+
+/**
+ * La durata del giorno lungo un anno intero, per una latitudine: la curva della pagina del
+ * sole, con i suoi due estremi (solstizi) e i due punti in cui vale dodici ore (equinozi).
+ */
+object SunCalendar {
+
+  data class DayLength(val date: java.time.LocalDate, val lengthMillis: Long?)
+
+  fun year(year: Int, latitude: Double, longitude: Double): List<DayLength> {
+    val first = java.time.LocalDate.of(year, 1, 1)
+    return (0 until first.lengthOfYear()).map { offset ->
+      val date = first.plusDays(offset.toLong())
+      val dayStart = date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+      val times = SunTimes.forDay(dayStart, latitude, longitude)
+      val length = if (times.sunriseMillis != null && times.sunsetMillis != null) {
+        (times.sunsetMillis - times.sunriseMillis).takeIf { it > 0 }
+      } else {
+        null
+      }
+      DayLength(date, length)
+    }
   }
 }
 

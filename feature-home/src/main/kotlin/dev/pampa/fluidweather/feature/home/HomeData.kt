@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
+import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
@@ -19,6 +20,7 @@ import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.FusedForecast
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
 import dev.pampa.fluidweather.core.model.SolarEphemeris
 import dev.pampa.fluidweather.core.model.SunTimes
 import dev.pampa.fluidweather.core.model.WeatherKind
@@ -35,6 +37,7 @@ import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.verdict.NowcastModel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
+import dev.pampa.fluidweather.nowcast.verdict.toRecord
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -51,6 +54,7 @@ class HomeDependencies(
   val samplingSettings: SamplingSettingsStore,
   val locationProvider: LocationProvider,
   val pressureRepository: PressureRepository,
+  val nowcastHistory: NowcastHistoryStore,
   val cleaningPipeline: CleaningPipeline,
   val airQualityClient: AirQualityClient,
   val appearanceStore: AppearanceSettingsStore,
@@ -84,6 +88,10 @@ data class HomeUiState(
   /** L'ultima lettura grezza del sensore, senza correzioni: il compatto della Pressione. */
   val latestRawPressureHpa: Double? = null,
   val sunTimesToday: SunTimes.Times? = null,
+  /** La pioggia OSSERVATA nelle ore passate (analisi dell'opinione piu' completa): la verita' dello storico. */
+  val observedPrecipitation: List<Pair<Long, Double>> = emptyList(),
+  /** I verdetti delle ultime 24 ore, dallo storico: la pagina del nowcast li disegna. */
+  val verdictHistory: List<NowcastVerdictRecord> = emptyList(),
   val dayLengthTodayMillis: Long? = null,
   val dayLengthYesterdayMillis: Long? = null,
 )
@@ -160,11 +168,14 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
         ?.let { features -> NowcastModel.trained().verdict(features) }
     }
     val latestRaw = samples.maxByOrNull { it.timestampMillis }?.pressureHpa
+    if (verdict != null) runCatching { deps.nowcastHistory.record(verdict.toRecord(now)) }
+    val history = runCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
 
     value = value.copy(
       verdict = verdict,
       cleaning = cleaning,
       latestRawPressureHpa = latestRaw,
+      verdictHistory = history,
       loading = false,
     )
 
@@ -208,6 +219,10 @@ private fun HomeUiState.applySnapshot(
     cloudCover = nowValues?.get(FusionVariables.CLOUD_COVER),
     providersResponding = snapshot.providersResponding,
     fusedHours = fused.hours,
+    observedPrecipitation = snapshot.context?.hourly
+      ?.filter { it.timestampMillis <= nowMillis }
+      ?.mapNotNull { point -> point.precipitationMm?.let { point.timestampMillis to it } }
+      ?: observedPrecipitation,
   )
 }
 
