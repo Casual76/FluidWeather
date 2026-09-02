@@ -65,6 +65,16 @@ import androidx.compose.ui.zIndex
 import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.antigravity.fluidengine.foundation.ThemeMode
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassButton
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollableDefaults
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onSizeChanged
+import dev.antigravity.fluidengine.ui.fluid.FluidGlassModalHost
+import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
+import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassModalHostState
+import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
+import dev.antigravity.fluidengine.ui.fluid.rememberFluidGlassModalHostState
+import dev.pampa.fluidweather.core.ui.HeaderCollapse
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidCanvasBackdrop
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassQuality
 import dev.antigravity.fluidengine.ui.fluid.glassBackdropSource
@@ -159,13 +169,35 @@ private fun HomeShell(
   val gridState = rememberLazyGridState()
   val scope = rememberCoroutineScope()
 
+  // La testata ha due case e nessun indirizzo in mezzo: il fling finisce sempre il viaggio.
+  val collapse = remember { HeaderCollapseState() }
+  val reducedMotion = LocalFluidMotionPolicy.current.reducedMotion
+  val platformFling = ScrollableDefaults.flingBehavior()
+  val snapFling = remember(platformFling, reducedMotion, gridState, collapse) {
+    HeaderSnapFlingBehavior(
+      delegate = platformFling,
+      animated = !reducedMotion,
+      snapDeltaPx = {
+        HeaderCollapse.snapDelta(
+          firstVisibleIndex = gridState.firstVisibleItemIndex,
+          scrolledPx = gridState.firstVisibleItemScrollOffset.toFloat(),
+          travelPx = collapse.travelPx,
+        )
+      },
+    )
+  }
+
   // L'ordine: quello salvato, con le modifiche in corso sopra; si persiste al rilascio.
   val storedOrder by deps.layoutStore.order.collectAsState(initial = emptyList())
   var liveOrder by remember { mutableStateOf<List<String>?>(null) }
   val order = liveOrder ?: HomeWidget.ordered(storedOrder).map { it.id }
   val drag = remember(gridState) { GridDragController(gridState) }
   var selectedWidget by remember { mutableStateOf<HomeWidget?>(null) }
-  var locationSheetOpen by remember { mutableStateOf(false) }
+
+  // La pillola e il suo pannello: il pannello nasce dal rettangolo della pillola.
+  var locationOpen by remember { mutableStateOf(false) }
+  var pillBounds by remember { mutableStateOf<Rect?>(null) }
+  val modalHost = rememberFluidGlassModalHostState()
 
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
@@ -179,10 +211,13 @@ private fun HomeShell(
     CompositionLocalProvider(
       LocalFluidCanvasBackdrop provides canvasBackdrop.takeIf { glassLevel != GlassLevel.OFF },
       LocalFluidGlassQuality provides glassQuality,
+      LocalFluidGlassModalHostState provides modalHost,
     ) {
       HomeGrid(
         state = state,
         gridState = gridState,
+        collapse = collapse,
+        flingBehavior = snapFling,
         order = order,
         drag = drag,
         onMove = { dragged, target -> liveOrder = GridReorder.moved(order, dragged, target) },
@@ -198,6 +233,9 @@ private fun HomeShell(
       CompactHeader(
         state = state,
         gridState = gridState,
+        collapse = collapse,
+        backdrop = chromeBackdrop,
+        onTap = { scope.launch { gridState.animateScrollToItem(0) } },
         modifier = Modifier.align(Alignment.TopCenter),
       )
 
@@ -207,13 +245,41 @@ private fun HomeShell(
         onDismiss = { selectedWidget = null },
       )
 
-      LocationSheetHost(
-        open = locationSheetOpen,
+      val morphMenu = rememberFluidMorphMenuState()
+      HomeFloatingBar(
+        locationName = if (selectedPlace.isGps) state.locationName else selectedPlace.name,
+        backdrop = chromeBackdrop,
+        menuState = morphMenu,
+        locationExpanded = locationOpen,
+        onLocationBounds = { pillBounds = it },
+        onOpenRadar = onOpenRadar,
+        onOpenBenchmark = onOpenBenchmark,
+        onOpenSettings = onOpenSettings,
+        onOpenReport = onOpenReport,
+        onLocationTap = { locationOpen = true },
+        onLocationSwipe = { forward ->
+          val target = if (forward) {
+            PlaceCycle.next(places, selectedPlace.id)
+          } else {
+            PlaceCycle.previous(places, selectedPlace.id)
+          }
+          if (target != null) deps.selectedPlaceStore.select(target.id)
+        },
+        modifier = Modifier
+          .align(Alignment.BottomCenter)
+          .navigationBarsPadding()
+          .padding(bottom = 10.dp),
+      )
+      FluidMorphMenuHost(state = morphMenu, backdrop = chromeBackdrop)
+
+      LocationPane(
+        open = locationOpen,
+        origin = { pillBounds },
         places = places,
         selectedId = selectedPlace.id,
         deps = deps,
-        onDismiss = { locationSheetOpen = false },
-        onSelect = { place -> scope.launch { deps.selectedPlaceStore.select(place.id) } },
+        onDismiss = { locationOpen = false },
+        onSelect = { place -> deps.selectedPlaceStore.select(place.id) },
         onSaveAndSelect = { place ->
           scope.launch {
             deps.savedLocations.save(place)
@@ -227,31 +293,8 @@ private fun HomeShell(
           }
         },
       )
-
-      val morphMenu = rememberFluidMorphMenuState()
-      HomeFloatingBar(
-        locationName = if (selectedPlace.isGps) state.locationName else selectedPlace.name,
-        backdrop = chromeBackdrop,
-        menuState = morphMenu,
-        onOpenRadar = onOpenRadar,
-        onOpenBenchmark = onOpenBenchmark,
-        onOpenSettings = onOpenSettings,
-        onOpenReport = onOpenReport,
-        onLocationTap = { locationSheetOpen = true },
-        onLocationSwipe = { forward ->
-          val target = if (forward) {
-            PlaceCycle.next(places, selectedPlace.id)
-          } else {
-            PlaceCycle.previous(places, selectedPlace.id)
-          }
-          if (target != null) scope.launch { deps.selectedPlaceStore.select(target.id) }
-        },
-        modifier = Modifier
-          .align(Alignment.BottomCenter)
-          .navigationBarsPadding()
-          .padding(bottom = 10.dp),
-      )
-      FluidMorphMenuHost(state = morphMenu, backdrop = chromeBackdrop)
+      // Ultimo nella scatola: il pannello di vetro sta sopra la barra e sopra il menu'.
+      FluidGlassModalHost(state = modalHost, backdrop = chromeBackdrop)
     }
   }
 }
@@ -265,6 +308,8 @@ private const val ALERT_KEY = "alert"
 private fun HomeGrid(
   state: HomeUiState,
   gridState: LazyGridState,
+  collapse: HeaderCollapseState,
+  flingBehavior: FlingBehavior,
   order: List<String>,
   drag: GridDragController,
   onMove: (String, String) -> Unit,
@@ -275,6 +320,7 @@ private fun HomeGrid(
   LazyVerticalGrid(
     columns = GridCells.Fixed(2),
     state = gridState,
+    flingBehavior = flingBehavior,
     modifier = modifier.pointerInput(Unit) {
       detectDragGesturesAfterLongPress(
         onDragStart = { offset -> drag.start(offset) },
@@ -298,7 +344,7 @@ private fun HomeGrid(
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     item(key = HEADER_KEY, span = { GridItemSpan(2) }) {
-      HomeHeader(state = state, gridState = gridState)
+      HomeHeader(state = state, gridState = gridState, collapse = collapse)
     }
 
     val verdict = state.verdict
@@ -369,11 +415,8 @@ private fun widgetIcon(widget: HomeWidget) = when (widget) {
 
 // ------------------------------------------------------------------------------------ testata
 
-/** Oltre questo scorrimento (px circa) la testata e' considerata collassata. */
-private const val COLLAPSE_RANGE_PX = 420f
-
 @Composable
-private fun HomeHeader(state: HomeUiState, gridState: LazyGridState) {
+private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: HeaderCollapseState) {
   val shadow = Shadow(color = Color.Black.copy(alpha = 0.35f), blurRadius = 14f)
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
@@ -381,15 +424,14 @@ private fun HomeHeader(state: HomeUiState, gridState: LazyGridState) {
       .fillMaxWidth()
       .statusBarsPadding()
       .padding(top = 34.dp, bottom = 18.dp)
+      // La testata misura da sola il proprio viaggio: e' la sua altezza.
+      .onSizeChanged { collapse.travelPx = it.height.toFloat() }
       .graphicsLayer {
         // Parallasse: la testata scorre a meta' velocita' della pagina e sfuma prima di
         // toccare la barra compatta. Legge lo stato QUI, cosi' invalida solo il disegno.
-        val offset = if (gridState.firstVisibleItemIndex > 0) {
-          COLLAPSE_RANGE_PX
-        } else {
-          gridState.firstVisibleItemScrollOffset.toFloat()
-        }
-        val progress = (offset / COLLAPSE_RANGE_PX).coerceIn(0f, 1f)
+        val travel = collapse.travelPx
+        val offset = minOf(collapse.scrolledPx(gridState), travel)
+        val progress = HeaderCollapse.progress(offset, travel)
         translationY = offset * 0.45f
         alpha = 1f - progress * 1.15f
       },
@@ -423,18 +465,22 @@ private fun HomeHeader(state: HomeUiState, gridState: LazyGridState) {
   }
 }
 
-/** La pillola compatta che prende il posto della testata quando questa se n'e' andata. */
+/**
+ * La pillola compatta che prende il posto della testata quando questa se n'e' andata. Vetro
+ * vero, dello stesso backdrop della barra in basso: la prima versione non riceveva nessun
+ * backdrop e sul telefono era solo trasparente (2026-09-02). Un tocco riporta in cima.
+ */
 @Composable
 private fun CompactHeader(
   state: HomeUiState,
   gridState: LazyGridState,
+  collapse: HeaderCollapseState,
+  backdrop: GlassBackdropState,
+  onTap: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  val collapsed by remember {
-    derivedStateOf {
-      gridState.firstVisibleItemIndex > 0 ||
-        gridState.firstVisibleItemScrollOffset > COLLAPSE_RANGE_PX * 0.8f
-    }
+  val collapsed by remember(gridState, collapse) {
+    derivedStateOf { HeaderCollapse.compactVisible(collapse.progress(gridState)) }
   }
   Box(modifier = modifier.statusBarsPadding().padding(top = 6.dp)) {
     AnimatedVisibility(
@@ -447,7 +493,8 @@ private fun CompactHeader(
           append(state.locationName ?: "La mia posizione")
           state.temperatureC?.let { append("  ·  ${it.toInt()}°") }
         },
-        onClick = {},
+        onClick = onTap,
+        backdrop = backdrop,
       )
     }
   }

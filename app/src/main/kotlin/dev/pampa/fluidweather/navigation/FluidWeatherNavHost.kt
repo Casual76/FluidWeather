@@ -4,28 +4,33 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.pampa.fluidweather.AppGraph
-import dev.pampa.fluidweather.feature.benchmark.BenchmarkScreen
+import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeScreen
 import dev.pampa.fluidweather.feature.radar.RadarScreen
-import dev.pampa.fluidweather.feature.report.ReportScreen
+import dev.pampa.fluidweather.feature.report.ReportSheet
 import dev.pampa.fluidweather.feature.settings.DiagnosticsDependencies
 import dev.pampa.fluidweather.feature.settings.DiagnosticsScreen
 import dev.pampa.fluidweather.feature.settings.SettingsScreen
 
+/**
+ * Le rotte laterali. Benchmark e Segnalazione NON sono rotte: sono fogli neri che salgono dal
+ * basso sopra la home (decisione del 2026-09-02), quindi vivono come stato della home.
+ */
 private object Routes {
   const val Home = "home"
   const val Radar = "radar"
-  const val Benchmark = "benchmark"
   const val Settings = "settings"
   const val Diagnostics = "settings/diagnostics"
-  const val Report = "report"
 }
 
 /**
@@ -86,16 +91,19 @@ fun FluidWeatherNavHost(graph: AppGraph) {
           onWeatherAccent = { graph.weatherAccent.value = it },
         )
       }
+      var benchmarkOpen by remember { mutableStateOf(false) }
+      var reportOpen by remember { mutableStateOf(false) }
       HomeScreen(
         deps = homeDeps,
         onOpenRadar = { navController.navigate(Routes.Radar) },
-        onOpenBenchmark = { navController.navigate(Routes.Benchmark) },
+        onOpenBenchmark = { benchmarkOpen = true },
         onOpenSettings = { navController.navigate(Routes.Settings) },
-        onOpenReport = { navController.navigate(Routes.Report) },
+        onOpenReport = { reportOpen = true },
       )
+      BenchmarkSheet(open = benchmarkOpen, onDismiss = { benchmarkOpen = false })
+      ReportSheet(open = reportOpen, onDismiss = { reportOpen = false })
     }
     composable(Routes.Radar) { RadarScreen(onBack = { navController.popBackStack() }) }
-    composable(Routes.Benchmark) { BenchmarkScreen(onBack = { navController.popBackStack() }) }
     composable(Routes.Settings) {
       SettingsScreen(
         onBack = { navController.popBackStack() },
@@ -118,6 +126,5 @@ fun FluidWeatherNavHost(graph: AppGraph) {
       }
       DiagnosticsScreen(deps = deps, onBack = { navController.popBackStack() })
     }
-    composable(Routes.Report) { ReportScreen(onBack = { navController.popBackStack() }) }
   }
 }

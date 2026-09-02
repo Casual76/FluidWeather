@@ -14,3 +14,10 @@ fun PlaceholderRow(phase: Int, subtitle: String) {
     subtitle = subtitle,
   )
 }
+
+/** Lo stesso segnaposto, dentro un foglio nero (Benchmark e Segnalazione ci vivono). */
+@Composable
+fun PlaceholderNote(phase: Int, subtitle: String) {
+  BlackSheetSectionTitle("In costruzione — fase $phase")
+  BlackSheetNote(subtitle)
+}

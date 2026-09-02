@@ -105,6 +105,6 @@ class AppGraph(context: Context) {
 
   // Localita' (fase 10): salvate su Room, selezione persistita, ricerca keyless.
   val savedLocationsRepository = SavedLocationsRepository(database.savedLocationsDao())
-  val selectedPlaceStore = SelectedPlaceStore(context)
+  val selectedPlaceStore = SelectedPlaceStore()
   val geocodingClient = GeocodingClient(providerHttp)
 }

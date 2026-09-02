@@ -29,6 +29,12 @@ object Charts {
     color: Color,
     fill: Boolean = true,
     strokeWidth: Float = 5f,
+    /**
+     * Margine verticale esatto, in px, sopra e sotto la curva. Null = respiro proporzionale
+     * (8% per lato). Il valore esatto serve a chi allinea altro alla curva — i gradi che la
+     * cavalcano nella striscia oraria — e deve sapere dove passa davvero.
+     */
+    insetPx: Float? = null,
   ) {
     Canvas(modifier) {
       if (values.size < 2) return@Canvas
@@ -37,8 +43,8 @@ object Charts {
       val span = (max - min).takeIf { it > 1e-9 } ?: 1.0
       val stepX = size.width / (values.size - 1)
       // Margine verticale: la curva respira invece di toccare i bordi.
-      val chartHeight = size.height * 0.84f
-      val topPad = size.height * 0.08f
+      val topPad = insetPx ?: size.height * 0.08f
+      val chartHeight = if (insetPx != null) size.height - 2f * insetPx else size.height * 0.84f
       fun pointAt(index: Int): Offset {
         val normalized = ((values[index] - min) / span).toFloat()
         return Offset(index * stepX, topPad + (1f - normalized) * chartHeight)
@@ -155,8 +161,22 @@ object Charts {
   ) {
     Canvas(modifier) {
       val stroke = Stroke(width = 4f, cap = StrokeCap.Round)
-      val radius = size.width / 2.3f
-      val center = Offset(size.width / 2f, size.height * 0.95f)
+      // La geometria si ricava da ENTRAMBE le dimensioni: il raggio piu' grande che sta nella
+      // tessera, con l'alone del sole dentro. Ricavarlo dalla sola larghezza faceva uscire la
+      // cupola dal bordo alto (visto sul telefono, 2026-09-02).
+      val glowRadius = 26f
+      val inset = glowRadius + 2f
+      val baseline = size.height - inset * 0.5f
+      val radius = minOf(size.width / 2f - inset, baseline - inset)
+      if (radius <= 0f) return@Canvas
+      val center = Offset(size.width / 2f, baseline)
+      // L'orizzonte: la linea da cui il sole nasce e in cui torna.
+      drawLine(
+        color = arcColor.copy(alpha = 0.16f),
+        start = Offset(0f, baseline),
+        end = Offset(size.width, baseline),
+        strokeWidth = 2f,
+      )
       val path = Path()
       var first = true
       var degrees = 180f
@@ -180,9 +200,9 @@ object Charts {
           brush = Brush.radialGradient(
             listOf(sunColor, sunColor.copy(alpha = 0f)),
             center = sun,
-            radius = 26f,
+            radius = glowRadius,
           ),
-          radius = 26f,
+          radius = glowRadius,
           center = sun,
         )
         drawCircle(color = sunColor, radius = 9f, center = sun)

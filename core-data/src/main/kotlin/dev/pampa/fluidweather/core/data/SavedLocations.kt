@@ -7,11 +7,11 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.longPreferencesKey
 import dev.pampa.fluidweather.core.model.Place
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 
 /** Una localita' salvata: l'id e' quello del geocoder, cosi' i doppioni non esistono. */
@@ -71,20 +71,21 @@ class SavedLocationsRepository(private val dao: SavedLocationsDao) {
     Place(id = id, name = name, region = region, latitude = latitude, longitude = longitude)
 }
 
-/** Quale posto sta mostrando la home. GPS di default; sopravvive al riavvio. */
-class SelectedPlaceStore(private val context: Context) {
+/**
+ * Quale posto sta mostrando la home. Di SESSIONE, non persistito: all'apertura dell'app si
+ * riparte sempre dalla posizione attuale, e la scelta vive finche' vive il processo. Era su
+ * DataStore, e riaprire l'app su una citta' salvata invece che su dov'era il telefono e' stata
+ * la prima cosa notata sul device (2026-09-02).
+ */
+class SelectedPlaceStore {
 
-  val selectedId: Flow<Long> = context.fluidWeatherStore.data.map { preferences ->
-    preferences[Key] ?: Place.GPS_ID
-  }
+  private val state = MutableStateFlow(Place.GPS_ID)
 
-  suspend fun current(): Long = selectedId.first()
+  val selectedId: StateFlow<Long> = state.asStateFlow()
 
-  suspend fun select(placeId: Long) {
-    context.fluidWeatherStore.edit { it[Key] = placeId }
-  }
+  fun current(): Long = state.value
 
-  private companion object {
-    val Key = longPreferencesKey("selected_place_id")
+  fun select(placeId: Long) {
+    state.value = placeId
   }
 }

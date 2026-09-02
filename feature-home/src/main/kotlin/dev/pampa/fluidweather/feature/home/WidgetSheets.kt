@@ -6,31 +6,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
-import dev.antigravity.fluidengine.ui.fluid.FluidRadius
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.Moon
+import dev.pampa.fluidweather.core.ui.BlackSheet
 import dev.pampa.fluidweather.core.ui.Charts
 import dev.pampa.fluidweather.core.ui.HomeWidget
 import java.time.Instant
@@ -40,11 +29,10 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * Lo sheet NERO del piano: sale dal basso, si chiude con la X o trascinando giu'. Nero vero,
- * non surface scura: sopra il cielo della home il dettaglio e' una stanza buia, come nella
- * reference. Ogni widget ci porta il suo capitolo; le parti future dicono la loro fase.
+ * Il foglio NERO del piano ([BlackSheet]): sale dal basso, prende tutta la pagina, si chiude
+ * con la X o trascinando giu'. Ogni widget ci porta il suo capitolo; le parti future dicono la
+ * loro fase — il contenuto ricco a tutta pagina e' la fase 11b.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WidgetSheetHost(
   selected: HomeWidget?,
@@ -52,50 +40,17 @@ internal fun WidgetSheetHost(
   onDismiss: () -> Unit,
 ) {
   if (selected == null) return
-  val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-  ModalBottomSheet(
-    onDismissRequest = onDismiss,
-    sheetState = sheetState,
-    containerColor = Color(0xFF0B0B0E),
-    contentColor = Color.White,
-    shape = ContinuousCornerShape(topStart = FluidRadius.Sheet, topEnd = FluidRadius.Sheet),
-  ) {
-    Column(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 20.dp)
-        .navigationBarsPadding()
-        .verticalScroll(rememberScrollState()),
-    ) {
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
-      ) {
-        Text(
-          text = selected.title,
-          style = MaterialTheme.typography.headlineSmall,
-          fontWeight = FontWeight.SemiBold,
-          modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onDismiss) {
-          Icon(Icons.Rounded.Close, contentDescription = "Chiudi", tint = Color.White)
-        }
-      }
-      Spacer(Modifier.height(8.dp))
-
-      when (selected) {
-        HomeWidget.NOWCAST -> NowcastSheet(state)
-        HomeWidget.HOURLY -> HourlySheet(state)
-        HomeWidget.DAILY -> SheetNote("Il giorno per giorno esteso arriva con la rifinitura della fase 9-17; intanto la tessera mostra i 10 giorni fusi.")
-        HomeWidget.PRECIPITATION -> PrecipitationSheet(state)
-        HomeWidget.PRESSURE -> PressureSheet(state)
-        HomeWidget.AIR_QUALITY -> AirQualitySheet(state)
-        HomeWidget.SUN -> SheetNote("Crepuscoli e calendario solare arrivano con la fase 17; alba, tramonto e durata sono sulla tessera.")
-        HomeWidget.MOON -> MoonSheet(state)
-        HomeWidget.DETAILS -> SheetNote("Ogni misura estesa con la sua spiegazione arriva con la rifinitura; i valori del momento sono sulla tessera.")
-      }
-      Spacer(Modifier.height(28.dp))
+  BlackSheet(title = selected.title, onDismiss = onDismiss) {
+    when (selected) {
+      HomeWidget.NOWCAST -> NowcastSheet(state)
+      HomeWidget.HOURLY -> HourlySheet(state)
+      HomeWidget.DAILY -> SheetNote("Il giorno per giorno esteso arriva con la fase 11b; intanto la tessera mostra i 10 giorni fusi.")
+      HomeWidget.PRECIPITATION -> PrecipitationSheet(state)
+      HomeWidget.PRESSURE -> PressureSheet(state)
+      HomeWidget.AIR_QUALITY -> AirQualitySheet(state)
+      HomeWidget.SUN -> SheetNote("Crepuscoli e calendario solare arrivano con la fase 11b; alba, tramonto e durata sono sulla tessera.")
+      HomeWidget.MOON -> MoonSheet(state)
+      HomeWidget.DETAILS -> SheetNote("Ogni misura estesa con la sua spiegazione arriva con la fase 11b; i valori del momento sono sulla tessera.")
     }
   }
 }

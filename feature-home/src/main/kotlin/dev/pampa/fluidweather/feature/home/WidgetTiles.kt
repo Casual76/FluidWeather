@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AcUnit
@@ -50,6 +49,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * Il contenuto vero di ogni tessera. Icone: set Material come segnaposto DICHIARATO — le
@@ -129,63 +133,120 @@ private fun NowcastTile(state: HomeUiState) {
 
 private val HourFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH")
 
+/** Larghezza di una colonna della striscia: ora, icona, gradi e pioggia stanno in 54 dp. */
+private val HourColumnWidth = 54.dp
+
+/** Quanto la curva della temperatura puo' salire e scendere fra il minimo e il massimo. */
+private val HourCurveHeight = 34.dp
+
+/** L'altezza della riga dei gradi che cavalcano la curva: il centro del testo e' sulla linea. */
+private val HourTempTextHeight = 22.dp
+
+/**
+ * La striscia oraria: UNO scorrimento solo, con la curva della temperatura dentro — i gradi
+ * di ogni ora sono appoggiati sulla curva, cosi' la curva dice da sola cos'e' e scorre con le
+ * ore. La prima versione la disegnava fissa sotto la striscia, e sul telefono non si capiva
+ * cosa fosse ne' perche' non si muovesse (2026-09-02).
+ */
 @Composable
 private fun HourlyTile(state: HomeUiState) {
   val now = System.currentTimeMillis()
-  val hours = state.fusedHours.filter { it.timestampMillis >= now - 30 * 60_000L }.take(24)
+  val hours = state.fusedHours
+    .filter {
+      it.timestampMillis >= now - 30 * 60_000L && it.values[FusionVariables.TEMPERATURE] != null
+    }
+    .take(24)
   if (hours.isEmpty()) {
     EmptyTileBody("In attesa dei provider…")
     return
   }
   val zone = ZoneId.systemDefault()
+  val temps = hours.map { it.values.getValue(FusionVariables.TEMPERATURE).value }
+  val min = temps.min()
+  val max = temps.max()
+  val span = (max - min).takeIf { it > 1e-9 } ?: 1.0
+  val sunrise = state.sunTimesToday?.sunriseMillis
+  val sunset = state.sunTimesToday?.sunsetMillis
+  val onSurface = MaterialTheme.colorScheme.onSurface
+  val textShadow = Shadow(color = Color.Black.copy(alpha = 0.55f), blurRadius = 6f)
+  val insetPx = with(LocalDensity.current) { HourTempTextHeight.toPx() / 2f }
 
-  LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-    items(hours, key = { it.timestampMillis }) { hour ->
-      val sunrise = state.sunTimesToday?.sunriseMillis
-      val sunset = state.sunTimesToday?.sunsetMillis
-      Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-          text = HourFormatter.format(Instant.ofEpochMilli(hour.timestampMillis).atZone(zone)),
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-        )
-        Spacer(Modifier.height(4.dp))
-        val isSunEdge = listOfNotNull(sunrise, sunset).any { abs(it - hour.timestampMillis) < 30 * 60_000L }
-        if (isSunEdge) {
-          Icon(
-            imageVector = Icons.Rounded.WbTwilight,
-            contentDescription = null,
-            tint = Color(0xFFF0A860),
-            modifier = Modifier.size(20.dp),
+  Column(Modifier.horizontalScroll(rememberScrollState())) {
+    // Riga 1: l'ora e l'icona (alba e tramonto prendono il posto dell'icona nella loro ora).
+    Row {
+      hours.forEach { hour ->
+        Column(Modifier.width(HourColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+          Text(
+            text = HourFormatter.format(Instant.ofEpochMilli(hour.timestampMillis).atZone(zone)),
+            style = MaterialTheme.typography.labelSmall,
+            color = onSurface.copy(alpha = 0.6f),
           )
-        } else {
-          WeatherKindIcon(hour.kind, size = 20.dp)
+          Spacer(Modifier.height(4.dp))
+          val isSunEdge = listOfNotNull(sunrise, sunset)
+            .any { abs(it - hour.timestampMillis) < 30 * 60_000L }
+          if (isSunEdge) {
+            Icon(
+              imageVector = Icons.Rounded.WbTwilight,
+              contentDescription = null,
+              tint = Color(0xFFF0A860),
+              modifier = Modifier.size(20.dp),
+            )
+          } else {
+            WeatherKindIcon(hour.kind, size = 20.dp)
+          }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-          text = hour.values[FusionVariables.TEMPERATURE]?.value?.let { "${it.toInt()}°" } ?: "—",
-          style = MaterialTheme.typography.titleSmall,
-          color = MaterialTheme.colorScheme.onSurface,
-        )
-        val pop = hour.values[FusionVariables.PRECIP_PROBABILITY]?.value
-        Text(
-          text = if (pop != null && pop >= 5) "${pop.toInt()}%" else " ",
-          style = MaterialTheme.typography.labelSmall,
-          color = Color(0xFF8FC7F0),
-        )
       }
     }
-  }
-  Spacer(Modifier.height(6.dp))
-  val temps = hours.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
-  if (temps.size >= 2) {
-    Charts.SmoothLine(
-      values = temps,
-      color = MaterialTheme.colorScheme.primary,
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(34.dp),
-    )
+    Spacer(Modifier.height(4.dp))
+
+    // Riga 2: la curva, con i gradi sopra. Il margine della curva e' meta' altezza del testo,
+    // cosi' il punto di ogni ora coincide col centro del suo numero.
+    Box(
+      Modifier
+        .width(HourColumnWidth * hours.size)
+        .height(HourCurveHeight + HourTempTextHeight),
+    ) {
+      Charts.SmoothLine(
+        values = temps,
+        color = MaterialTheme.colorScheme.primary,
+        insetPx = insetPx,
+        modifier = Modifier
+          .matchParentSize()
+          .padding(horizontal = HourColumnWidth / 2),
+      )
+      Row {
+        temps.forEach { temperature ->
+          val normalized = ((temperature - min) / span).toFloat()
+          Column(
+            modifier = Modifier
+              .width(HourColumnWidth)
+              .padding(top = HourCurveHeight * (1f - normalized)),
+            horizontalAlignment = Alignment.CenterHorizontally,
+          ) {
+            Text(
+              text = "${temperature.toInt()}°",
+              style = MaterialTheme.typography.titleSmall.copy(shadow = textShadow),
+              color = onSurface,
+              modifier = Modifier.height(HourTempTextHeight),
+            )
+          }
+        }
+      }
+    }
+
+    // Riga 3: la probabilita' di pioggia, solo dove conta.
+    Row {
+      hours.forEach { hour ->
+        val pop = hour.values[FusionVariables.PRECIP_PROBABILITY]?.value
+        Column(Modifier.width(HourColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+          Text(
+            text = if (pop != null && pop >= 5) "${pop.toInt()}%" else " ",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF8FC7F0),
+          )
+        }
+      }
+    }
   }
 }
 
@@ -414,7 +475,7 @@ private fun SunTile(state: HomeUiState) {
     sunColor = Color(0xFFF6C750),
     modifier = Modifier
       .fillMaxWidth()
-      .height(64.dp),
+      .height(88.dp),
   )
   Spacer(Modifier.height(6.dp))
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
