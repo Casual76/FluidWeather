@@ -91,7 +91,7 @@ class TransitionsAndSummaryTest {
       windows = listOf(WindowVerdict("1-3h", 0.4, 0.3, 0.5, emptyList())),
       level = AlertLevel.SORVEGLIANZA,
     )
-    val summary = DailySummary.compose(morning, zone, hours, verdict, pressureTrendHpaPerHour = -0.8, locationName = "Sesto Fiorentino")!!
+    val summary = DailySummary.compose(morning, zone, hours, verdict, pressureTrendHpaPerHour = -0.8, locationName = "Sesto Fiorentino", texts = ItalianTexts)!!
 
     assertEquals(NotificationChannelKind.DAILY_SUMMARY, summary.channel)
     assertEquals("Oggi a Sesto Fiorentino", summary.title)
@@ -104,7 +104,7 @@ class TransitionsAndSummaryTest {
 
   @Test
   fun `senza ore di oggi non c'e' riepilogo`() {
-    assertNull(DailySummary.compose(noon, zone, listOf(hour(noon + 48 * 3_600_000L, 0, temperature = 20.0)), null, null, null))
+    assertNull(DailySummary.compose(noon, zone, listOf(hour(noon + 48 * 3_600_000L, 0, temperature = 20.0)), null, null, null, ItalianTexts))
   }
 
   @Test

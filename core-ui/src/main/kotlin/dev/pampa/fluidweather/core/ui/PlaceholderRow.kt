@@ -2,6 +2,8 @@ package dev.pampa.fluidweather.core.ui
 
 import androidx.compose.runtime.Composable
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * La riga che ogni rotta non ancora costruita mostra al suo posto, con il numero della fase che la
@@ -10,7 +12,7 @@ import dev.antigravity.fluidengine.ui.theme.FluidListRow
 @Composable
 fun PlaceholderRow(phase: Int, subtitle: String) {
   FluidListRow(
-    title = "In costruzione — fase $phase",
+    title = stringResource(R.string.placeholder_phase, phase),
     subtitle = subtitle,
   )
 }
@@ -18,6 +20,6 @@ fun PlaceholderRow(phase: Int, subtitle: String) {
 /** Lo stesso segnaposto, dentro un foglio nero (Benchmark e Segnalazione ci vivono). */
 @Composable
 fun PlaceholderNote(phase: Int, subtitle: String) {
-  BlackSheetSectionTitle("In costruzione — fase $phase")
+  BlackSheetSectionTitle(stringResource(R.string.placeholder_phase, phase))
   BlackSheetNote(subtitle)
 }

@@ -25,6 +25,8 @@ include ':feature-report'
 include ':core-ui'
 include ':core-sensor'
 include ':core-model'
+// Tutte le parole dell'app (IT/EN) e la mappa dai modelli alle parole (fase 17).
+include ':core-strings'
 include ':core-data'
 include ':core-weather'
 // Il ciclo in background: giro meteo, verdetto, notifiche (fase 11).

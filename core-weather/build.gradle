@@ -28,6 +28,8 @@ dependencies {
   api project(':core-data')
   // NowcastContext: il livello provider e' cio' che porta il contesto vero al verdetto.
   api project(':nowcast')
+  // Le descrizioni dei provider e le etichette della legenda radar sono risorse.
+  api project(':core-strings')
   // EngineHttp: le due chiamate HTTP dell'engine bastano anche a noi.
   implementation project(':engine-net')
 

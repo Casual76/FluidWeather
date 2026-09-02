@@ -25,8 +25,12 @@ import dev.pampa.fluidweather.core.ui.Charts
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.strings.TimeFormats
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 /*
  * Il corredo delle pagine complete (fase 11b): formattazioni, righe di statistica, la curva con
@@ -44,19 +48,16 @@ internal val Faint = Color.White.copy(alpha = 0.5f)
 
 internal fun zone(): ZoneId = ZoneId.systemDefault()
 
-internal fun fmtHour(millis: Long): String =
-  DateTimeFormatter.ofPattern("HH").format(Instant.ofEpochMilli(millis).atZone(zone()))
+internal fun fmtHour(millis: Long): String = TimeFormats.hour(millis, zone())
 
-internal fun fmtTime(millis: Long): String =
-  DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(millis).atZone(zone()))
+internal fun fmtTime(millis: Long): String = TimeFormats.time(millis, zone())
 
-internal fun fmtDay(millis: Long): String =
-  DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault())
-    .format(Instant.ofEpochMilli(millis).atZone(zone()))
-    .replaceFirstChar { it.uppercase() }
+internal fun fmtDay(millis: Long): String = TimeFormats.day(millis, zone())
 
-internal fun fmtDate(date: LocalDate): String =
-  DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.getDefault()).format(date).replaceFirstChar { it.uppercase() }
+internal fun fmtDate(date: LocalDate): String = TimeFormats.longDate(date)
+
+/** L'ora del giorno come numero: per decidere, non per mostrare (il testo lo fa [fmtHour]). */
+internal fun hourOfDay(millis: Long): Int = Instant.ofEpochMilli(millis).atZone(zone()).hour
 
 internal fun fmt1(value: Double): String = String.format(Locale.getDefault(), "%.1f", value)
 
@@ -65,13 +66,6 @@ internal fun fmt0(value: Double): String = String.format(Locale.getDefault(), "%
 internal fun fmtDuration(millis: Long): String = "${millis / 3_600_000L}h ${(millis / 60_000L) % 60}m"
 
 internal fun localDate(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(zone()).toLocalDate()
-
-/** I sedici punti della rosa dei venti, da dove il vento VIENE. */
-internal fun windDirectionName(degrees: Double): String {
-  val names = listOf("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO")
-  val index = ((degrees % 360 + 360) % 360 / 22.5 + 0.5).toInt() % 16
-  return names[index]
-}
 
 @Composable
 internal fun PageSection(title: String) = BlackSheetSectionTitle(title)
@@ -145,19 +139,23 @@ internal fun CurveWithLabels(
   decimals: Int = 0,
 ) {
   if (values.size < 2) {
-    PageNote("Non ci sono abbastanza punti per una curva.")
+    PageNote(stringResource(R.string.page_no_curve))
     return
   }
   val format = if (decimals == 0) "%.0f" else "%.${decimals}f"
-  Column {
+  val maxText = String.format(Locale.getDefault(), format, values.max()) + unit
+  val minText = String.format(Locale.getDefault(), format, values.min()) + unit
+  // Il grafico e' un disegno: a TalkBack si racconta con i suoi due estremi.
+  val description = stringResource(R.string.a11y_curve, minText, maxText)
+  Column(Modifier.semantics(mergeDescendants = true) { contentDescription = description }) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
       Text(
-        "max " + String.format(Locale.getDefault(), format, values.max()) + unit,
+        stringResource(R.string.common_max_prefix) + maxText,
         style = MaterialTheme.typography.labelSmall,
         color = Faint,
       )
       Text(
-        "min " + String.format(Locale.getDefault(), format, values.min()) + unit,
+        stringResource(R.string.common_min_prefix) + minText,
         style = MaterialTheme.typography.labelSmall,
         color = Faint,
       )

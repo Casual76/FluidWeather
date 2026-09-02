@@ -35,6 +35,11 @@ import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NotificationSettings
 import java.util.Locale
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.strings.TimeFormats
+import dev.pampa.fluidweather.strings.descriptionRes
+import dev.pampa.fluidweather.strings.labelRes
 
 /** Tutto quello che la pagina delle notifiche tocca; lo costruisce :app dal suo grafo. */
 class NotificationsDependencies(
@@ -77,17 +82,17 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
     }
   }
 
-  FluidScreen(title = "Notifiche", onBack = onBack) {
+  FluidScreen(title = stringResource(R.string.notif_title), onBack = onBack) {
     if (permissionMissing) {
-      item { FluidSectionHeader(title = "Permesso") }
+      item { FluidSectionHeader(title = stringResource(R.string.notif_permission)) }
       item {
         FluidListGroup {
           FluidListRow(
-            title = "Permesso alle notifiche",
-            subtitle = "Senza, Android non mostra nulla: i canali qui sotto restano muti.",
+            title = stringResource(R.string.notif_permission_row),
+            subtitle = stringResource(R.string.notif_permission_desc),
             badge = {
               FluidButton(
-                text = "Concedi",
+                text = stringResource(R.string.common_grant),
                 style = FluidButtonStyle.Tinted,
                 onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
               )
@@ -97,14 +102,14 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
       }
     }
 
-    item { FluidSectionHeader(title = "Canali") }
+    item { FluidSectionHeader(title = stringResource(R.string.notif_channels)) }
     item {
       FluidListGroup {
         NotificationChannelKind.entries.forEachIndexed { index, kind ->
           if (index > 0) FluidListDivider()
           FluidListRow(
-            title = kind.label,
-            subtitle = kind.description,
+            title = stringResource(kind.labelRes()),
+            subtitle = stringResource(kind.descriptionRes()),
             badge = {
               FluidSwitch(
                 checked = settings.enabled(kind),
@@ -115,9 +120,9 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
           if (kind == NotificationChannelKind.DAILY_SUMMARY) {
             FluidListDivider()
             FluidListRow(
-              title = "Orario del riepilogo",
-              subtitle = "Quando arriva, ogni giorno",
-              meta = String.format(Locale.ROOT, "%02d:%02d", settings.summaryHour, settings.summaryMinute),
+              title = stringResource(R.string.notif_summary_time),
+              subtitle = stringResource(R.string.notif_summary_time_desc),
+              meta = TimeFormats.clock(settings.summaryHour, settings.summaryMinute),
               onClick = {
                 TimePickerDialog(
                   context,
@@ -129,7 +134,7 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
                   },
                   settings.summaryHour,
                   settings.summaryMinute,
-                  true,
+                  TimeFormats.is24Hour(),
                 ).show()
               },
             )
@@ -138,25 +143,28 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
       }
     }
 
-    item { FluidSectionHeader(title = "Prova e stato") }
+    item { FluidSectionHeader(title = stringResource(R.string.notif_test_title)) }
     item {
       FluidListGroup {
         FluidListRow(
-          title = "Invia una notifica di prova",
-          subtitle = "Sul canale dell'allerta nowcast, cosi' vedi suono e importanza",
+          title = stringResource(R.string.notif_test),
+          subtitle = stringResource(R.string.notif_test_desc),
           badge = {
+            // Le parole si leggono qui, nel composable: il click non e' un contesto composable.
+            val testTitle = stringResource(R.string.notif_test_notification_title)
+            val testText = stringResource(R.string.notif_test_notification_text)
+            val testBigText = stringResource(R.string.notif_test_notification_big)
             FluidButton(
-              text = "Prova",
+              text = stringResource(R.string.notif_test_button),
               style = FluidButtonStyle.Tinted,
               onClick = {
                 deps.notifier.post(
                   AppNotification(
                     channel = NotificationChannelKind.NOWCAST_ALERT,
                     id = AlertPolicy.NOWCAST_ID + 1,
-                    title = "Notifica di prova",
-                    text = "Cosi' arriverebbe un'allerta del barometro.",
-                    bigText = "E' una prova: nessuna pioggia in vista. Le impostazioni del canale " +
-                      "(suono, vibrazione) sono quelle di sistema.",
+                    title = testTitle,
+                    text = testText,
+                    bigText = testBigText,
                   ),
                 )
               },
@@ -165,18 +173,18 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
         )
         FluidListDivider()
         FluidListRow(
-          title = "Esegui il ciclo adesso",
-          subtitle = cycleNote ?: ledger.lastCycleNote ?: "Nessun ciclo in background ancora eseguito.",
+          title = stringResource(R.string.notif_run_cycle),
+          subtitle = cycleNote ?: ledger.lastCycleNote ?: stringResource(R.string.notif_no_cycle),
           badge = {
             FluidButton(
-              text = if (running) "..." else "Vai",
+              text = if (running) "..." else stringResource(R.string.common_go),
               style = FluidButtonStyle.Tinted,
               enabled = !running,
               onClick = {
                 running = true
                 scope.launch {
                   try {
-                    cycleNote = runCatching { deps.runCycleNow() }.getOrElse { "errore: ${it.message}" }
+                    cycleNote = runCatching { deps.runCycleNow() }.getOrElse { context.getString(R.string.common_error, it.message ?: "") }
                   } finally {
                     running = false
                   }
@@ -187,8 +195,8 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
         )
         FluidListDivider()
         FluidListRow(
-          title = "Impostazioni di sistema dei canali",
-          subtitle = "Suono, vibrazione e importanza di ogni canale, dove Android li tiene",
+          title = stringResource(R.string.notif_system_settings),
+          subtitle = stringResource(R.string.notif_system_settings_desc),
           onClick = {
             context.startActivity(
               Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)

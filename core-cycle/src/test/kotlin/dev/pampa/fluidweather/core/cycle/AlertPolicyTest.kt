@@ -52,6 +52,8 @@ class AlertPolicyTest {
       kind = kind,
     )
 
+  private fun decide(inputs: AlertInputs) = AlertPolicy.decide(inputs, ItalianTexts)
+
   private fun inputs(
     verdict: NowcastVerdict? = null,
     hours: List<FusedHour> = emptyList(),
@@ -65,10 +67,10 @@ class AlertPolicyTest {
 
   @Test
   fun `l'allerta del barometro esce solo al livello Allerta`() {
-    assertTrue(AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.SORVEGLIANZA, 0.45))).notifications.isEmpty())
-    assertTrue(AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.QUIETE, 0.1))).notifications.isEmpty())
+    assertTrue(decide(inputs(verdict = verdict(AlertLevel.SORVEGLIANZA, 0.45))).notifications.isEmpty())
+    assertTrue(decide(inputs(verdict = verdict(AlertLevel.QUIETE, 0.1))).notifications.isEmpty())
 
-    val decision = AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.72)))
+    val decision = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.72)))
     val alert = decision.notifications.single()
     assertEquals(NotificationChannelKind.NOWCAST_ALERT, alert.channel)
     assertEquals(AlertPolicy.NOWCAST_ID, alert.id)
@@ -81,23 +83,23 @@ class AlertPolicyTest {
 
   @Test
   fun `la stessa allerta non si ripete per tre ore, ma un'escalation si'`() {
-    val first = AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.70)))
+    val first = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.70)))
     val ledger = first.ledger
 
-    val sameSoon = AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.75), ledger = ledger, at = now + 30 * 60_000L))
+    val sameSoon = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.75), ledger = ledger, at = now + 30 * 60_000L))
     assertTrue(sameSoon.notifications.isEmpty())
 
-    val escalated = AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.92), ledger = ledger, at = now + 30 * 60_000L))
+    val escalated = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.92), ledger = ledger, at = now + 30 * 60_000L))
     assertEquals(1, escalated.notifications.size)
 
-    val later = AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.70), ledger = ledger, at = now + AlertPolicy.NOWCAST_REPEAT_MILLIS))
+    val later = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.70), ledger = ledger, at = now + AlertPolicy.NOWCAST_REPEAT_MILLIS))
     assertEquals(1, later.notifications.size)
   }
 
   @Test
   fun `quando l'allerta rientra la notifica si ritira`() {
-    val active = AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.70))).ledger
-    val calm = AlertPolicy.decide(inputs(verdict = verdict(AlertLevel.QUIETE, 0.05), ledger = active))
+    val active = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.70))).ledger
+    val calm = decide(inputs(verdict = verdict(AlertLevel.QUIETE, 0.05), ledger = active))
     assertTrue(calm.cancelNowcastAlert)
     assertFalse(calm.ledger.nowcastAlertActive)
     // Il rientro non cancella la memoria del "quando": rientrare e riallertarsi in mezz'ora e' rumore.
@@ -106,7 +108,7 @@ class AlertPolicyTest {
 
   @Test
   fun `un canale spento non produce niente, nemmeno memoria`() {
-    val decision = AlertPolicy.decide(
+    val decision = decide(
       inputs(
         verdict = verdict(AlertLevel.ALLERTA, 0.9),
         hours = listOf(hour(0, 5.0), hour(1, 85.0, kind = WeatherKind.RAIN)),
@@ -122,21 +124,21 @@ class AlertPolicyTest {
   @Test
   fun `la pioggia in arrivo entro l'anticipo si annuncia una volta sola`() {
     val hours = listOf(hour(0, 5.0), hour(1, 80.0, kind = WeatherKind.RAIN), hour(2, 90.0, kind = WeatherKind.RAIN))
-    val first = AlertPolicy.decide(inputs(hours = hours))
+    val first = decide(inputs(hours = hours))
     val onset = first.notifications.single()
     assertEquals(NotificationChannelKind.PRECIPITATION, onset.channel)
     assertEquals("Pioggia in arrivo", onset.title)
     assertTrue(onset.text.contains("13:00"))
     assertEquals(now + 3_600_000L, first.ledger.precipitationOnsetMillis)
 
-    val again = AlertPolicy.decide(inputs(hours = hours, ledger = first.ledger, at = now + 20 * 60_000L))
+    val again = decide(inputs(hours = hours, ledger = first.ledger, at = now + 20 * 60_000L))
     assertTrue(again.notifications.isEmpty())
   }
 
   @Test
   fun `la neve ha il suo nome e la fine ha il suo avviso`() {
     val snowing = listOf(hour(0, 90.0, 1.2, WeatherKind.SNOW), hour(1, 10.0, 0.0, WeatherKind.CLOUDY))
-    val end = AlertPolicy.decide(inputs(hours = snowing)).notifications.single()
+    val end = decide(inputs(hours = snowing)).notifications.single()
     assertEquals("Neve in esaurimento", end.title)
     assertTrue(end.text.contains("13:00"))
   }
@@ -144,7 +146,7 @@ class AlertPolicyTest {
   @Test
   fun `un evento lontano dall'anticipo o gia' raccontato non fa rumore`() {
     val farAway = listOf(hour(0, 5.0), hour(1, 5.0), hour(2, 5.0), hour(3, 95.0, kind = WeatherKind.RAIN))
-    assertTrue(AlertPolicy.decide(inputs(hours = farAway)).notifications.isEmpty())
+    assertTrue(decide(inputs(hours = farAway)).notifications.isEmpty())
   }
 
   // ---------------------------------------------------------------------- allerte ufficiali
@@ -167,17 +169,17 @@ class AlertPolicyTest {
   @Test
   fun `ogni allerta ufficiale una volta sola, le scadute mai, al massimo tre per giro`() {
     val alerts = (1..5).map { official("a$it") } + official("scaduta", expiresOffsetHours = -1)
-    val first = AlertPolicy.decide(inputs(alerts = alerts))
+    val first = decide(inputs(alerts = alerts))
     assertEquals(AlertPolicy.MAX_OFFICIAL_PER_ROUND, first.notifications.size)
     assertTrue(first.notifications.all { it.channel == NotificationChannelKind.OFFICIAL_ALERTS })
     assertTrue(first.notifications.first().bigText!!.contains("Fonte: Meteoalarm"))
     assertEquals(listOf("a1", "a2", "a3"), first.ledger.officialAlertIds)
 
-    val second = AlertPolicy.decide(inputs(alerts = alerts, ledger = first.ledger))
+    val second = decide(inputs(alerts = alerts, ledger = first.ledger))
     assertEquals(2, second.notifications.size)
     assertEquals(listOf("a1", "a2", "a3", "a4", "a5"), second.ledger.officialAlertIds)
 
-    val third = AlertPolicy.decide(inputs(alerts = alerts, ledger = second.ledger))
+    val third = decide(inputs(alerts = alerts, ledger = second.ledger))
     assertTrue(third.notifications.isEmpty())
     assertNull(third.notifications.firstOrNull())
   }

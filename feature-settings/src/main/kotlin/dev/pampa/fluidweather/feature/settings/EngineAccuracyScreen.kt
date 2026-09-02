@@ -45,13 +45,15 @@ import dev.pampa.fluidweather.core.sensor.MaximaAlarm
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.core.ui.stageText
+import dev.pampa.fluidweather.strings.TimeFormats
 
 /** Tutto quello che la categoria "Motore e accuratezza" tocca. */
 class EngineAccuracyDependencies(
@@ -79,6 +81,7 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
   val calibration by deps.calibrationStore.record.collectAsState(initial = null)
   val progress by deps.calibrationController.progress.collectAsState()
   val outcome by deps.calibrationController.lastOutcome.collectAsState()
+  val units = rememberUnitFormatter()
   val historyHours by produceState(initialValue = 0.0) {
     val now = System.currentTimeMillis()
     val samples = runCatching { deps.pressureRepository.samplesSince(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
@@ -94,21 +97,20 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
     requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
   )
 
-  FluidScreen(title = "Motore e accuratezza", onBack = onBack) {
-    item { FluidSectionHeader(title = "Il barometro e' pronto?") }
+  FluidScreen(title = stringResource(R.string.engine_title), onBack = onBack) {
+    item { FluidSectionHeader(title = stringResource(R.string.engine_ready_title)) }
     item {
       FluidListGroup {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-          Text(readiness.stageLabel, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+          Text(readiness.stageText(), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
           Spacer(Modifier.height(8.dp))
           FluidProgressBar(progress = { readiness.overallFraction })
           Spacer(Modifier.height(6.dp))
           Text(
             if (readiness.ready) {
-              "Il modello ha la storia che chiede: il verdetto e' in home."
+              stringResource(R.string.engine_ready_desc)
             } else {
-              "Prima la raffica iniziale (un quinto della barra), poi le ${FeatureExtractor.MIN_HISTORY_HOURS.toInt()} ore " +
-                "di segnale pulito che il modello vuole vedere. Il telefono lavora da solo."
+              stringResource(R.string.engine_not_ready_desc, FeatureExtractor.MIN_HISTORY_HOURS.toInt())
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -117,26 +119,25 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Taratura del dispositivo") }
+    item { FluidSectionHeader(title = stringResource(R.string.engine_calibration_title)) }
     item {
       FluidListGroup {
         val record = calibration
         if (record == null) {
           FluidListRow(
-            title = "Bias non ancora stimato",
-            subtitle = "La raffica iniziale confronta la mediana di dieci minuti con la pressione al mare dei servizi.",
+            title = stringResource(R.string.engine_bias_missing),
+            subtitle = stringResource(R.string.engine_bias_missing_desc),
           )
         } else {
           FluidListRow(
-            title = "Bias del sensore",
-            subtitle = "Da sottrarre a ogni lettura; fiducia ${(record.confidence * 100).toInt()}%",
-            meta = String.format(Locale.ROOT, "%+.2f hPa", record.biasHpa),
+            title = stringResource(R.string.engine_bias),
+            subtitle = stringResource(R.string.engine_bias_desc, (record.confidence * 100).toInt()),
+            meta = units.pressureDelta(record.biasHpa, 2),
           )
           FluidListDivider()
           FluidListRow(
-            title = "Come e' stato stimato",
-            subtitle = "Locale ${fmt1(record.localMslHpa)} vs servizi ${fmt1(record.referenceMslHpa)} hPa al mare · " +
-              "${record.sampleCount} letture" + (record.altitudeMeters?.let { " · quota ${fmt0(it)} m" } ?: " · quota ignota"),
+            title = stringResource(R.string.engine_bias_how),
+            subtitle = stringResource(R.string.engine_bias_how_desc, units.pressure(record.localMslHpa, 1), units.pressure(record.referenceMslHpa, 1), record.sampleCount) + (record.altitudeMeters?.let { stringResource(R.string.engine_altitude_suffix, fmt0(it)) } ?: stringResource(R.string.engine_altitude_unknown)),
             meta = fmtDayTime(record.calibratedAtMillis),
           )
         }
@@ -144,43 +145,43 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
         val running = progress
         if (running == null) {
           FluidListRow(
-            title = if (record == null) "Fai la taratura" else "Rifai la taratura",
-            subtitle = outcome ?: "Dieci minuti in sottofondo: puoi usare il telefono normalmente.",
+            title = if (record == null) stringResource(R.string.engine_calibrate) else stringResource(R.string.engine_recalibrate),
+            subtitle = outcome ?: stringResource(R.string.engine_calibrate_desc),
             badge = {
-              FluidButton(text = "Avvia", style = FluidButtonStyle.Tinted, onClick = { deps.calibrationController.start() })
+              FluidButton(text = stringResource(R.string.common_start), style = FluidButtonStyle.Tinted, onClick = { deps.calibrationController.start() })
             },
           )
         } else {
           FluidListRow(
-            title = "Taratura in corso",
-            subtitle = "${running.completedSeconds / 60}:${String.format(Locale.ROOT, "%02d", running.completedSeconds % 60)} di ${running.totalSeconds / 60}:00",
+            title = stringResource(R.string.engine_calibrating),
+            subtitle = stringResource(R.string.engine_calibration_progress, running.completedSeconds / 60, String.format(Locale.ROOT, "%02d", running.completedSeconds % 60), running.totalSeconds / 60),
             badge = {
-              FluidButton(text = "Annulla", style = FluidButtonStyle.Plain, onClick = { deps.calibrationController.cancel() })
+              FluidButton(text = stringResource(R.string.common_cancel), style = FluidButtonStyle.Plain, onClick = { deps.calibrationController.cancel() })
             },
           )
         }
       }
     }
 
-    item { FluidSectionHeader(title = "Cosa ha imparato il telefono") }
+    item { FluidSectionHeader(title = stringResource(R.string.learning_title)) }
     item {
       val platt by deps.learningStore.platt.collectAsState(initial = emptyMap())
       val outcomes by produceState(initialValue = -1) { value = runCatching { deps.learningRepository.outcomeCount() }.getOrDefault(0) }
       FluidListGroup {
         FluidListRow(
-          title = "Verifiche del barometro",
-          subtitle = "Le finestre del verdetto giudicate contro cio' che e' successo",
+          title = stringResource(R.string.learning_verifications),
+          subtitle = stringResource(R.string.learning_verifications_desc),
           meta = if (outcomes < 0) "…" else outcomes.toString(),
         )
         listOf("0-1h", "1-3h", "3-6h").forEach { window ->
           FluidListDivider()
           val record = platt[window]
           FluidListRow(
-            title = "Ricalibrazione $window",
+            title = stringResource(R.string.learning_recalibration, window),
             subtitle = if (record == null) {
-              "Non ancora: servono trenta verifiche con entrambi gli esiti"
+              stringResource(R.string.learning_not_yet)
             } else {
-              "Platt a=${fmt2(record.a)} b=${fmt2(record.b)} su ${record.samples} verifiche"
+              stringResource(R.string.learning_platt, fmt2(record.a), fmt2(record.b), record.samples)
             },
             meta = record?.let { fmtDayTime(it.fittedAtMillis) } ?: "—",
           )
@@ -188,7 +189,7 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Modalita' di campionamento") }
+    item { FluidSectionHeader(title = stringResource(R.string.engine_sampling)) }
     item {
       FluidListGroup {
         SamplingMode.entries.forEachIndexed { index, mode ->
@@ -197,7 +198,7 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
             title = mode.label(),
             subtitle = mode.description(),
             badge = if (settings.mode == mode) {
-              { Icon(Icons.Rounded.Check, contentDescription = "Selezionata", tint = MaterialTheme.colorScheme.primary) }
+              { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_selected), tint = MaterialTheme.colorScheme.primary) }
             } else {
               null
             },
@@ -217,8 +218,8 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
         FluidListGroup {
           if (!MaximaAlarm.canSchedule(context)) {
             FluidListRow(
-              title = "Allarmi esatti non consentiti",
-              subtitle = "Senza, Massima degrada a un giro ogni 15 minuti. Tocca per concederli.",
+              title = stringResource(R.string.engine_exact_alarms),
+              subtitle = stringResource(R.string.engine_exact_alarms_desc),
               onClick = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                   context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
@@ -230,25 +231,25 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
           val powerManager = context.getSystemService(PowerManager::class.java)
           if (powerManager?.isIgnoringBatteryOptimizations(context.packageName) == false) {
             FluidListRow(
-              title = "Esenzione batteria",
-              subtitle = "In Doze profondo il ritmo cala: l'esenzione lo limita. Tocca per chiederla.",
+              title = stringResource(R.string.engine_battery),
+              subtitle = stringResource(R.string.engine_battery_desc),
               onClick = {
                 context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
               },
             )
           } else {
-            FluidListRow(title = "Massima attiva", subtitle = "Catena di allarmi esatti ogni 5 minuti, raffica di 30 secondi.")
+            FluidListRow(title = stringResource(R.string.engine_max_active), subtitle = stringResource(R.string.engine_max_active_desc))
           }
         }
       }
     }
 
-    item { FluidSectionHeader(title = "Mentre l'app e' aperta") }
+    item { FluidSectionHeader(title = stringResource(R.string.engine_while_open)) }
     item {
       FluidListGroup {
         FluidListRow(
-          title = "Monitoraggio continuo",
-          subtitle = "Una lettura ogni 10 s finche' l'app e' davanti agli occhi",
+          title = stringResource(R.string.engine_continuous),
+          subtitle = stringResource(R.string.engine_continuous_desc),
           badge = {
             FluidSwitch(
               checked = settings.continuousWhileOpen,
@@ -261,11 +262,8 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
   }
 }
 
-private fun fmt1(value: Double) = String.format(Locale.getDefault(), "%.1f", value)
-
 private fun fmt2(value: Double) = String.format(Locale.ROOT, "%.2f", value)
 
 private fun fmt0(value: Double) = String.format(Locale.getDefault(), "%.0f", value)
 
-private fun fmtDayTime(millis: Long): String =
-  DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.getDefault()).format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
+private fun fmtDayTime(millis: Long): String = TimeFormats.dayTime(millis)

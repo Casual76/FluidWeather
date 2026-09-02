@@ -47,12 +47,13 @@ import dev.pampa.fluidweather.core.weather.ProviderScore
 import dev.pampa.fluidweather.core.weather.RainEvent
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.strings.TimeFormats
 
 /** Tutto quello che il Benchmark tocca; lo costruisce :app dal suo grafo. */
 class BenchmarkDependencies(
@@ -77,7 +78,7 @@ private val Green = Color(0xFF6FD58C)
 @Composable
 fun BenchmarkSheet(open: Boolean, deps: BenchmarkDependencies, onDismiss: () -> Unit) {
   if (!open) return
-  BlackSheet(title = "Benchmark", onDismiss = onDismiss) {
+  BlackSheet(title = stringResource(R.string.bench_title), onDismiss = onDismiss) {
     BenchmarkContent(deps)
   }
 }
@@ -99,38 +100,36 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
 
   val ready = report
   if (ready == null) {
-    BlackSheetNote("Leggo le verifiche…")
+    BlackSheetNote(stringResource(R.string.bench_loading))
     return
   }
 
   // ------------------------------------------------------------------------- lo stato
-  BlackSheetSectionTitle("La raccolta")
+  BlackSheetSectionTitle(stringResource(R.string.bench_collection))
   val first = ready.firstVerificationMillis
   if (ready.totalVerifications == 0) {
     BlackSheetNote(
-      "Nessuna verifica ancora. Ogni giro dei provider semina previsioni a +1, +3, +6, +12 e +24 ore " +
-        "e le giudica quando quell'ora e' passata, contro la mediana delle analisi: torna dopo " +
-        "qualche ora di uso, la classifica si costruisce da sola.",
+      stringResource(R.string.bench_empty),
     )
   } else {
-    StatRow("Verifiche raccolte", "${ready.totalVerifications}", first?.let { "dal ${fmtDay(it)}" })
-    StatRow("Soglia per pesare", "${Benchmark.MIN_VERIFICATIONS} per variabile", "sotto, valgono i priori regionali")
+    StatRow(stringResource(R.string.bench_collected), "${ready.totalVerifications}", first?.let { stringResource(R.string.bench_since, fmtDay(it)) })
+    StatRow(stringResource(R.string.bench_threshold), stringResource(R.string.bench_per_variable, Benchmark.MIN_VERIFICATIONS), stringResource(R.string.bench_below_threshold))
     val current = snapshot
     if (current != null) {
-      StatRow("Ultimo giro", "${current.providersResponding}/${current.fetches.size} provider", fmtTime(current.fetchedAtMillis))
+      StatRow(stringResource(R.string.bench_last_round), stringResource(R.string.bench_providers_count, current.providersResponding, current.fetches.size), fmtTime(current.fetchedAtMillis))
     }
   }
   if (onlyProvider != null) {
     Spacer(Modifier.height(6.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
       Text(
-        "Override attivo: solo ${providerLabel(onlyProvider!!)} dove arriva.",
+        stringResource(R.string.bench_override_active, providerLabel(onlyProvider!!)),
         style = MaterialTheme.typography.bodyMedium,
         color = Amber,
         modifier = Modifier.weight(1f),
       )
       FluidButton(
-        text = "Torna alla fusione",
+        text = stringResource(R.string.prov_back_to_fusion),
         style = FluidButtonStyle.Tinted,
         onClick = { scope.launch { deps.fusionSettings.setOnlyProvider(null) } },
       )
@@ -138,9 +137,9 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
   }
 
   // ------------------------------------------------------------------------ la classifica
-  BlackSheetSectionTitle("Classifica per la zona")
+  BlackSheetSectionTitle(stringResource(R.string.bench_ranking))
   if (ready.ranking.isEmpty()) {
-    BlackSheetNote("La classifica compare con le prime verifiche.")
+    BlackSheetNote(stringResource(R.string.bench_ranking_empty))
   } else {
     var expanded by remember { mutableStateOf<String?>(null) }
     ready.ranking.forEachIndexed { index, rank ->
@@ -165,9 +164,9 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
             Text(providerLabel(rank.providerId), style = MaterialTheme.typography.titleSmall, color = White)
             Text(
               buildString {
-                append("${rank.verifications} verifiche")
-                if (rank.bestAt.isNotEmpty()) append(" · migliore su ${rank.bestAt.joinToString { variableLabel(it) }}")
-                if (rank.providerId == onlyProvider) append(" · override")
+                append(stringResource(R.string.common_verifications_count, rank.verifications))
+                if (rank.bestAt.isNotEmpty()) append(stringResource(R.string.bench_best_at, rank.bestAt.map { variableLabel(it) }.joinToString()))
+                if (rank.providerId == onlyProvider) append(stringResource(R.string.bench_override_suffix))
               },
               style = MaterialTheme.typography.bodySmall,
               color = Faint,
@@ -186,14 +185,14 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
           rank.maeByVariable.forEach { (variable, score) ->
             StatRow(
               variableLabel(variable),
-              "MAE ${fmtMae(variable, score.decayedMae)}",
-              if (score.learned) "${score.count} verifiche · pesa" else "${score.count} verifiche · sotto soglia",
+              stringResource(R.string.bench_mae, fmtMae(variable, score.decayedMae)),
+              if (score.learned) stringResource(R.string.bench_count_weighs, score.count) else stringResource(R.string.bench_count_below, score.count),
             )
           }
           Spacer(Modifier.height(6.dp))
           val isOverride = rank.providerId == onlyProvider
           FluidButton(
-            text = if (isOverride) "Torna alla fusione" else "Usa solo questo dove e' supportato",
+            text = if (isOverride) stringResource(R.string.prov_back_to_fusion) else stringResource(R.string.bench_use_only),
             style = FluidButtonStyle.Tinted,
             onClick = {
               scope.launch { deps.fusionSettings.setOnlyProvider(if (isOverride) null else rank.providerId) }
@@ -204,19 +203,15 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
       Divider()
     }
     BlackSheetNote(
-      "La quota e' il peso appreso (1/(MAE+0,3)², MAE decaduto con dimezzamento a 14 giorni) " +
-        "normalizzato fra chi ha verifiche, mediato sulle variabili: e' la stessa matematica che " +
-        "comanda la fusione.",
+      stringResource(R.string.bench_weight_note),
     )
   }
 
   // ------------------------------------------------------------------------ la pioggia
-  BlackSheetSectionTitle("La pioggia arriva? Il barometro alla pari")
+  BlackSheetSectionTitle(stringResource(R.string.bench_rain_title))
   if (ready.rainEvent.isEmpty()) {
     BlackSheetNote(
-      "Qui il barometro del telefono e i provider rispondono alla stessa domanda — piove nella " +
-        "finestra? — e vengono giudicati con lo stesso metro (|probabilita' − esito|). Le prime " +
-        "verifiche arrivano dopo qualche ora di uso.",
+      stringResource(R.string.bench_rain_note),
     )
   } else {
     var window by remember { mutableIntStateOf(1) }
@@ -229,20 +224,19 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
     Spacer(Modifier.height(8.dp))
     val scores = ready.rainEvent[windows[window].variable].orEmpty()
     if (scores.isEmpty()) {
-      BlackSheetNote("Nessuna verifica ancora su questa finestra.")
+      BlackSheetNote(stringResource(R.string.bench_rain_empty))
     } else {
       scores.forEachIndexed { index, score -> RainRow(index + 1, score) }
     }
     BlackSheetNote(
-      "Errore medio |p − esito|: 0 e' perfetto, 0,5 e' tirare a indovinare. I provider parlano per " +
-        "ore: la loro probabilita' sulla finestra e' il massimo delle orarie, la convenzione delle app meteo.",
+      stringResource(R.string.bench_rain_method),
     )
   }
 
   // ------------------------------------------------------------------- errore nel tempo
-  BlackSheetSectionTitle("Errore nel tempo, ${Benchmark.DAYS} giorni")
+  BlackSheetSectionTitle(stringResource(R.string.bench_error_time, Benchmark.DAYS))
   if (ready.dailyError.isEmpty()) {
-    BlackSheetNote("La curva compare con le verifiche dei prossimi giorni.")
+    BlackSheetNote(stringResource(R.string.bench_curve_empty))
   } else {
     val providers = ready.ranking.map { it.providerId }.ifEmpty { ready.dailyError.keys.toList() }
     var providerIndex by remember { mutableIntStateOf(0) }
@@ -261,11 +255,11 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
     Spacer(Modifier.height(8.dp))
     val series = providers.getOrNull(providerIndex)?.let { ready.dailyError[it]?.get(variables[variableIndex]) }.orEmpty()
     if (series.size < 2) {
-      BlackSheetNote("Servono almeno due giorni di verifiche per una curva.")
+      BlackSheetNote(stringResource(R.string.bench_curve_two_days))
     } else {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("max ${fmtMae(variables[variableIndex], series.maxOf { it.mae })}", style = MaterialTheme.typography.labelSmall, color = Faint)
-        Text("min ${fmtMae(variables[variableIndex], series.minOf { it.mae })}", style = MaterialTheme.typography.labelSmall, color = Faint)
+        Text(stringResource(R.string.bench_max, fmtMae(variables[variableIndex], series.maxOf { it.mae })), style = MaterialTheme.typography.labelSmall, color = Faint)
+        Text(stringResource(R.string.bench_min, fmtMae(variables[variableIndex], series.minOf { it.mae })), style = MaterialTheme.typography.labelSmall, color = Faint)
       }
       Charts.SmoothLine(
         values = series.map { it.mae },
@@ -279,7 +273,7 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
         Text(fmtEpochDay(series.last().epochDay), style = MaterialTheme.typography.labelSmall, color = Faint)
       }
       Text(
-        "Errore medio del giorno (fascia 0-6 ore), ${series.sumOf { it.count }} verifiche.",
+        stringResource(R.string.bench_daily_error, series.sumOf { it.count }),
         style = MaterialTheme.typography.bodySmall,
         color = Faint,
       )
@@ -287,28 +281,24 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
   }
 
   // ------------------------------------------------------------- ripartizione per variabile
-  BlackSheetSectionTitle("Ripartizione per variabile")
+  BlackSheetSectionTitle(stringResource(R.string.bench_by_variable))
   if (ready.byVariable.isEmpty()) {
-    BlackSheetNote("Compare con le prime verifiche.")
+    BlackSheetNote(stringResource(R.string.bench_appears_first))
   } else {
     ready.byVariable.forEach { (variable, scores) ->
       val best = scores.first()
       StatRow(
         variableLabel(variable),
         "${providerLabel(best.providerId)} · ${fmtMae(variable, best.decayedMae)}",
-        "${scores.size} in gara",
+        stringResource(R.string.bench_competing, scores.size),
       )
     }
-    BlackSheetNote("Il migliore di ogni variabile nella fascia 0-6 ore, col suo errore medio decaduto.")
+    BlackSheetNote(stringResource(R.string.bench_best_note))
   }
 
-  BlackSheetSectionTitle("Come funziona")
+  BlackSheetSectionTitle(stringResource(R.string.bench_how))
   BlackSheetNote(
-    "Ogni giro semina previsioni e le giudica contro la mediana delle analisi dei provider " +
-      "(quorum di tre): nessun giudice unico. I pesi sono appresi per variabile e fascia di " +
-      "orizzonte; sotto la soglia comandano i priori per macro-regione, e nessun provider scende " +
-      "mai sotto il pavimento. L'override \"usa solo questo\" vale dove il provider arriva: dove " +
-      "non copre, la cascata riprende il volante.",
+    stringResource(R.string.bench_how_note),
   )
 }
 
@@ -328,7 +318,7 @@ private fun RainRow(position: Int, score: ProviderScore) {
         style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (isBarometer) FontWeight.SemiBold else FontWeight.Normal),
         color = if (isBarometer) Green else White,
       )
-      Text("${score.count} verifiche", style = MaterialTheme.typography.bodySmall, color = Faint)
+      Text(stringResource(R.string.common_verifications_count, score.count), style = MaterialTheme.typography.bodySmall, color = Faint)
     }
     Text(String.format(Locale.getDefault(), "%.2f", score.decayedMae), style = MaterialTheme.typography.titleMedium, color = White)
   }
@@ -377,35 +367,38 @@ private fun StatRow(label: String, value: String, detail: String? = null) {
   }
 }
 
+@Composable
 internal fun providerLabel(providerId: String): String = when (providerId) {
-  RainEvent.LOCAL_BAROMETER_ID -> "Il tuo barometro"
+  RainEvent.LOCAL_BAROMETER_ID -> stringResource(R.string.your_barometer)
   else -> ProviderRegistry.all.firstOrNull { it.id == providerId }?.label ?: providerId
 }
 
+@Composable
 internal fun variableLabel(variable: String): String = when (variable) {
-  FusionVariables.TEMPERATURE -> "Temperatura"
-  FusionVariables.PRESSURE_MSL -> "Pressione"
-  FusionVariables.PRECIPITATION -> "Pioggia (mm)"
-  FusionVariables.CLOUD_COVER -> "Nuvole"
-  FusionVariables.WIND_SPEED -> "Vento"
+  FusionVariables.TEMPERATURE -> stringResource(R.string.var_temperature)
+  FusionVariables.PRESSURE_MSL -> stringResource(R.string.var_pressure)
+  FusionVariables.PRECIPITATION -> stringResource(R.string.var_precipitation)
+  FusionVariables.CLOUD_COVER -> stringResource(R.string.var_clouds)
+  FusionVariables.WIND_SPEED -> stringResource(R.string.var_wind)
   else -> variable
 }
 
-/** L'unita' del MAE per variabile: gradi, hPa, mm, punti percentuali, km/h. */
-internal fun fmtMae(variable: String, mae: Double): String = when (variable) {
-  FusionVariables.TEMPERATURE -> String.format(Locale.getDefault(), "%.1f°", mae)
-  FusionVariables.PRESSURE_MSL -> String.format(Locale.getDefault(), "%.1f hPa", mae)
-  FusionVariables.PRECIPITATION -> String.format(Locale.getDefault(), "%.2f mm", mae)
-  FusionVariables.CLOUD_COVER -> String.format(Locale.getDefault(), "%.0f pt", mae)
-  FusionVariables.WIND_SPEED -> String.format(Locale.getDefault(), "%.1f km/h", mae)
-  else -> String.format(Locale.getDefault(), "%.2f", mae)
+/** L'unita' del MAE per variabile, nelle unita' dell'utente: gradi, pressione, pioggia, punti, vento. */
+@Composable
+internal fun fmtMae(variable: String, mae: Double): String {
+  val units = rememberUnitFormatter()
+  return when (variable) {
+    FusionVariables.TEMPERATURE -> units.temperatureSpan(mae, 1)
+    FusionVariables.PRESSURE_MSL -> units.pressure(mae, 1)
+    FusionVariables.PRECIPITATION -> units.precipitation(mae, 2)
+    FusionVariables.CLOUD_COVER -> stringResource(R.string.mae_points, units.num(mae, 0))
+    FusionVariables.WIND_SPEED -> units.wind(mae, 1)
+    else -> units.num(mae, 2)
+  }
 }
 
-private fun fmtDay(millis: Long): String =
-  DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()).format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
+private fun fmtDay(millis: Long): String = TimeFormats.shortDate(millis)
 
-private fun fmtTime(millis: Long): String =
-  DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
+private fun fmtTime(millis: Long): String = TimeFormats.time(millis)
 
-private fun fmtEpochDay(epochDay: Long): String =
-  DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()).format(LocalDate.ofEpochDay(epochDay))
+private fun fmtEpochDay(epochDay: Long): String = TimeFormats.shortDate(LocalDate.ofEpochDay(epochDay))

@@ -30,22 +30,16 @@ data class BarometerReadiness(
   /** Una barra sola: un quinto la raffica, quattro quinti la storia (e' li' che si aspetta). */
   val overallFraction: Float get() = (0.2f * calibrationFraction + 0.8f * historyFraction).coerceIn(0f, 1f)
 
-  val stageLabel: String
+  /** Dove siamo: chi mostra la barra sceglie le parole (core-strings), qui solo lo stadio. */
+  val stage: ReadinessStage
     get() = when {
-      calibrationRunning -> {
-        val done = calibrationCompletedSeconds
-        "Raffica iniziale: ${done / 60}:${String.format(java.util.Locale.ROOT, "%02d", done % 60)} di ${calibrationTotalSeconds / 60}:00"
-      }
-      !ready -> "Storia barometrica: ${formatHours(historyHours)} di ${formatHours(requiredHours)} ore"
-      else -> "Barometro pronto"
+      calibrationRunning -> ReadinessStage.CALIBRATING
+      !ready -> ReadinessStage.HISTORY
+      else -> ReadinessStage.READY
     }
-
-  private fun formatHours(hours: Double): String {
-    val whole = hours.toInt()
-    val minutes = ((hours - whole) * 60).toInt()
-    return if (whole == 0 && minutes > 0) "${minutes} min" else if (minutes == 0) "$whole" else "$whole h $minutes min"
-  }
 }
+
+enum class ReadinessStage { CALIBRATING, HISTORY, READY }
 
 object NowcastReadiness {
 

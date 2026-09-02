@@ -40,6 +40,8 @@ import dev.antigravity.fluidengine.ui.fluid.FluidHairline
 import dev.antigravity.fluidengine.ui.fluid.FluidTextField
 import dev.pampa.fluidweather.core.model.Place
 import kotlinx.coroutines.delay
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * La pillola espansa: la stessa capsula di vetro che si apre nel pannello dell'engine
@@ -67,7 +69,7 @@ internal fun LocationPane(
     onDismissRequest = onDismiss,
     origin = origin,
     presentation = FluidGlassModalPresentation.Expand,
-    paneTitle = "Localita'",
+    paneTitle = stringResource(R.string.loc_title),
   ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Place>>(emptyList()) }
@@ -89,7 +91,7 @@ internal fun LocationPane(
       FluidTextField(
         value = query,
         onValueChange = { query = it },
-        placeholder = "Cerca una citta'…",
+        placeholder = stringResource(R.string.loc_search_hint),
         leading = {
           Icon(
             Icons.Rounded.Search,
@@ -105,7 +107,7 @@ internal fun LocationPane(
 
       LazyColumn(Modifier.heightIn(max = 340.dp)) {
         if (results.isNotEmpty() || searching) {
-          item { PaneLabel(if (searching) "Cerco…" else "Risultati") }
+          item { PaneLabel(if (searching) stringResource(R.string.loc_searching) else stringResource(R.string.loc_results)) }
           items(results, key = { "r${it.id}" }) { place ->
             PlaceRow(
               place = place,
@@ -119,7 +121,7 @@ internal fun LocationPane(
           }
         }
 
-        item { PaneLabel("Le tue localita'") }
+        item { PaneLabel(stringResource(R.string.loc_saved)) }
         items(places, key = { it.id }) { place ->
           PlaceRow(
             place = place,
@@ -181,7 +183,7 @@ private fun PlaceRow(
         Spacer(Modifier.width(12.dp))
       }
       Column(Modifier.weight(1f)) {
-        Text(place.name, style = MaterialTheme.typography.bodyLarge, color = onSurface)
+        Text(if (place.isGps) stringResource(R.string.place_my_location) else place.name, style = MaterialTheme.typography.bodyLarge, color = onSurface)
         if (place.region != null) {
           Text(
             place.region!!,
@@ -193,7 +195,7 @@ private fun PlaceRow(
       if (selected) {
         Icon(
           Icons.Rounded.Check,
-          contentDescription = "Selezionata",
+          contentDescription = stringResource(R.string.common_selected),
           tint = MaterialTheme.colorScheme.primary,
           modifier = Modifier.size(18.dp),
         )
@@ -212,7 +214,7 @@ private fun PlaceRow(
         ) {
           Icon(
             Icons.Rounded.Close,
-            contentDescription = "Rimuovi",
+            contentDescription = stringResource(R.string.common_remove),
             tint = onSurface.copy(alpha = 0.5f),
             modifier = Modifier.size(16.dp),
           )

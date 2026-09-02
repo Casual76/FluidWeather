@@ -1,13 +1,13 @@
 package dev.pampa.fluidweather.core.model
 
-/** La scala EAQI europea, con etichette e ordine: il colore lo decide la UI. */
-enum class AqiBand(val label: String, val maxInclusive: Int) {
-  GOOD("Buona", 20),
-  FAIR("Discreta", 40),
-  MODERATE("Moderata", 60),
-  POOR("Scarsa", 80),
-  VERY_POOR("Molto scarsa", 100),
-  EXTREMELY_POOR("Pessima", Int.MAX_VALUE);
+/** La scala EAQI europea, con soglie e ordine: le parole e il colore li decide la UI. */
+enum class AqiBand(val maxInclusive: Int) {
+  GOOD(20),
+  FAIR(40),
+  MODERATE(60),
+  POOR(80),
+  VERY_POOR(100),
+  EXTREMELY_POOR(Int.MAX_VALUE);
 
   companion object {
     fun of(europeanAqi: Int): AqiBand = entries.first { europeanAqi <= it.maxInclusive }

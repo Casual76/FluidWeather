@@ -39,6 +39,8 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /** Tutto quello che la categoria "Dati e privacy" tocca. */
 class DataPrivacyDependencies(
@@ -70,44 +72,42 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
   var exporting by remember { mutableStateOf(false) }
   var confirmWipe by remember { mutableStateOf(false) }
 
-  FluidScreen(title = "Dati e privacy", onBack = onBack) {
-    item { FluidSectionHeader(title = "Cosa c'e' sul telefono") }
+  FluidScreen(title = stringResource(R.string.data_title), onBack = onBack) {
+    item { FluidSectionHeader(title = stringResource(R.string.data_on_phone)) }
     item {
       FluidListGroup {
-        FluidListRow(title = "Letture del barometro", subtitle = "L'archivio grezzo, raffiche comprese", meta = sampleCount.toString())
+        FluidListRow(title = stringResource(R.string.data_readings), subtitle = stringResource(R.string.data_readings_desc), meta = sampleCount.toString())
         FluidListDivider()
-        FluidListRow(title = "Verifiche dei provider", subtitle = "I giudizi che fanno la classifica", meta = if (verificationCount < 0) "…" else verificationCount.toString())
+        FluidListRow(title = stringResource(R.string.data_verifications), subtitle = stringResource(R.string.data_verifications_desc), meta = if (verificationCount < 0) "…" else verificationCount.toString())
         FluidListDivider()
-        FluidListRow(title = "Osservazioni tue", subtitle = "Le segnalazioni fatte a mano", meta = if (observationCount < 0) "…" else observationCount.toString())
+        FluidListRow(title = stringResource(R.string.data_observations), subtitle = stringResource(R.string.data_observations_desc), meta = if (observationCount < 0) "…" else observationCount.toString())
       }
     }
     item {
       Text(
-        "Tutto vive qui, in un database SQLite e in qualche file di preferenze. Nessun account, nessun " +
-          "backend, nessuna analitica. Ai servizi meteo arrivano solo coordinate arrotondate a cento " +
-          "metri e un User-Agent che dice chi siamo; le chiavi personali viaggiano solo verso il loro servizio.",
+        stringResource(R.string.data_privacy_note),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
       )
     }
 
-    item { FluidSectionHeader(title = "Esporta") }
+    item { FluidSectionHeader(title = stringResource(R.string.data_export)) }
     item {
       FluidListGroup {
         FluidListRow(
-          title = "Archivio barometrico in CSV",
-          subtitle = exportMessage ?: "Una riga per lettura, UTC, nella cartella Download: e' cio' che il banco di prova rigioca.",
+          title = stringResource(R.string.data_export_csv),
+          subtitle = exportMessage ?: stringResource(R.string.data_export_csv_desc),
           badge = {
             FluidButton(
-              text = if (exporting) "…" else "Esporta",
+              text = if (exporting) "…" else stringResource(R.string.data_export),
               style = FluidButtonStyle.Tinted,
               enabled = !exporting,
               onClick = {
                 exporting = true
                 scope.launch {
                   exportMessage = runCatching { exportCsv(context, deps.pressureRepository) }
-                    .getOrElse { "Esportazione fallita: ${it.message}" }
+                    .getOrElse { context.getString(R.string.data_export_failed, it.message ?: "") }
                   exporting = false
                 }
               },
@@ -117,14 +117,14 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Cancella") }
+    item { FluidSectionHeader(title = stringResource(R.string.data_delete)) }
     item {
       FluidListGroup {
         FluidListRow(
-          title = "Cancella tutti i dati",
-          subtitle = "Letture, verifiche, storico, osservazioni, taratura, istantanee. Le impostazioni restano.",
+          title = stringResource(R.string.data_delete_all),
+          subtitle = stringResource(R.string.data_delete_all_desc),
           badge = {
-            FluidButton(text = "Cancella", style = FluidButtonStyle.Tinted, onClick = { confirmWipe = true })
+            FluidButton(text = stringResource(R.string.data_delete), style = FluidButtonStyle.Tinted, onClick = { confirmWipe = true })
           },
         )
       }
@@ -134,12 +134,12 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
   if (confirmWipe) {
     FluidAlert(
       onDismissRequest = { confirmWipe = false },
-      title = "Cancellare tutto?",
-      message = "Mesi di storia barometrica non si ricostruiscono: il motore riparte da zero, taratura compresa.",
+      title = stringResource(R.string.data_delete_confirm),
+      message = stringResource(R.string.data_delete_confirm_desc),
       actions = listOf(
-        FluidAlertAction("Annulla", onClick = { confirmWipe = false }),
+        FluidAlertAction(stringResource(R.string.common_cancel), onClick = { confirmWipe = false }),
         FluidAlertAction(
-          "Cancella",
+          stringResource(R.string.data_delete),
           emphasis = FluidAlertAction.Emphasis.Destructive,
           onClick = {
             confirmWipe = false
@@ -157,7 +157,7 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
 /** Il CSV in Download (MediaStore da Android 10), altrimenti nella cartella esterna dell'app. */
 private suspend fun exportCsv(context: Context, repository: PressureRepository): String = withContext(Dispatchers.IO) {
   val samples = repository.samplesSince(0L)
-  if (samples.isEmpty()) return@withContext "Nessuna lettura da esportare."
+  if (samples.isEmpty()) return@withContext context.getString(R.string.data_nothing_to_export)
   val csv = PressureCsv.render(samples)
   val stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmm").format(Instant.now().atZone(ZoneId.systemDefault()))
   val name = "fluidweather-barometro-$stamp.csv"
@@ -169,14 +169,14 @@ private suspend fun exportCsv(context: Context, repository: PressureRepository):
     }
     val resolver = context.contentResolver
     val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-      ?: return@withContext "Impossibile creare il file in Download."
+      ?: return@withContext context.getString(R.string.data_create_failed)
     resolver.openOutputStream(uri)?.use { it.write(csv.toByteArray()) }
-      ?: return@withContext "Impossibile scrivere il file in Download."
-    "Salvato in Download: $name (${samples.size} letture)."
+      ?: return@withContext context.getString(R.string.data_write_failed)
+    context.getString(R.string.data_saved_download, name, samples.size)
   } else {
     val directory = context.getExternalFilesDir(null) ?: context.filesDir
     val file = File(directory, name)
     file.writeText(csv)
-    "Salvato in ${file.absolutePath} (${samples.size} letture)."
+    context.getString(R.string.data_saved_path, file.absolutePath, samples.size)
   }
 }

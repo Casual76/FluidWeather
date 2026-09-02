@@ -3,25 +3,26 @@ package dev.pampa.fluidweather.feature.radar
 import kotlin.math.abs
 
 /**
- * La matematica della barra del tempo del radar: etichette relative ad "adesso" (l'ultimo
- * fotogramma del passato), il ritmo dell'animazione, il fotogramma sotto il dito.
+ * La matematica della barra del tempo del radar: la distanza di un fotogramma da "adesso"
+ * (l'ultimo fotogramma del passato), il ritmo dell'animazione, il fotogramma sotto il dito.
+ * Le parole le mette la schermata, nella lingua del telefono (fase 17).
  */
 object RadarTimeline {
 
-  /** "adesso", "−1 h 40 min", "+20 min": il tempo del fotogramma rispetto a quello corrente. */
-  fun label(frameMillis: Long, nowFrameMillis: Long): String {
-    val minutes = ((frameMillis - nowFrameMillis) / 60_000L).toInt()
-    if (minutes == 0) return "adesso"
-    val sign = if (minutes < 0) "−" else "+"
-    val magnitude = abs(minutes)
-    val hours = magnitude / 60
-    val rest = magnitude % 60
-    return when {
-      hours == 0 -> "$sign$rest min"
-      rest == 0 -> "$sign$hours h"
-      else -> "$sign$hours h $rest min"
-    }
+  /** "adesso", "−1 h 40 min", "+20 min": il tempo del fotogramma rispetto a quello corrente, scomposto. */
+  data class Offset(val minutes: Int) {
+    val isNow: Boolean get() = minutes == 0
+
+    /** Il meno tipografico, come su tutta l'app. */
+    val sign: String get() = if (minutes < 0) "−" else "+"
+
+    val hours: Int get() = abs(minutes) / 60
+
+    val rest: Int get() = abs(minutes) % 60
   }
+
+  fun offset(frameMillis: Long, nowFrameMillis: Long): Offset =
+    Offset(((frameMillis - nowFrameMillis) / 60_000L).toInt())
 
   /** L'ultimo fotogramma resta piu' a lungo: e' il presente, e l'occhio vuole leggerlo. */
   fun frameDelayMillis(index: Int, count: Int): Long = if (index >= count - 1) 1_500L else 450L

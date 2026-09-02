@@ -1,5 +1,7 @@
 package dev.pampa.fluidweather.core.weather
 
+import dev.pampa.fluidweather.strings.R
+
 /**
  * Dove un provider vale davvero. Le scatole sono deliberatamente strette: interrogare AROME a
  * Tokyo non e' "piu' dati", e' rumore con un costo.
@@ -33,8 +35,8 @@ data class ProviderDescriptor(
   val coverage: Coverage,
   val requiresKey: Boolean,
   val horizonHours: Int,
-  /** Cosa porta di suo: il motivo per cui sta nella costellazione. */
-  val why: String,
+  /** Cosa porta di suo: il motivo per cui sta nella costellazione (risorsa, fase 17). */
+  val whyRes: Int,
   val attribution: String,
 )
 
@@ -67,7 +69,7 @@ object ProviderRegistry {
       requiresKey = false,
       // Dieci giorni: e' il best_match che regge il widget Giornaliero del piano.
       horizonHours = 10 * 24,
-      why = "il miglior modello disponibile per il punto, scelto da Open-Meteo",
+      whyRes = R.string.provider_why_open_meteo,
       attribution = "Weather data by Open-Meteo.com (CC BY 4.0)",
     ),
     ProviderDescriptor(
@@ -76,7 +78,7 @@ object ProviderRegistry {
       coverage = Coverage.Global,
       requiresKey = false,
       horizonHours = 7 * 24,
-      why = "la fisica del servizio meteo tedesco, forte sull'Europa",
+      whyRes = R.string.provider_why_icon,
       attribution = "Weather data by Open-Meteo.com / DWD (CC BY 4.0)",
     ),
     ProviderDescriptor(
@@ -85,7 +87,7 @@ object ProviderRegistry {
       coverage = Coverage.Global,
       requiresKey = false,
       horizonHours = 7 * 24,
-      why = "il riferimento mondiale della media scadenza",
+      whyRes = R.string.provider_why_ecmwf,
       attribution = "Weather data by Open-Meteo.com / ECMWF (CC BY 4.0)",
     ),
     ProviderDescriptor(
@@ -94,7 +96,7 @@ object ProviderRegistry {
       coverage = Coverage.Global,
       requiresKey = false,
       horizonHours = 7 * 24,
-      why = "il globale americano: un'opinione indipendente ovunque",
+      whyRes = R.string.provider_why_gfs,
       attribution = "Weather data by Open-Meteo.com / NOAA (CC BY 4.0)",
     ),
     ProviderDescriptor(
@@ -104,7 +106,7 @@ object ProviderRegistry {
       coverage = Coverage.Box(37.5, 55.4, -12.0, 16.0),
       requiresKey = false,
       horizonHours = 3 * 24,
-      why = "il regionale ad alta risoluzione sull'Europa occidentale",
+      whyRes = R.string.provider_why_arome,
       attribution = "Weather data by Open-Meteo.com / Météo-France (CC BY 4.0)",
     ),
     ProviderDescriptor(
@@ -113,7 +115,7 @@ object ProviderRegistry {
       coverage = Coverage.Box(20.0, 50.0, 120.0, 150.0),
       requiresKey = false,
       horizonHours = 7 * 24,
-      why = "il giapponese sull'Asia orientale, tifoni compresi",
+      whyRes = R.string.provider_why_jma,
       attribution = "Weather data by Open-Meteo.com / JMA (CC BY 4.0)",
     ),
     ProviderDescriptor(
@@ -122,7 +124,7 @@ object ProviderRegistry {
       coverage = Coverage.Global,
       requiresKey = false,
       horizonHours = 9 * 24,
-      why = "il servizio norvegese, eccellente su Nord Europa e Atlantico",
+      whyRes = R.string.provider_why_met_norway,
       attribution = "Weather data from MET Norway (NLOD/CC BY 4.0)",
     ),
     ProviderDescriptor(
@@ -131,7 +133,7 @@ object ProviderRegistry {
       coverage = Coverage.Box(24.0, 50.0, -125.0, -66.0),
       requiresKey = false,
       horizonHours = 7 * 24,
-      why = "il servizio ufficiale statunitense, sul suo territorio",
+      whyRes = R.string.provider_why_nws,
       attribution = "Weather data from the US National Weather Service",
     ),
     ProviderDescriptor(
@@ -140,7 +142,7 @@ object ProviderRegistry {
       coverage = Coverage.Global,
       requiresKey = true,
       horizonHours = 5 * 24,
-      why = "un'opinione globale in piu', con la chiave dell'utente",
+      whyRes = R.string.provider_why_owm,
       attribution = "Weather data by OpenWeatherMap",
     ),
     ProviderDescriptor(
@@ -149,7 +151,7 @@ object ProviderRegistry {
       coverage = Coverage.Global,
       requiresKey = true,
       horizonHours = 24,
-      why = "nowcast orario indipendente, con la chiave dell'utente",
+      whyRes = R.string.provider_why_meteosource,
       attribution = "Weather data by Meteosource",
     ),
   )

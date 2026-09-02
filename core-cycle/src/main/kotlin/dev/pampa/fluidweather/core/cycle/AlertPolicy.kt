@@ -6,12 +6,9 @@ import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NotificationSettings
 import dev.pampa.fluidweather.core.model.OfficialAlert
-import dev.pampa.fluidweather.core.model.WeatherKindLabels
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
-import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
 /** Tutto quello che la politica guarda: lo stato del mondo e la memoria di cio' che ha detto. */
@@ -34,7 +31,8 @@ data class AlertDecision(
 )
 
 /**
- * La politica delle notifiche: pura, deterministica, con la memoria esplicita. Decide per tre
+ * La politica delle notifiche: pura, deterministica, con la memoria esplicita. Le parole le
+ * porta [NotificationTexts] (fase 17): qui si decide, non si scrive. Decide per tre
  * dei quattro canali (il riepilogo ha il suo orologio, vedi [DailySummary]) e rispetta le
  * impostazioni PRIMA di guardare i dati: un canale spento non produce niente, nemmeno memoria.
  *
@@ -59,7 +57,7 @@ object AlertPolicy {
   const val OFFICIAL_ID_BASE = 300
   const val SUMMARY_ID = 400
 
-  fun decide(inputs: AlertInputs): AlertDecision {
+  fun decide(inputs: AlertInputs, texts: NotificationTexts): AlertDecision {
     val notifications = mutableListOf<AppNotification>()
     var ledger = inputs.ledger
     var cancelNowcast = false
@@ -77,20 +75,20 @@ object AlertPolicy {
             strongest.probability >= lastProbability + NOWCAST_ESCALATION
           if (due) {
             val factors = strongest.topFactors.take(2).joinToString(", ") { factor ->
-              factor.name + if (factor.contribution > 0) " ▲" else " ▼"
+              texts.factorLabel(factor.name) + if (factor.contribution > 0) " ▲" else " ▼"
             }
             notifications += AppNotification(
               channel = NotificationChannelKind.NOWCAST_ALERT,
               id = NOWCAST_ID,
-              title = "Allerta del barometro",
-              text = "Pioggia probabile ${windowPhrase(strongest.window)}: ${(strongest.probability * 100).toInt()}%",
-              bigText = buildString {
-                append("Il barometro del telefono vede arrivare la pioggia ")
-                append(windowPhrase(strongest.window))
-                append(" (probabilita' ${(strongest.probability * 100).toInt()}%, banda ")
-                append("${(strongest.probabilityLow * 100).toInt()}-${(strongest.probabilityHigh * 100).toInt()}%).")
-                if (factors.isNotBlank()) append("\nFattori: $factors.")
-              },
+              title = texts.nowcastTitle(),
+              text = texts.nowcastText(strongest.window, (strongest.probability * 100).toInt()),
+              bigText = texts.nowcastBigText(
+                window = strongest.window,
+                probabilityPercent = (strongest.probability * 100).toInt(),
+                lowPercent = (strongest.probabilityLow * 100).toInt(),
+                highPercent = (strongest.probabilityHigh * 100).toInt(),
+                factors = factors.takeIf { it.isNotBlank() },
+              ),
             )
             ledger = ledger.copy(
               nowcastAlertAtMillis = inputs.nowMillis,
@@ -115,20 +113,19 @@ object AlertPolicy {
         }
         val isNewEvent = already == null || abs(transition.atMillis - already) > EVENT_DISTINCT_MILLIS
         if (isNewEvent) {
-          val time = HourMinute.withZone(inputs.zone).format(Instant.ofEpochMilli(transition.atMillis))
-          val noun = WeatherKindLabels.precipitationNoun(transition.weatherKind)
+          val time = texts.time(transition.atMillis, inputs.zone)
           notifications += when (transition.kind) {
             TransitionKind.ONSET -> AppNotification(
               channel = NotificationChannelKind.PRECIPITATION,
               id = PRECIPITATION_ID,
-              title = "$noun in arrivo",
-              text = "Inizia verso le $time dove sei.",
+              title = texts.onsetTitle(transition.weatherKind),
+              text = texts.onsetText(time),
             )
             TransitionKind.END -> AppNotification(
               channel = NotificationChannelKind.PRECIPITATION,
               id = PRECIPITATION_ID,
-              title = "$noun in esaurimento",
-              text = "Smette verso le $time.",
+              title = texts.endTitle(transition.weatherKind),
+              text = texts.endText(time),
             )
           }
           ledger = when (transition.kind) {
@@ -154,10 +151,10 @@ object AlertPolicy {
             alert.headline?.let { append(it).append("\n\n") }
             alert.description?.let { append(it).append("\n\n") }
             alert.instruction?.let { append(it).append("\n\n") }
-            alert.areaDescription?.let { append("Area: ").append(it).append("\n") }
-            append("Fonte: ").append(alert.source.label)
+            alert.areaDescription?.let { append(texts.officialArea()).append(it).append("\n") }
+            append(texts.officialSource()).append(alert.source.label)
             alert.sender?.let { append(" · ").append(it) }
-            append("\nTesto riportato com'e' stato emesso, senza reinterpretazione.")
+            append(texts.officialVerbatim())
           },
         )
       }
@@ -171,14 +168,4 @@ object AlertPolicy {
 
     return AlertDecision(notifications, cancelNowcast, ledger)
   }
-
-  /** Le finestre del verdetto, in italiano parlato. */
-  fun windowPhrase(window: String): String = when (window) {
-    "0-1h" -> "entro un'ora"
-    "1-3h" -> "fra una e tre ore"
-    "3-6h" -> "fra tre e sei ore"
-    else -> "nelle prossime ore"
-  }
-
-  private val HourMinute: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 }

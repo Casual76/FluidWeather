@@ -36,6 +36,8 @@ import dev.pampa.fluidweather.core.model.AppearanceSettings
 import dev.pampa.fluidweather.core.model.GlassLevel
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /** Tutto quello che la categoria "Aspetto" tocca. */
 class AppearanceDependencies(
@@ -54,20 +56,20 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
   val engine by deps.engineSettings.settings.collectAsState(initial = EngineSettings())
   val appearance by deps.appearanceStore.settings.collectAsState(initial = AppearanceSettings())
 
-  FluidScreen(title = "Aspetto", onBack = onBack) {
-    item { FluidSectionHeader(title = "Colore") }
+  FluidScreen(title = stringResource(R.string.appear_title), onBack = onBack) {
+    item { FluidSectionHeader(title = stringResource(R.string.appear_color)) }
     item {
       FluidListGroup {
         AccentRow(
-          title = "Dal meteo",
-          subtitle = "L'accento segue le condizioni attuali della posizione (il default del piano)",
+          title = stringResource(R.string.appear_from_weather),
+          subtitle = stringResource(R.string.appear_from_weather_desc),
           selected = engine.accentMode == AccentMode.BRAND,
           onClick = { scope.launch { deps.engineSettings.setAccentMode(AccentMode.BRAND) } },
         )
         FluidListDivider()
         AccentRow(
           title = "Material You",
-          subtitle = "I colori dello sfondo del telefono (Android 12 e oltre)",
+          subtitle = stringResource(R.string.appear_material_you_desc),
           selected = engine.accentMode == AccentMode.DYNAMIC,
           onClick = {
             scope.launch {
@@ -78,8 +80,8 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
         )
         FluidListDivider()
         AccentRow(
-          title = "Una palette",
-          subtitle = "Un colore scelto da te, ametista come base",
+          title = stringResource(R.string.appear_palette),
+          subtitle = stringResource(R.string.appear_palette_desc),
           selected = engine.accentMode == AccentMode.CUSTOM_PRESET,
           onClick = { scope.launch { deps.engineSettings.setAccentMode(AccentMode.CUSTOM_PRESET) } },
         )
@@ -93,7 +95,7 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
           ) {
             WeatherAccent.palettes.forEach { preset ->
               FluidChip(
-                label = preset.label,
+                label = if (preset.name == WeatherAccent.Amethyst.name) stringResource(R.string.accent_amethyst) else preset.label,
                 selected = engine.customAccentName == preset.name,
                 onClick = { scope.launch { deps.engineSettings.setCustomAccent(preset.name) } },
                 leading = {
@@ -110,26 +112,26 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Tema delle pagine") }
+    item { FluidSectionHeader(title = stringResource(R.string.appear_theme)) }
     item {
       FluidListGroup {
         listOf(
-          ThemeMode.SYSTEM to "Come il sistema",
-          ThemeMode.LIGHT to "Chiaro",
-          ThemeMode.DARK to "Scuro",
+          ThemeMode.SYSTEM to stringResource(R.string.appear_theme_system),
+          ThemeMode.LIGHT to stringResource(R.string.appear_theme_light),
+          ThemeMode.DARK to stringResource(R.string.appear_theme_dark),
         ).forEachIndexed { index, (mode, label) ->
           if (index > 0) FluidListDivider()
           AccentRow(
             title = label,
-            subtitle = if (mode == ThemeMode.SYSTEM) "Impostazioni, radar e fogli seguono il telefono" else "",
+            subtitle = if (mode == ThemeMode.SYSTEM) stringResource(R.string.appear_theme_system_desc) else "",
             selected = engine.themeMode == mode || (mode == ThemeMode.DARK && engine.themeMode == ThemeMode.AMOLED),
             onClick = { scope.launch { deps.engineSettings.setThemeMode(mode) } },
           )
         }
         FluidListDivider()
         FluidListRow(
-          title = "Nero puro",
-          subtitle = "Superfici nere nel tema scuro (AMOLED)",
+          title = stringResource(R.string.appear_pure_black),
+          subtitle = stringResource(R.string.appear_pure_black_desc),
           badge = {
             FluidSwitch(
               checked = engine.amoledEnabled,
@@ -141,19 +143,19 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
     }
     item {
       Text(
-        "La home la comanda il cielo: e' sempre in tema scuro sopra la scena, qualunque tema scelga il telefono.",
+        stringResource(R.string.appear_home_note),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
       )
     }
 
-    item { FluidSectionHeader(title = "Vetro adattivo") }
+    item { FluidSectionHeader(title = stringResource(R.string.appear_glass)) }
     item {
       FluidListGroup {
         FluidListRow(
-          title = "Decidi tu automaticamente",
-          subtitle = "Il livello lo sceglie il telefono in base alla sua potenza",
+          title = stringResource(R.string.appear_glass_auto),
+          subtitle = stringResource(R.string.appear_glass_auto_desc),
           badge = {
             FluidSwitch(
               checked = appearance.autoGlass,
@@ -167,7 +169,7 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
             title = level.label(),
             subtitle = level.description(),
             badge = if (!appearance.autoGlass && appearance.manualLevel == level) {
-              { Icon(Icons.Rounded.Check, contentDescription = "Scelto", tint = MaterialTheme.colorScheme.primary) }
+              { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = MaterialTheme.colorScheme.primary) }
             } else {
               null
             },
@@ -176,8 +178,8 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
         }
         FluidListDivider()
         FluidListRow(
-          title = "Riduci in risparmio energia",
-          subtitle = "Un gradino in meno quando la batteria chiede aiuto",
+          title = stringResource(R.string.appear_glass_power_save),
+          subtitle = stringResource(R.string.appear_glass_power_save_desc),
           badge = {
             FluidSwitch(
               checked = appearance.reduceOnPowerSave,
@@ -196,7 +198,7 @@ private fun AccentRow(title: String, subtitle: String, selected: Boolean, onClic
     title = title,
     subtitle = subtitle,
     badge = if (selected) {
-      { Icon(Icons.Rounded.Check, contentDescription = "Scelto", tint = MaterialTheme.colorScheme.primary) }
+      { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = MaterialTheme.colorScheme.primary) }
     } else {
       null
     },

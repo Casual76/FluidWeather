@@ -41,6 +41,11 @@ android {
     }
   }
 
+  // Solo le due lingue dell'app: le risorse di altre lingue portate dalle librerie non entrano.
+  androidResources {
+    localeFilters += ['en', 'it']
+  }
+
   buildFeatures {
     compose true
     // BuildConfig.VERSION_NAME per la pagina Informazioni.

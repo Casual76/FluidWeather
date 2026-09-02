@@ -8,6 +8,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import dev.pampa.fluidweather.strings.R
 
 class RadarClientsTest {
 
@@ -48,7 +49,7 @@ class RadarClientsTest {
     val legend = RainViewerPalette.legend
     assertTrue(legend.size >= 5)
     assertTrue(legend.zipWithNext().all { (a, b) -> b.dbz > a.dbz })
-    assertEquals("debole", legend.first { it.dbz == 20 }.label)
+    assertEquals(R.string.radar_legend_light, legend.first { it.dbz == 20 }.labelRes)
     assertEquals(0xFF00A3E0L, legend.first { it.dbz == 20 }.argb)
   }
 

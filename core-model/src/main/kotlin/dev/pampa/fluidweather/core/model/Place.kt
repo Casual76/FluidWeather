@@ -16,7 +16,8 @@ data class Place(
   companion object {
     const val GPS_ID: Long = -1L
 
-    fun gps(): Place = Place(GPS_ID, "La mia posizione", null, Double.NaN, Double.NaN)
+    /** Il nome lo mette chi lo mostra, nella sua lingua: qui e' vuoto per contratto. */
+    fun gps(): Place = Place(GPS_ID, "", null, Double.NaN, Double.NaN)
   }
 }
 

@@ -55,6 +55,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalDensity
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.core.ui.stageText
+import dev.pampa.fluidweather.strings.TimeFormats
+import dev.pampa.fluidweather.strings.compassPoint
+import dev.pampa.fluidweather.strings.featureLabelRes
+import dev.pampa.fluidweather.strings.labelRes
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 
 /**
  * Il contenuto vero di ogni tessera. Icone: set Material come segnaposto DICHIARATO — le
@@ -83,20 +94,20 @@ private fun NowcastTile(state: HomeUiState) {
   if (verdict == null) {
     val readiness = state.readiness
     if (readiness == null) {
-      EmptyTileBody("Il barometro sta ancora accumulando storia (~13 ore).")
+      EmptyTileBody(stringResource(R.string.tile_nowcast_waiting))
       return
     }
     // La barra unica chiesta sul telefono: raffica iniziale, poi le ore di storia.
     Spacer(Modifier.height(6.dp))
-    Text(readiness.stageLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    Text(readiness.stageText(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
     Spacer(Modifier.height(8.dp))
     FluidProgressBar(progress = { readiness.overallFraction })
     Spacer(Modifier.height(6.dp))
     Text(
       text = if (readiness.calibrationRunning) {
-        "La raffica di taratura gira in sottofondo: puoi chiudere l'app."
+        stringResource(R.string.tile_calibration_running)
       } else {
-        "Il modello vuole ${readiness.requiredHours.toInt()} ore di segnale pulito prima del primo verdetto."
+        stringResource(R.string.tile_history_needed, readiness.requiredHours.toInt())
       },
       style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
@@ -105,9 +116,9 @@ private fun NowcastTile(state: HomeUiState) {
   }
   Text(
     text = when (verdict.level) {
-      AlertLevel.QUIETE -> "Quiete: nessun segnale fuori dalla climatologia"
-      AlertLevel.SORVEGLIANZA -> "Sorveglianza: qualcosa si muove"
-      AlertLevel.ALLERTA -> "Allerta: precipitazione probabile a breve"
+      AlertLevel.QUIETE -> stringResource(R.string.tile_level_quiet)
+      AlertLevel.SORVEGLIANZA -> stringResource(R.string.tile_level_watch)
+      AlertLevel.ALLERTA -> stringResource(R.string.tile_level_alert)
     },
     style = MaterialTheme.typography.bodyMedium,
     color = MaterialTheme.colorScheme.onSurface,
@@ -142,7 +153,7 @@ private fun NowcastTile(state: HomeUiState) {
   if (topFactor != null) {
     Spacer(Modifier.height(8.dp))
     Text(
-      text = "Fattore principale: ${topFactor.name}",
+      text = stringResource(R.string.tile_top_factor, stringResource(featureLabelRes(topFactor.name))),
       style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
     )
@@ -150,8 +161,6 @@ private fun NowcastTile(state: HomeUiState) {
 }
 
 // ------------------------------------------------------------------------------------- orario
-
-private val HourFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH")
 
 /** Larghezza di una colonna della striscia: ora, icona, gradi e pioggia stanno in 54 dp. */
 private val HourColumnWidth = 54.dp
@@ -177,10 +186,11 @@ private fun HourlyTile(state: HomeUiState) {
     }
     .take(24)
   if (hours.isEmpty()) {
-    EmptyTileBody("In attesa dei provider…")
+    EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return
   }
   val zone = ZoneId.systemDefault()
+  val units = rememberUnitFormatter()
   val temps = hours.map { it.values.getValue(FusionVariables.TEMPERATURE).value }
   val min = temps.min()
   val max = temps.max()
@@ -189,15 +199,19 @@ private fun HourlyTile(state: HomeUiState) {
   val sunset = state.sunTimesToday?.sunsetMillis
   val onSurface = MaterialTheme.colorScheme.onSurface
   val textShadow = Shadow(color = Color.Black.copy(alpha = 0.55f), blurRadius = 6f)
-  val insetPx = with(LocalDensity.current) { HourTempTextHeight.toPx() / 2f }
+  // Con la scala del testo di sistema i gradi crescono: la riga e le colonne crescono con loro.
+  val density = LocalDensity.current
+  val tempTextHeight = with(density) { MaterialTheme.typography.titleSmall.lineHeight.toDp() }.coerceAtLeast(HourTempTextHeight)
+  val hourColumnWidth = HourColumnWidth * density.fontScale.coerceIn(1f, 1.6f)
+  val insetPx = with(density) { tempTextHeight.toPx() / 2f }
 
   Column(Modifier.horizontalScroll(rememberScrollState())) {
     // Riga 1: l'ora e l'icona (alba e tramonto prendono il posto dell'icona nella loro ora).
     Row {
       hours.forEach { hour ->
-        Column(Modifier.width(HourColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.width(hourColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
           Text(
-            text = HourFormatter.format(Instant.ofEpochMilli(hour.timestampMillis).atZone(zone)),
+            text = TimeFormats.hour(hour.timestampMillis, zone),
             style = MaterialTheme.typography.labelSmall,
             color = onSurface.copy(alpha = 0.6f),
           )
@@ -223,8 +237,8 @@ private fun HourlyTile(state: HomeUiState) {
     // cosi' il punto di ogni ora coincide col centro del suo numero.
     Box(
       Modifier
-        .width(HourColumnWidth * hours.size)
-        .height(HourCurveHeight + HourTempTextHeight),
+        .width(hourColumnWidth * hours.size)
+        .height(HourCurveHeight + tempTextHeight),
     ) {
       Charts.SmoothLine(
         values = temps,
@@ -232,22 +246,22 @@ private fun HourlyTile(state: HomeUiState) {
         insetPx = insetPx,
         modifier = Modifier
           .matchParentSize()
-          .padding(horizontal = HourColumnWidth / 2),
+          .padding(horizontal = hourColumnWidth / 2),
       )
       Row {
         temps.forEach { temperature ->
           val normalized = ((temperature - min) / span).toFloat()
           Column(
             modifier = Modifier
-              .width(HourColumnWidth)
+              .width(hourColumnWidth)
               .padding(top = HourCurveHeight * (1f - normalized)),
             horizontalAlignment = Alignment.CenterHorizontally,
           ) {
             Text(
-              text = "${temperature.toInt()}°",
+              text = units.degrees(temperature),
               style = MaterialTheme.typography.titleSmall.copy(shadow = textShadow),
               color = onSurface,
-              modifier = Modifier.height(HourTempTextHeight),
+              modifier = Modifier.height(tempTextHeight),
             )
           }
         }
@@ -258,7 +272,7 @@ private fun HourlyTile(state: HomeUiState) {
     Row {
       hours.forEach { hour ->
         val pop = hour.values[FusionVariables.PRECIP_PROBABILITY]?.value
-        Column(Modifier.width(HourColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.width(hourColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
           Text(
             text = if (pop != null && pop >= 5) "${pop.toInt()}%" else " ",
             style = MaterialTheme.typography.labelSmall,
@@ -281,7 +295,7 @@ private fun DailyTile(state: HomeUiState) {
     .entries
     .take(10)
   if (byDay.isEmpty()) {
-    EmptyTileBody("In attesa dei provider…")
+    EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return
   }
 
@@ -289,11 +303,12 @@ private fun DailyTile(state: HomeUiState) {
     hours.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
   }
   if (allTemps.isEmpty()) {
-    EmptyTileBody("Nessuna temperatura fusa disponibile.")
+    EmptyTileBody(stringResource(R.string.tile_no_fused_temperature))
     return
   }
   val periodMin = allTemps.min()
   val periodMax = allTemps.max()
+  val units = rememberUnitFormatter()
   val today = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(zone).toLocalDate()
   val dayFormatter = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
 
@@ -304,7 +319,7 @@ private fun DailyTile(state: HomeUiState) {
       val kind = hours.mapNotNull { it.kind }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-          text = if (date == today) "Oggi" else dayFormatter.format(date).replaceFirstChar { it.uppercase() },
+          text = if (date == today) stringResource(R.string.common_today) else dayFormatter.format(date).replaceFirstChar { it.uppercase() },
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurface,
           modifier = Modifier.width(38.dp),
@@ -312,7 +327,7 @@ private fun DailyTile(state: HomeUiState) {
         WeatherKindIcon(kind, size = 16.dp)
         Spacer(Modifier.width(8.dp))
         Text(
-          text = "${temps.min().toInt()}°",
+          text = units.degrees(temps.min()),
           style = MaterialTheme.typography.labelMedium,
           color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
           modifier = Modifier.width(26.dp),
@@ -330,7 +345,7 @@ private fun DailyTile(state: HomeUiState) {
             .height(5.dp),
         )
         Text(
-          text = "${temps.max().toInt()}°",
+          text = units.degrees(temps.max()),
           style = MaterialTheme.typography.labelMedium,
           color = MaterialTheme.colorScheme.onSurface,
           modifier = Modifier
@@ -349,35 +364,41 @@ private fun PrecipitationTile(state: HomeUiState) {
   val now = System.currentTimeMillis()
   val next6 = state.fusedHours.filter { it.timestampMillis >= now }.take(6)
   if (next6.isEmpty()) {
-    EmptyTileBody("In attesa dei provider…")
+    EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return
   }
   val pops = next6.map { it.values[FusionVariables.PRECIP_PROBABILITY]?.value ?: 0.0 }
   val totalMm = next6.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 }
   val zone = ZoneId.systemDefault()
+  val units = rememberUnitFormatter()
 
   Text(
     text = if (totalMm >= 0.1) {
-      "~${String.format(Locale.getDefault(), "%.1f", totalMm)} mm nelle prossime 6 ore"
+      stringResource(R.string.tile_rain_6h, units.precipitation(totalMm))
     } else {
-      "Niente pioggia attesa nelle prossime 6 ore"
+      stringResource(R.string.tile_no_rain_6h)
     },
     style = MaterialTheme.typography.bodyMedium,
     color = MaterialTheme.colorScheme.onSurface,
   )
   Spacer(Modifier.height(10.dp))
+  val barsDescription = stringResource(
+    R.string.a11y_chart_probability,
+    next6.zip(pops).joinToString(", ") { (hour, pop) -> "${TimeFormats.hour(hour.timestampMillis, zone)} ${pop.toInt()}%" },
+  )
   Charts.ProbabilityBars(
     percentages = pops,
     color = Color(0xFF8FC7F0),
     modifier = Modifier
       .fillMaxWidth()
-      .height(52.dp),
+      .height(52.dp)
+      .semantics { contentDescription = barsDescription },
   )
   Spacer(Modifier.height(4.dp))
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
     next6.forEach { hour ->
       Text(
-        text = HourFormatter.format(Instant.ofEpochMilli(hour.timestampMillis).atZone(zone)),
+        text = TimeFormats.hour(hour.timestampMillis, zone),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
       )
@@ -391,18 +412,19 @@ private fun PrecipitationTile(state: HomeUiState) {
 private fun PressureTile(state: HomeUiState) {
   val raw = state.latestRawPressureHpa
   if (raw == null) {
-    EmptyTileBody("Nessuna lettura del barometro.")
+    EmptyTileBody(stringResource(R.string.tile_no_barometer_reading))
     return
   }
+  val units = rememberUnitFormatter()
   Spacer(Modifier.height(6.dp))
   Text(
-    text = String.format(Locale.getDefault(), "%.1f", raw),
+    text = units.pressureValue(raw, 1),
     fontSize = 34.sp,
     fontWeight = FontWeight.Light,
     color = MaterialTheme.colorScheme.onSurface,
   )
   Text(
-    text = "hPa · grezza",
+    text = stringResource(R.string.tile_pressure_raw, units.pressureSymbol()),
     style = MaterialTheme.typography.labelSmall,
     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
   )
@@ -411,9 +433,9 @@ private fun PressureTile(state: HomeUiState) {
     Spacer(Modifier.height(8.dp))
     Text(
       text = when {
-        trend <= -0.5 -> "↓ in discesa (${String.format(Locale.ROOT, "%+.1f", trend)}/h)"
-        trend >= 0.5 -> "↑ in salita (${String.format(Locale.ROOT, "%+.1f", trend)}/h)"
-        else -> "→ stabile"
+        trend <= -0.5 -> stringResource(R.string.tile_trend_falling, units.pressureRate(trend))
+        trend >= 0.5 -> stringResource(R.string.tile_trend_rising, units.pressureRate(trend))
+        else -> stringResource(R.string.tile_trend_steady)
       },
       style = MaterialTheme.typography.labelMedium,
       color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
@@ -436,7 +458,7 @@ internal fun aqiColor(band: AqiBand): Color = when (band) {
 private fun AirQualityTile(state: HomeUiState) {
   val air = state.airQuality
   if (air == null) {
-    EmptyTileBody("Qualita' dell'aria non disponibile.")
+    EmptyTileBody(stringResource(R.string.tile_air_unavailable))
     return
   }
   Spacer(Modifier.height(6.dp))
@@ -450,7 +472,7 @@ private fun AirQualityTile(state: HomeUiState) {
     Spacer(Modifier.width(8.dp))
     Column {
       Text(
-        text = air.band.label,
+        text = stringResource(air.band.labelRes()),
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurface,
       )
@@ -461,10 +483,11 @@ private fun AirQualityTile(state: HomeUiState) {
       )
     }
   }
-  if (air.dominantPollutant != null) {
+  val dominant = air.dominantPollutant
+  if (dominant != null) {
     Spacer(Modifier.height(8.dp))
     Text(
-      text = "Domina: ${air.dominantPollutant}",
+      text = stringResource(R.string.tile_air_dominant, dominant),
       style = MaterialTheme.typography.labelMedium,
       color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
     )
@@ -473,14 +496,12 @@ private fun AirQualityTile(state: HomeUiState) {
 
 // --------------------------------------------------------------------------------------- sole
 
-private val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
 @Composable
 private fun SunTile(state: HomeUiState) {
   val times = state.sunTimesToday
   if (times?.sunriseMillis == null || times.sunsetMillis == null) {
     EmptyTileBody(
-      if (state.hasLocation) "Oggi il sole non attraversa l'orizzonte qui." else "Serve la posizione.",
+      if (state.hasLocation) stringResource(R.string.tile_sun_no_crossing) else stringResource(R.string.tile_needs_location),
     )
     return
   }
@@ -489,20 +510,26 @@ private fun SunTile(state: HomeUiState) {
   val progress = ((now - times.sunriseMillis!!).toFloat() /
     (times.sunsetMillis!! - times.sunriseMillis!!).toFloat()).takeIf { it in 0f..1f }
 
+  val arcDescription = stringResource(
+    R.string.a11y_sun_arc,
+    TimeFormats.time(times.sunriseMillis!!, zone),
+    TimeFormats.time(times.sunsetMillis!!, zone),
+  )
   Charts.SunArc(
     dayProgress = progress,
     arcColor = MaterialTheme.colorScheme.onSurface,
     sunColor = Color(0xFFF6C750),
     modifier = Modifier
       .fillMaxWidth()
-      .height(88.dp),
+      .height(88.dp)
+      .semantics { contentDescription = arcDescription },
   )
   Spacer(Modifier.height(6.dp))
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
     Column {
-      Text("Alba", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
+      Text(stringResource(R.string.sun_rise), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
       Text(
-        TimeFormatter.format(Instant.ofEpochMilli(times.sunriseMillis!!).atZone(zone)),
+        TimeFormats.time(times.sunriseMillis!!, zone),
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurface,
       )
@@ -514,24 +541,24 @@ private fun SunTile(state: HomeUiState) {
       } else {
         null
       }
-      Text("Durata", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
+      Text(stringResource(R.string.sun_length), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
       Text(
-        text = length?.let { "${it / 3_600_000L}h ${(it / 60_000L) % 60}m" } ?: "—",
+        text = length?.let { stringResource(R.string.duration_hm, it / 3_600_000L, (it / 60_000L) % 60) } ?: "—",
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurface,
       )
       if (delta != null && delta != 0L) {
         Text(
-          text = if (delta > 0) "+$delta min su ieri" else "$delta min su ieri",
+          text = if (delta > 0) stringResource(R.string.sun_delta_plus, delta) else stringResource(R.string.sun_delta, delta),
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
         )
       }
     }
     Column(horizontalAlignment = Alignment.End) {
-      Text("Tramonto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
+      Text(stringResource(R.string.sun_set), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
       Text(
-        TimeFormatter.format(Instant.ofEpochMilli(times.sunsetMillis!!).atZone(zone)),
+        TimeFormats.time(times.sunsetMillis!!, zone),
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurface,
       )
@@ -541,16 +568,8 @@ private fun SunTile(state: HomeUiState) {
 
 // --------------------------------------------------------------------------------------- luna
 
-internal fun moonPhaseLabel(phase: MoonPhase): String = when (phase) {
-  MoonPhase.NEW -> "Luna nuova"
-  MoonPhase.WAXING_CRESCENT -> "Falce crescente"
-  MoonPhase.FIRST_QUARTER -> "Primo quarto"
-  MoonPhase.WAXING_GIBBOUS -> "Gibbosa crescente"
-  MoonPhase.FULL -> "Luna piena"
-  MoonPhase.WANING_GIBBOUS -> "Gibbosa calante"
-  MoonPhase.LAST_QUARTER -> "Ultimo quarto"
-  MoonPhase.WANING_CRESCENT -> "Falce calante"
-}
+@Composable
+internal fun moonPhaseLabel(phase: MoonPhase): String = stringResource(phase.labelRes())
 
 @Composable
 private fun MoonTile(state: HomeUiState) {
@@ -561,11 +580,14 @@ private fun MoonTile(state: HomeUiState) {
   val nextFull = Moon.nextFullMoonMillis(now)
   val zone = ZoneId.systemDefault()
 
+  val moonDescription = stringResource(R.string.a11y_moon, moonPhaseLabel(phase))
   Row(verticalAlignment = Alignment.CenterVertically) {
     Charts.MoonDisc(
       illuminatedFraction = illumination,
       waxing = waxing,
-      modifier = Modifier.size(64.dp),
+      modifier = Modifier
+        .size(64.dp)
+        .semantics { contentDescription = moonDescription },
     )
     Spacer(Modifier.width(14.dp))
     Column {
@@ -575,13 +597,12 @@ private fun MoonTile(state: HomeUiState) {
         color = MaterialTheme.colorScheme.onSurface,
       )
       Text(
-        text = "Illuminata al ${(illumination * 100).toInt()}%",
+        text = stringResource(R.string.moon_illuminated, (illumination * 100).toInt()),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
       )
       Text(
-        text = "Piena " + DateTimeFormatter.ofPattern("d MMMM", Locale.getDefault())
-          .format(Instant.ofEpochMilli(nextFull).atZone(zone)),
+        text = stringResource(R.string.moon_full_in, TimeFormats.shortDate(nextFull, zone)),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
       )
@@ -596,10 +617,12 @@ private fun DetailsTile(state: HomeUiState) {
   val now = System.currentTimeMillis()
   val hour = state.fusedHours.minByOrNull { abs(it.timestampMillis - now) }
   if (hour == null) {
-    EmptyTileBody("In attesa dei provider…")
+    EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return
   }
   fun value(variable: String): Double? = hour.values[variable]?.value
+  val units = rememberUnitFormatter()
+  val context = LocalContext.current
 
   val wind = value(FusionVariables.WIND_SPEED)
   val humidity = value(FusionVariables.HUMIDITY)
@@ -611,12 +634,12 @@ private fun DetailsTile(state: HomeUiState) {
 
   Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
     Row {
-      DetailStat("Vento", wind?.let { "${it.toInt()} km/h" }, Modifier.weight(1f)) {
+      DetailStat(stringResource(R.string.common_wind), wind?.let { units.wind(it) }, Modifier.weight(1f)) {
         val direction = hour.windDirectionDeg
         if (direction != null) {
           Icon(
             imageVector = Icons.Rounded.Navigation,
-            contentDescription = null,
+            contentDescription = compassPoint(context.resources, direction),
             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             // L'icona punta in su; il vento VIENE da direction: la freccia indica dove va.
             modifier = Modifier
@@ -625,17 +648,17 @@ private fun DetailsTile(state: HomeUiState) {
           )
         }
       }
-      DetailStat("Umidita'", humidity?.let { "${it.toInt()}%" }, Modifier.weight(1f))
+      DetailStat(stringResource(R.string.common_humidity), humidity?.let { "${it.toInt()}%" }, Modifier.weight(1f))
       DetailStat("UV", value(FusionVariables.UV_INDEX)?.let { String.format(Locale.ROOT, "%.0f", it) }, Modifier.weight(1f))
     }
     Row {
       DetailStat(
-        "Visibilita'",
-        value(FusionVariables.VISIBILITY)?.let { String.format(Locale.ROOT, "%.0f km", it / 1000) },
+        stringResource(R.string.common_visibility),
+        value(FusionVariables.VISIBILITY)?.let { units.visibilityMeters(it) },
         Modifier.weight(1f),
       )
-      DetailStat("Rugiada", value(FusionVariables.DEW_POINT)?.let { "${it.toInt()}°" }, Modifier.weight(1f))
-      DetailStat("Percepita", apparent?.let { "${it.toInt()}°" }, Modifier.weight(1f))
+      DetailStat(stringResource(R.string.details_dew_short), value(FusionVariables.DEW_POINT)?.let { units.degrees(it) }, Modifier.weight(1f))
+      DetailStat(stringResource(R.string.common_feels_like), apparent?.let { units.degrees(it) }, Modifier.weight(1f))
     }
   }
 }
@@ -647,7 +670,8 @@ private fun DetailStat(
   modifier: Modifier = Modifier,
   trailing: (@Composable () -> Unit)? = null,
 ) {
-  Column(modifier) {
+  // Un solo nodo per TalkBack: "Vento, 12 km/h" invece di due frammenti.
+  Column(modifier.semantics(mergeDescendants = true) {}) {
     Text(
       text = label.uppercase(),
       style = MaterialTheme.typography.labelSmall,
@@ -685,7 +709,7 @@ internal fun WeatherKindIcon(kind: WeatherKind?, size: androidx.compose.ui.unit.
   val (icon, tint) = kindIconAndTint(kind)
   Icon(
     imageVector = icon,
-    contentDescription = null,
+    contentDescription = kind?.labelRes()?.let { stringResource(it) },
     tint = tint,
     modifier = Modifier.size(size),
   )

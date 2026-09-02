@@ -54,11 +54,16 @@ import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import androidx.compose.runtime.produceState
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.strings.TimeFormats
+import dev.pampa.fluidweather.strings.featureLabelRes
+import dev.pampa.fluidweather.strings.labelRes
+import dev.pampa.fluidweather.strings.shortLabelRes
 
 /** Tutto quello che la diagnostica tocca; lo costruisce :app dal suo grafo. */
 class DiagnosticsDependencies(
@@ -123,32 +128,32 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
     }
   }
 
-  FluidScreen(title = "Diagnostica barometro", onBack = onBack) {
-    item { FluidSectionHeader(title = "Sensore") }
+  FluidScreen(title = stringResource(R.string.diag_title), onBack = onBack) {
+    item { FluidSectionHeader(title = stringResource(R.string.diag_sensor)) }
     item {
       FluidListGroup {
         if (deps.barometer.isAvailable) {
           FluidListRow(
-            title = "Pressione grezza",
-            subtitle = deps.barometer.sensorName ?: "Barometro",
+            title = stringResource(R.string.diag_raw_pressure),
+            subtitle = deps.barometer.sensorName ?: stringResource(R.string.common_barometer),
             meta = live?.let { String.format(Locale.getDefault(), "%.2f hPa", it.pressureHpa) } ?: "—",
           )
         } else {
           FluidListRow(
-            title = "Barometro assente",
-            subtitle = "Questo dispositivo non ha il sensore: la sezione locale non e' disponibile.",
+            title = stringResource(R.string.diag_no_barometer),
+            subtitle = stringResource(R.string.diag_no_barometer_desc),
           )
         }
         FluidListDivider()
         FluidListRow(
-          title = "Campioni in archivio",
-          subtitle = "Tutte le letture registrate finora",
+          title = stringResource(R.string.diag_samples),
+          subtitle = stringResource(R.string.diag_samples_desc),
           meta = sampleCount.toString(),
         )
       }
     }
 
-    item { FluidSectionHeader(title = "Verdetto nowcast — v1, solo barometro") }
+    item { FluidSectionHeader(title = stringResource(R.string.diag_verdict_title)) }
     item {
       FluidListGroup {
         val verdict: NowcastVerdict? = cleaning?.let { result ->
@@ -157,27 +162,26 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
         }
         if (verdict == null) {
           FluidListRow(
-            title = "In attesa di storia",
-            subtitle = "Il verdetto compare dopo ~13 ore di campionamento; " +
-              "il contesto dei provider (fase 6) lo affinera'",
+            title = stringResource(R.string.diag_waiting_history),
+            subtitle = stringResource(R.string.diag_waiting_history_desc),
           )
         } else {
           FluidListRow(
-            title = "Livello",
+            title = stringResource(R.string.pressure_level),
             subtitle = when (verdict.level) {
-              AlertLevel.QUIETE -> "Nessun segnale fuori dalla climatologia"
-              AlertLevel.SORVEGLIANZA -> "Qualcosa si muove: finestre sopra il 35%"
-              AlertLevel.ALLERTA -> "Precipitazione piu' probabile che no a breve"
+              AlertLevel.QUIETE -> stringResource(R.string.diag_level_quiet)
+              AlertLevel.SORVEGLIANZA -> stringResource(R.string.diag_level_watch)
+              AlertLevel.ALLERTA -> stringResource(R.string.diag_level_alert)
             },
-            meta = verdict.level.name.lowercase(),
+            meta = stringResource(verdict.level.labelRes()).lowercase(),
           )
           verdict.windows.forEach { window ->
             FluidListDivider()
             FluidListRow(
-              title = "Pioggia ${window.window}",
-              subtitle = window.topFactors.joinToString(" · ") { factor ->
-                "${factor.name} ${if (factor.contribution > 0) "+" else "−"}"
-              }.ifEmpty { "Nessun fattore fuori dal neutro" },
+              title = stringResource(R.string.diag_rain_window, window.window),
+              subtitle = window.topFactors.map { factor ->
+                "${stringResource(featureLabelRes(factor.name))} ${if (factor.contribution > 0) "+" else "−"}"
+              }.joinToString(" · ").ifEmpty { stringResource(R.string.diag_no_factors) },
               meta = String.format(
                 Locale.getDefault(),
                 "%.0f%% (%.0f-%.0f)",
@@ -191,19 +195,19 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Segnale pulito — stadi 1-2") }
+    item { FluidSectionHeader(title = stringResource(R.string.diag_clean_title)) }
     item {
       FluidListGroup {
         val latest = cleaning?.latest
         if (latest == null) {
           FluidListRow(
-            title = "In attesa di dati",
-            subtitle = "Il segnale pulito compare quando l'archivio ha qualche lettura",
+            title = stringResource(R.string.diag_waiting_data),
+            subtitle = stringResource(R.string.diag_waiting_data_desc),
           )
         } else {
           FluidListRow(
-            title = "Livello (mare)",
-            subtitle = "Ridotto con la quota, filtrato, con la sua incertezza",
+            title = stringResource(R.string.diag_level_msl),
+            subtitle = stringResource(R.string.diag_level_msl_desc),
             meta = String.format(
               Locale.getDefault(),
               "%.2f ± %.2f hPa",
@@ -213,8 +217,8 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
           )
           FluidListDivider()
           FluidListRow(
-            title = "Tendenza",
-            subtitle = "Quiete sotto 1,0 · sorveglianza oltre",
+            title = stringResource(R.string.pressure_trend),
+            subtitle = stringResource(R.string.diag_trend_desc),
             meta = String.format(
               Locale.getDefault(),
               "%+.2f ± %.2f hPa/h",
@@ -227,38 +231,36 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
         if (result != null) {
           FluidListDivider()
           FluidListRow(
-            title = "Marea atmosferica",
+            title = stringResource(R.string.pressure_tide),
             subtitle = when (result.tide.source) {
-              TideSource.NONE -> "Nessuna posizione nota: non si sottrae niente"
-              TideSource.CLIMATOLOGICAL -> String.format(
-                Locale.getDefault(),
-                "Prior climatologico · S1 %.2f · S2 %.2f hPa",
-                result.tide.s1AmplitudeHpa,
-                result.tide.s2AmplitudeHpa,
+              TideSource.NONE -> stringResource(R.string.diag_tide_none)
+              TideSource.CLIMATOLOGICAL -> stringResource(
+                R.string.diag_tide_prior,
+                String.format(Locale.getDefault(), "%.2f", result.tide.s1AmplitudeHpa),
+                String.format(Locale.getDefault(), "%.2f", result.tide.s2AmplitudeHpa),
               )
-              TideSource.FITTED -> String.format(
-                Locale.getDefault(),
-                "Adattata al posto · S1 %.2f · S2 %.2f hPa",
-                result.tide.s1AmplitudeHpa,
-                result.tide.s2AmplitudeHpa,
+              TideSource.FITTED -> stringResource(
+                R.string.diag_tide_fitted,
+                String.format(Locale.getDefault(), "%.2f", result.tide.s1AmplitudeHpa),
+                String.format(Locale.getDefault(), "%.2f", result.tide.s2AmplitudeHpa),
               )
             },
             meta = if (result.tide.source == TideSource.NONE) {
               "—"
             } else {
-              String.format(Locale.getDefault(), "adesso %+.2f hPa", result.tide.tideAtLatestHpa)
+              stringResource(R.string.diag_tide_now, String.format(Locale.getDefault(), "%+.2f", result.tide.tideAtLatestHpa))
             },
           )
           val counts = result.rejectionCounts()
           FluidListDivider()
           FluidListRow(
-            title = "Scarti della pulizia",
+            title = stringResource(R.string.diag_rejections),
             subtitle = if (counts.isEmpty()) {
-              "Nessun punto scartato nelle ultime 12 ore"
+              stringResource(R.string.diag_no_rejections)
             } else {
-              counts.entries.joinToString(" · ") { (reason, count) -> "${reason.label()}: $count" }
+              counts.entries.map { (reason, count) -> "${stringResource(reason.shortLabelRes())}: $count" }.joinToString(" · ")
             },
-            meta = "${result.cleaned.size} tenuti",
+            meta = stringResource(R.string.diag_kept, result.cleaned.size),
           )
         }
       }
@@ -268,26 +270,25 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
       item {
         FluidListGroup {
           FluidListRow(
-            title = "Concedi i permessi",
-            subtitle = "Posizione, attivita' e notifiche arricchiscono ogni campione",
+            title = stringResource(R.string.diag_grant_permissions),
+            subtitle = stringResource(R.string.diag_grant_permissions_desc),
             onClick = { permissionLauncher.launch(missingPermissions.toTypedArray()) },
           )
         }
       }
     }
 
-    item { FluidSectionHeader(title = "Strumenti") }
+    item { FluidSectionHeader(title = stringResource(R.string.diag_tools)) }
     item {
       FluidListGroup {
         val burstProgress = burst
         if (burstProgress == null) {
           FluidListRow(
-            title = "Raffica manuale",
-            subtitle = "${ManualBurst.DURATION_SECONDS / 60} minuti a ${ManualBurst.HZ} Hz: " +
-              "abbastanza campioni da separare una caduta vera dal rumore",
+            title = stringResource(R.string.diag_manual_burst),
+            subtitle = stringResource(R.string.diag_manual_burst_desc, ManualBurst.DURATION_SECONDS / 60, ManualBurst.HZ),
             badge = {
               FluidButton(
-                text = "Avvia",
+                text = stringResource(R.string.common_start),
                 style = FluidButtonStyle.Tinted,
                 onClick = { deps.burstController.start() },
               )
@@ -295,11 +296,11 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
           )
         } else {
           FluidListRow(
-            title = "Raffica in corso",
-            subtitle = "${burstProgress.completedSeconds} / ${burstProgress.totalSeconds} s",
+            title = stringResource(R.string.diag_burst_running),
+            subtitle = stringResource(R.string.diag_burst_progress, burstProgress.completedSeconds, burstProgress.totalSeconds),
             badge = {
               FluidButton(
-                text = "Annulla",
+                text = stringResource(R.string.common_cancel),
                 style = FluidButtonStyle.Plain,
                 onClick = { deps.burstController.cancel() },
               )
@@ -309,18 +310,18 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
       }
     }
 
-    item { FluidSectionHeader(title = "Provider e fusione — piu' fonti per un punto") }
+    item { FluidSectionHeader(title = stringResource(R.string.diag_providers_title)) }
     item {
       var fetching by remember { androidx.compose.runtime.mutableStateOf(false) }
       var round by remember { androidx.compose.runtime.mutableStateOf<WeatherRound?>(null) }
       var roundFailed by remember { androidx.compose.runtime.mutableStateOf(false) }
       FluidListGroup {
         FluidListRow(
-          title = "Interroga la costellazione",
-          subtitle = "Fetch parallelo, verifica dei giudizi scaduti, fusione pesata",
+          title = stringResource(R.string.diag_query),
+          subtitle = stringResource(R.string.diag_query_desc),
           badge = {
             FluidButton(
-              text = if (fetching) "..." else "Vai",
+              text = if (fetching) "..." else stringResource(R.string.common_go),
               style = FluidButtonStyle.Tinted,
               enabled = !fetching,
               onClick = {
@@ -346,8 +347,8 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
         if (roundFailed) {
           FluidListDivider()
           FluidListRow(
-            title = "Posizione non disponibile",
-            subtitle = "Serve il permesso di posizione (o un fix GPS) per scegliere i provider",
+            title = stringResource(R.string.diag_no_position),
+            subtitle = stringResource(R.string.diag_no_position_desc),
           )
         }
         val result = round
@@ -357,27 +358,27 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
             val weight = result.fused.providerWeights[fetch.descriptor.id]
             FluidListRow(
               title = fetch.descriptor.label,
-              subtitle = fetch.descriptor.why,
+              subtitle = stringResource(fetch.descriptor.whyRes),
               meta = when {
                 fetch.bundle != null && weight != null ->
-                  "${fetch.bundle!!.hourly.size} ore · ${(weight * 100).toInt()}%"
-                fetch.bundle != null -> "${fetch.bundle!!.hourly.size} ore"
-                else -> fetch.error ?: "errore"
+                  stringResource(R.string.diag_hours_weight, fetch.bundle!!.hourly.size, (weight * 100).toInt())
+                fetch.bundle != null -> stringResource(R.string.common_hours_count, fetch.bundle!!.hourly.size)
+                else -> fetch.error ?: stringResource(R.string.common_error_short)
               },
             )
           }
           FluidListDivider()
           FluidListRow(
-            title = "Forecast fuso",
-            subtitle = "Ogni valore tracciabile alla sua fonte e al suo peso",
-            meta = "${result.fused.hours.size} ore",
+            title = stringResource(R.string.diag_fused),
+            subtitle = stringResource(R.string.diag_fused_desc),
+            meta = stringResource(R.string.common_hours_count, result.fused.hours.size),
           )
         }
       }
     }
 
     if (samples.isNotEmpty()) {
-      item { FluidSectionHeader(title = "Ultime letture") }
+      item { FluidSectionHeader(title = stringResource(R.string.diag_last_readings)) }
       item {
         FluidListGroup {
           samples.forEachIndexed { index, sample ->
@@ -395,30 +396,12 @@ private fun SampleRow(sample: PressureSample) {
   FluidListRow(
     title = String.format(Locale.getDefault(), "%.2f hPa", sample.pressureHpa),
     subtitle = buildString {
-      append(sample.source.label())
-      sample.altitudeMeters?.let { append(" · ${it.toInt()} m") }
+      append(stringResource(sample.source.labelRes()))
+      sample.altitudeMeters?.let { append(stringResource(R.string.diag_meters_suffix, it.toInt())) }
       if (sample.activity != dev.pampa.fluidweather.core.model.ActivityKind.UNKNOWN) {
         append(" · ${sample.activity.name.lowercase()}")
       }
     },
-    meta = TimeFormatter.format(Instant.ofEpochMilli(sample.timestampMillis)),
+    meta = TimeFormats.timeWithSeconds(sample.timestampMillis),
   )
-}
-
-private val TimeFormatter: DateTimeFormatter =
-  DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
-
-private fun SampleSource.label(): String = when (this) {
-  SampleSource.PERIODIC -> "giro periodico"
-  SampleSource.SURVEILLANCE -> "sorveglianza"
-  SampleSource.MANUAL_BURST -> "raffica manuale"
-  SampleSource.CONTINUOUS -> "continuo"
-  SampleSource.CALIBRATION -> "taratura"
-}
-
-private fun RejectionReason.label(): String = when (this) {
-  RejectionReason.ANOMALOUS_VARIANCE -> "varianza anomala"
-  RejectionReason.VEHICLE -> "veicolo"
-  RejectionReason.ALTITUDE_CHANGE -> "cambio di quota"
-  RejectionReason.NON_WEATHER_JUMP -> "salto non-meteo"
 }

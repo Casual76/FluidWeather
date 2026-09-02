@@ -139,6 +139,7 @@ class BackgroundCycle(
   private val notifier: SystemNotifier,
   private val inAppAlerts: InAppAlertBus,
   private val appVisibility: AppVisibility,
+  private val texts: NotificationTexts,
   private val clock: () -> Long = System::currentTimeMillis,
   private val zone: () -> ZoneId = { ZoneId.systemDefault() },
 ) {
@@ -151,13 +152,13 @@ class BackgroundCycle(
   suspend fun run(trigger: CycleTrigger): CycleOutcome = mutex.withLock {
     val now = clock()
     if (trigger == CycleTrigger.SURVEILLANCE_TICK && now - lastTickMillis < TICK_INTERVAL_MILLIS) {
-      return CycleOutcome("tick saltato (troppo vicino al precedente)", null, null, emptyList())
+      return CycleOutcome(texts.cycleSkipped(), null, null, emptyList())
     }
     lastTickMillis = now
 
     val point = resolvePoint()
     if (point == null) {
-      val outcome = CycleOutcome("nessuna posizione: ne' GPS ne' localita' salvate", null, null, emptyList())
+      val outcome = CycleOutcome(texts.cycleNoPosition(), null, null, emptyList())
       record(now, outcome)
       return outcome
     }
@@ -229,7 +230,8 @@ class BackgroundCycle(
     // 4) La politica decide, il registro ricorda, la consegna sceglie il mezzo.
     val ledger = ledgerStore.current()
     val decision = AlertPolicy.decide(
-      AlertInputs(
+      texts = texts,
+      inputs = AlertInputs(
         nowMillis = now,
         zone = zone(),
         settings = settings,
@@ -254,6 +256,7 @@ class BackgroundCycle(
           verdict = verdict,
           pressureTrendHpaPerHour = cleaning?.latest?.trendHpaPerHour,
           locationName = context?.locality,
+          texts = texts,
         )
         if (summary != null && deliver(summary)) {
           delivered += summary
@@ -262,18 +265,16 @@ class BackgroundCycle(
       }
     }
 
-    val note = buildString {
-      append(TimeFormatter.withZone(zone()).format(Instant.ofEpochMilli(now)))
-      append(" · ").append(triggerLabel(trigger))
-      if (snapshot != null) {
-        append(" · ${snapshot.providersResponding}/${snapshot.fetches.size} provider")
-        if (snapshot === cached) append(" (istantanea)")
-      } else {
-        append(" · meteo non disponibile")
-      }
-      append(" · verdetto ").append(verdict?.level?.let { levelLabel(it) } ?: "assente")
-      append(" · ${delivered.size} notifiche")
-    }
+    val note = texts.cycleNote(
+      nowMillis = now,
+      zone = zone(),
+      trigger = trigger,
+      providersResponding = snapshot?.providersResponding,
+      providersTotal = snapshot?.fetches?.size,
+      fromSnapshot = snapshot != null && snapshot === cached,
+      level = verdict?.level,
+      delivered = delivered.size,
+    )
     val outcome = CycleOutcome(note, snapshot, verdict, delivered)
     ledgerStore.update { nextLedger.copy(lastCycleAtMillis = now, lastCycleNote = note) }
     outcome
@@ -336,19 +337,6 @@ class BackgroundCycle(
     ledgerStore.update { it.copy(lastCycleAtMillis = now, lastCycleNote = outcome.note) }
   }
 
-  private fun triggerLabel(trigger: CycleTrigger) = when (trigger) {
-    CycleTrigger.SAMPLING_PASS -> "passata"
-    CycleTrigger.SURVEILLANCE_TICK -> "sorveglianza"
-    CycleTrigger.DAILY_SUMMARY -> "riepilogo"
-    CycleTrigger.MANUAL -> "manuale"
-  }
-
-  private fun levelLabel(level: AlertLevel) = when (level) {
-    AlertLevel.QUIETE -> "quiete"
-    AlertLevel.SORVEGLIANZA -> "sorveglianza"
-    AlertLevel.ALLERTA -> "ALLERTA"
-  }
-
   private companion object {
     /** In sorveglianza il sensore legge ogni minuto; il ciclo ragiona ogni cinque. */
     const val TICK_INTERVAL_MILLIS = 5 * 60_000L
@@ -367,7 +355,5 @@ class BackgroundCycle(
 
     /** La storia che si da' alla pipeline: piu' delle 13 ore che il modello pretende. */
     const val HISTORY_WINDOW_MILLIS = 24 * 3_600_000L
-
-    val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
   }
 }

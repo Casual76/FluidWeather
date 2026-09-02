@@ -54,6 +54,8 @@ import dev.antigravity.fluidengine.ui.fluid.glassControlSurface
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuButton
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuState
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * La barra flottante a tre isole: radar a sinistra, pillola della localita' al centro, menu' a
@@ -80,11 +82,15 @@ internal fun HomeFloatingBar(
   onLocationSwipe: (forward: Boolean) -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  // Le voci del menu' si leggono qui, nel composable: la lambda che le costruisce non lo e'.
+  val benchmarkLabel = stringResource(R.string.bench_title)
+  val reportLabel = stringResource(R.string.report_title)
+  val settingsLabel = stringResource(R.string.settings_title)
   val menuActions = {
     listOf(
-      FluidContextAction("Benchmark", Icons.Rounded.Insights) { onOpenBenchmark() },
-      FluidContextAction("Segnala osservazione", Icons.Rounded.RateReview) { onOpenReport() },
-      FluidContextAction("Impostazioni", Icons.Rounded.Settings) { onOpenSettings() },
+      FluidContextAction(benchmarkLabel, Icons.Rounded.Insights) { onOpenBenchmark() },
+      FluidContextAction(reportLabel, Icons.Rounded.RateReview) { onOpenReport() },
+      FluidContextAction(settingsLabel, Icons.Rounded.Settings) { onOpenSettings() },
     )
   }
 
@@ -95,14 +101,14 @@ internal fun HomeFloatingBar(
     FluidGlassIconButton(onClick = onOpenRadar, backdrop = backdrop) {
       Icon(
         imageVector = Icons.Rounded.Radar,
-        contentDescription = "Radar",
+        contentDescription = stringResource(R.string.radar_title),
         tint = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.size(20.dp),
       )
     }
 
     LocationPill(
-      name = locationName ?: "La mia posizione",
+      name = locationName ?: stringResource(R.string.place_my_location),
       backdrop = backdrop,
       expanded = locationExpanded,
       onBounds = onLocationBounds,

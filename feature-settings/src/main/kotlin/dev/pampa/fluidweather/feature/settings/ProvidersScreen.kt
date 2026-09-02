@@ -31,6 +31,8 @@ import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /** Tutto quello che la categoria "Provider e chiavi" tocca. */
 class ProvidersDependencies(
@@ -50,15 +52,15 @@ fun ProvidersScreen(deps: ProvidersDependencies, onBack: () -> Unit) {
   val keys by deps.providerKeys.keys.collectAsState(initial = emptyMap())
   val onlyProvider by deps.fusionSettings.onlyProviderId.collectAsState(initial = null)
 
-  FluidScreen(title = "Provider e chiavi", onBack = onBack) {
-    item { FluidSectionHeader(title = "Chiavi personali") }
+  FluidScreen(title = stringResource(R.string.prov_title), onBack = onBack) {
+    item { FluidSectionHeader(title = stringResource(R.string.prov_keys)) }
     item {
       FluidListGroup {
         ProviderRegistry.all.filter { it.requiresKey }.forEachIndexed { index, descriptor ->
           if (index > 0) FluidListDivider()
           KeyRow(
             label = descriptor.label,
-            why = descriptor.why,
+            why = stringResource(descriptor.whyRes),
             saved = keys[descriptor.id] != null,
             onSave = { key -> scope.launch { deps.providerKeys.set(descriptor.id, key) } },
             onRemove = { scope.launch { deps.providerKeys.set(descriptor.id, null) } },
@@ -68,48 +70,47 @@ fun ProvidersScreen(deps: ProvidersDependencies, onBack: () -> Unit) {
     }
     item {
       Text(
-        "Le chiavi restano nel telefono e viaggiano solo verso il servizio a cui appartengono. " +
-          "Con la chiave OpenWeatherMap il radar guadagna i livelli temperatura e vento.",
+        stringResource(R.string.prov_keys_note),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
       )
     }
 
-    item { FluidSectionHeader(title = "La costellazione") }
+    item { FluidSectionHeader(title = stringResource(R.string.prov_constellation)) }
     item {
       FluidListGroup {
         ProviderRegistry.all.forEachIndexed { index, descriptor ->
           if (index > 0) FluidListDivider()
           FluidListRow(
             title = descriptor.label,
-            subtitle = descriptor.why,
+            subtitle = stringResource(descriptor.whyRes),
             meta = when {
-              !descriptor.requiresKey -> "senza chiave"
-              keys[descriptor.id] != null -> "chiave ok"
-              else -> "serve chiave"
+              !descriptor.requiresKey -> stringResource(R.string.prov_keyless)
+              keys[descriptor.id] != null -> stringResource(R.string.prov_key_ok)
+              else -> stringResource(R.string.prov_key_needed)
             },
           )
         }
       }
     }
 
-    item { FluidSectionHeader(title = "Override") }
+    item { FluidSectionHeader(title = stringResource(R.string.prov_override)) }
     item {
       FluidListGroup {
         val chosen = onlyProvider
         if (chosen == null) {
           FluidListRow(
-            title = "Fusione completa",
-            subtitle = "Ogni valore e' la media pesata di chi copre il punto. \"Usa solo questo\" si sceglie dal Benchmark.",
+            title = stringResource(R.string.prov_full_fusion),
+            subtitle = stringResource(R.string.prov_full_fusion_desc),
           )
         } else {
           FluidListRow(
-            title = "Solo ${ProviderRegistry.all.firstOrNull { it.id == chosen }?.label ?: chosen}",
-            subtitle = "Dove arriva; dove non copre, la cascata riprende il volante.",
+            title = stringResource(R.string.prov_only, ProviderRegistry.all.firstOrNull { it.id == chosen }?.label ?: chosen),
+            subtitle = stringResource(R.string.prov_only_desc),
             badge = {
               FluidButton(
-                text = "Torna alla fusione",
+                text = stringResource(R.string.prov_back_to_fusion),
                 style = FluidButtonStyle.Tinted,
                 onClick = { scope.launch { deps.fusionSettings.setOnlyProvider(null) } },
               )
@@ -132,14 +133,14 @@ private fun KeyRow(label: String, why: String, saved: Boolean, onSave: (String) 
       FluidTextField(
         value = input,
         onValueChange = { input = it.trim() },
-        placeholder = if (saved) "Chiave salvata · incolla per sostituirla" else "Incolla la chiave",
+        placeholder = if (saved) stringResource(R.string.prov_key_saved) else stringResource(R.string.prov_paste_key),
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.weight(1f),
       )
       Spacer(Modifier.width(8.dp))
       if (input.isNotBlank()) {
         FluidButton(
-          text = "Salva",
+          text = stringResource(R.string.common_save),
           style = FluidButtonStyle.Tinted,
           onClick = {
             onSave(input)
@@ -147,7 +148,7 @@ private fun KeyRow(label: String, why: String, saved: Boolean, onSave: (String) 
           },
         )
       } else if (saved) {
-        FluidButton(text = "Rimuovi", style = FluidButtonStyle.Plain, onClick = onRemove)
+        FluidButton(text = stringResource(R.string.common_remove), style = FluidButtonStyle.Plain, onClick = onRemove)
       }
     }
   }

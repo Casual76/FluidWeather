@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
 
 /** La pressione al mare dei provider (e la temperatura) nello stesso istante della raffica. */
 data class CalibrationReference(val mslHpa: Double, val temperatureCelsius: Double?)
@@ -60,12 +61,12 @@ class CalibrationController(
   fun start() {
     if (_progress.value != null) return
     if (!engine.barometerAvailable) {
-      _lastOutcome.value = "Questo dispositivo non ha il barometro."
+      _lastOutcome.value = context.getString(R.string.calib_no_barometer)
       return
     }
     runCatching {
       ContextCompat.startForegroundService(context, Intent(context, CalibrationService::class.java))
-    }.onFailure { _lastOutcome.value = "Impossibile avviare la taratura: ${it.message}" }
+    }.onFailure { _lastOutcome.value = context.getString(R.string.calib_start_failed, it.message ?: "") }
   }
 
   fun cancel() {
@@ -85,14 +86,14 @@ class CalibrationController(
         _progress.value = Progress(completed, total)
       }
       if (stored == 0) {
-        _lastOutcome.value = "Nessuna lettura dal barometro."
+        _lastOutcome.value = context.getString(R.string.calib_no_readings)
         return
       }
       val samples = repository.samplesSince(startedAt).filter { it.source == SampleSource.CALIBRATION }
       val altitude = CalibrationMath.median(samples.mapNotNull { it.altitudeMeters })
       val target = runCatching { reference() }.getOrNull()
       if (target == null) {
-        _lastOutcome.value = "Riferimento dei provider assente (rete?): la raffica e' in archivio, riprova la stima."
+        _lastOutcome.value = context.getString(R.string.calib_no_reference)
         return
       }
       val record = CalibrationMath.estimate(
@@ -103,7 +104,7 @@ class CalibrationController(
         nowMillis = System.currentTimeMillis(),
       )
       if (record == null) {
-        _lastOutcome.value = "Troppo poche letture per una mediana."
+        _lastOutcome.value = context.getString(R.string.calib_too_few)
         return
       }
       store.save(record)
@@ -150,8 +151,8 @@ class CalibrationService : Service() {
   private fun startInForeground(progress: CalibrationController.Progress?) {
     val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
     manager.createNotificationChannel(
-      NotificationChannel(CHANNEL_ID, "Taratura del barometro", NotificationManager.IMPORTANCE_LOW).apply {
-        description = "Solo durante i dieci minuti della raffica iniziale."
+      NotificationChannel(CHANNEL_ID, getString(R.string.calib_channel), NotificationManager.IMPORTANCE_LOW).apply {
+        description = getString(R.string.calib_channel_desc)
       },
     )
     val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -167,8 +168,8 @@ class CalibrationService : Service() {
     val done = progress?.completedSeconds ?: 0
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_menu_compass)
-      .setContentTitle("Taratura del barometro in corso")
-      .setContentText("${done / 60}:${String.format("%02d", done % 60)} di ${total / 60}:00 — puoi usare il telefono normalmente")
+      .setContentTitle(getString(R.string.calib_running_title))
+      .setContentText(getString(R.string.calib_running_text, "${done / 60}:${String.format("%02d", done % 60)}", "${total / 60}:00"))
       .setProgress(total, done, false)
       .setOngoing(true)
       .setOnlyAlertOnce(true)

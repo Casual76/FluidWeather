@@ -40,6 +40,13 @@ import dev.pampa.fluidweather.feature.settings.OnboardingScreen
 import dev.pampa.fluidweather.feature.settings.ProvidersDependencies
 import dev.pampa.fluidweather.feature.settings.ProvidersScreen
 import dev.pampa.fluidweather.feature.settings.SettingsScreen
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import dev.pampa.fluidweather.core.model.UnitPreferences
+import dev.pampa.fluidweather.core.ui.LocalUnits
+import dev.pampa.fluidweather.feature.settings.UnitsDependencies
+import dev.pampa.fluidweather.feature.settings.UnitsScreen
+import java.util.Locale
 
 /**
  * Le rotte laterali. Benchmark e Segnalazione NON sono rotte: sono fogli neri che salgono dal
@@ -54,6 +61,7 @@ private object Routes {
   const val Providers = "settings/providers"
   const val Notifications = "settings/notifications"
   const val Appearance = "settings/appearance"
+  const val Units = "settings/units"
   const val Diagnostics = "settings/diagnostics"
   const val Data = "settings/data"
   const val About = "settings/about"
@@ -73,6 +81,21 @@ private const val CoveredParallax = 0.25f
 @Composable
 fun FluidWeatherNavHost(graph: AppGraph, startAtOnboarding: Boolean) {
   val navController = rememberNavController()
+  // Le unita' dell'utente (fase 17), lette una volta qui e disponibili a ogni schermata.
+  val units by graph.unitsStore.preferences.collectAsState(
+    initial = UnitPreferences.forCountry(Locale.getDefault().country),
+  )
+  CompositionLocalProvider(LocalUnits provides units) {
+    FluidWeatherRoutes(graph, navController, startAtOnboarding)
+  }
+}
+
+@Composable
+private fun FluidWeatherRoutes(
+  graph: AppGraph,
+  navController: androidx.navigation.NavHostController,
+  startAtOnboarding: Boolean,
+) {
   NavHost(
     navController = navController,
     startDestination = if (startAtOnboarding) Routes.Onboarding else Routes.Home,
@@ -189,6 +212,7 @@ fun FluidWeatherNavHost(graph: AppGraph, startAtOnboarding: Boolean) {
         onOpenProviders = { navController.navigate(Routes.Providers) },
         onOpenNotifications = { navController.navigate(Routes.Notifications) },
         onOpenAppearance = { navController.navigate(Routes.Appearance) },
+        onOpenUnits = { navController.navigate(Routes.Units) },
         onOpenDiagnostics = { navController.navigate(Routes.Diagnostics) },
         onOpenData = { navController.navigate(Routes.Data) },
         onOpenAbout = { navController.navigate(Routes.About) },
@@ -232,6 +256,10 @@ fun FluidWeatherNavHost(graph: AppGraph, startAtOnboarding: Boolean) {
         AppearanceDependencies(engineSettings = graph.engineSettingsStore, appearanceStore = graph.appearanceSettingsStore)
       }
       AppearanceScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
+    composable(Routes.Units) {
+      val deps = remember(graph) { UnitsDependencies(unitsStore = graph.unitsStore) }
+      UnitsScreen(deps = deps, onBack = { navController.popBackStack() })
     }
     composable(Routes.Diagnostics) {
       val deps = remember(graph) {

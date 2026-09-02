@@ -1,31 +1,26 @@
 package dev.pampa.fluidweather.feature.settings
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.model.GlassLevel
 import dev.pampa.fluidweather.core.model.SamplingMode
+import dev.pampa.fluidweather.strings.descriptionRes
+import dev.pampa.fluidweather.strings.labelRes
 
-/** Le etichette delle modalita' di campionamento: le usano diagnostica, onboarding e impostazioni. */
-internal fun SamplingMode.label(): String = when (this) {
-  SamplingMode.MASSIMA -> "Massima"
-  SamplingMode.BILANCIATA -> "Bilanciata"
-  SamplingMode.RISPARMIO -> "Risparmio"
-  SamplingMode.MINIMA -> "Minima"
-}
+/*
+ * Le etichette delle modalita' di campionamento e dei livelli del vetro: le usano diagnostica,
+ * onboarding e impostazioni. Le parole vivono in core-strings (fase 17); qui solo la comodita'
+ * di chiamarle da un composable.
+ */
 
-internal fun SamplingMode.description(): String = when (this) {
-  SamplingMode.MASSIMA -> "Ogni 5 min, raffica 30 s — allarmi esatti, piu' batteria"
-  SamplingMode.BILANCIATA -> "Ogni 15 min, raffica 30 s — il compromesso suggerito"
-  SamplingMode.RISPARMIO -> "Ogni 30 min, raffica 15 s — qualita' in calo dichiarata"
-  SamplingMode.MINIMA -> "Ogni 20 min, lettura secca — consumo ~nullo, accuratezza scarsa"
-}
+@Composable
+internal fun SamplingMode.label(): String = stringResource(labelRes())
 
-internal fun GlassLevel.label(): String = when (this) {
-  GlassLevel.FULL -> "Pieno"
-  GlassLevel.REDUCED -> "Ridotto"
-  GlassLevel.OFF -> "Spento"
-}
+@Composable
+internal fun SamplingMode.description(): String = stringResource(descriptionRes())
 
-internal fun GlassLevel.description(): String = when (this) {
-  GlassLevel.FULL -> "Vetro con rifrazione e scena animata: per i dispositivi capaci"
-  GlassLevel.REDUCED -> "Vetro semplificato e scena leggera"
-  GlassLevel.OFF -> "Superfici opache e cielo fermo: il minimo indispensabile"
-}
+@Composable
+internal fun GlassLevel.label(): String = stringResource(labelRes())
+
+@Composable
+internal fun GlassLevel.description(): String = stringResource(descriptionRes())

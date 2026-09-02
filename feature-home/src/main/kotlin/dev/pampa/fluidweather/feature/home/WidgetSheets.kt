@@ -12,6 +12,7 @@ import dev.pampa.fluidweather.feature.home.pages.NowcastPage
 import dev.pampa.fluidweather.feature.home.pages.PrecipitationPage
 import dev.pampa.fluidweather.feature.home.pages.PressurePage
 import dev.pampa.fluidweather.feature.home.pages.SunPage
+import androidx.compose.ui.res.stringResource
 
 /**
  * Il foglio NERO del piano ([BlackSheet]): sale dal basso, prende tutta la pagina, si chiude
@@ -26,7 +27,7 @@ internal fun WidgetSheetHost(
   onDismiss: () -> Unit,
 ) {
   if (selected == null) return
-  BlackSheet(title = selected.title, onDismiss = onDismiss) {
+  BlackSheet(title = stringResource(selected.titleRes), onDismiss = onDismiss) {
     when (selected) {
       HomeWidget.NOWCAST -> NowcastPage(state)
       HomeWidget.HOURLY -> HourlyPage(state)

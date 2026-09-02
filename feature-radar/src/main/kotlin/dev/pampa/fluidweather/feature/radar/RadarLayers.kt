@@ -1,8 +1,10 @@
 package dev.pampa.fluidweather.feature.radar
 
+import androidx.annotation.StringRes
 import com.google.android.gms.maps.model.UrlTileProvider
 import dev.pampa.fluidweather.core.weather.RadarFrame
 import dev.pampa.fluidweather.core.weather.RadarFrames
+import dev.pampa.fluidweather.strings.R
 import java.net.URL
 
 /**
@@ -11,11 +13,11 @@ import java.net.URL
  * di OWM quando la chiave e' nell'app; la qualita' dell'aria nessun servizio gratuito la serve
  * come mappa, e il selettore lo dice invece di fingere.
  */
-enum class RadarLayer(val label: String, val owmLayer: String?) {
-  PRECIPITATION("Precipitazioni", null),
-  TEMPERATURE("Temperatura", "temp_new"),
-  AIR_QUALITY("Qualita' aria", null),
-  WIND("Vento", "wind_new");
+enum class RadarLayer(@param:StringRes val labelRes: Int, val owmLayer: String?) {
+  PRECIPITATION(R.string.radar_layer_precipitation, null),
+  TEMPERATURE(R.string.radar_layer_temperature, "temp_new"),
+  AIR_QUALITY(R.string.radar_layer_air, null),
+  WIND(R.string.radar_layer_wind, "wind_new");
 
   fun available(hasOwmKey: Boolean): Boolean = when (this) {
     PRECIPITATION -> true
@@ -23,10 +25,12 @@ enum class RadarLayer(val label: String, val owmLayer: String?) {
     AIR_QUALITY -> false
   }
 
-  fun unavailableNote(): String = when (this) {
-    PRECIPITATION -> ""
-    TEMPERATURE, WIND -> "con chiave OpenWeatherMap"
-    AIR_QUALITY -> "nessun servizio gratuito lo serve come mappa"
+  /** Perche' non e' disponibile, quando non lo e': null se lo e' sempre. */
+  @StringRes
+  fun unavailableNoteRes(): Int? = when (this) {
+    PRECIPITATION -> null
+    TEMPERATURE, WIND -> R.string.radar_layer_owm_key
+    AIR_QUALITY -> R.string.radar_layer_no_service
   }
 }
 

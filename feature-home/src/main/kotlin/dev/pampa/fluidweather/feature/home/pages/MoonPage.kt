@@ -38,6 +38,11 @@ import java.time.YearMonth
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import java.time.DayOfWeek
+import java.time.format.TextStyle
 
 /**
  * La pagina della luna: lo scrubber dei giorni (trascina per andare avanti e indietro), il
@@ -47,14 +52,15 @@ import java.util.Locale
 @Composable
 internal fun MoonPage(state: HomeUiState) {
   var offsetDays by remember { mutableIntStateOf(0) }
+  val units = rememberUnitFormatter()
   val now = System.currentTimeMillis()
   val selected = now + offsetDays * 86_400_000L
   val date = localDate(selected)
 
-  PageSection(if (offsetDays == 0) "Adesso" else fmtDate(date))
+  PageSection(if (offsetDays == 0) stringResource(R.string.common_now) else fmtDate(date))
   DayScrubber(offsetDays = offsetDays, onOffsetChange = { offsetDays = it })
   val quick = listOf(-1, 0, 1, 7)
-  ChipRow(listOf("Ieri", "Oggi", "Domani", "+7 giorni"), quick.indexOf(offsetDays)) { offsetDays = quick[it] }
+  ChipRow(listOf(stringResource(R.string.common_yesterday), stringResource(R.string.common_today), stringResource(R.string.common_tomorrow), stringResource(R.string.moon_plus_7)), quick.indexOf(offsetDays)) { offsetDays = quick[it] }
   Spacer(Modifier.height(12.dp))
 
   val age = Moon.ageDays(selected)
@@ -66,58 +72,58 @@ internal fun MoonPage(state: HomeUiState) {
     Spacer(Modifier.width(18.dp))
     Column {
       Text(moonPhaseLabel(Moon.phase(selected)), style = MaterialTheme.typography.titleMedium, color = White)
-      Text("Illuminata al ${(illumination * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = Dim)
-      Text("Eta' del ciclo: ${fmt1(age)} giorni", style = MaterialTheme.typography.bodySmall, color = Dim)
+      Text(stringResource(R.string.moon_illuminated, (illumination * 100).toInt()), style = MaterialTheme.typography.bodySmall, color = Dim)
+      Text(stringResource(R.string.moon_age, fmt1(age)), style = MaterialTheme.typography.bodySmall, color = Dim)
       val distanceNote = when {
-        distance < MoonEphemeris.PERIGEE_KM + 6_000 -> " · vicino al perigeo"
-        distance > MoonEphemeris.APOGEE_KM - 6_000 -> " · vicino all'apogeo"
+        distance < MoonEphemeris.PERIGEE_KM + 6_000 -> stringResource(R.string.moon_near_perigee)
+        distance > MoonEphemeris.APOGEE_KM - 6_000 -> stringResource(R.string.moon_near_apogee)
         else -> ""
       }
-      Text("Distanza ${fmt0(distance / 1000) } mila km$distanceNote", style = MaterialTheme.typography.bodySmall, color = Dim)
+      Text(stringResource(R.string.moon_distance, units.distanceGrouped(distance), distanceNote), style = MaterialTheme.typography.bodySmall, color = Dim)
     }
   }
 
-  PageSection("Sorgere e tramonto")
+  PageSection(stringResource(R.string.moon_rise_set))
   val latitude = state.latitude
   val longitude = state.longitude
   if (latitude == null || longitude == null) {
-    PageNote("Serve la posizione per sorgere e tramonto.")
+    PageNote(stringResource(R.string.moon_needs_location))
   } else {
     val times = remember(date, latitude, longitude) {
       MoonEphemeris.riseSet(date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(), latitude, longitude)
     }
     StatGrid(
       listOf(
-        "Sorge" to (times.riseMillis?.let { fmtTime(it) } ?: "non sorge in questo giorno"),
-        "Tramonta" to (times.setMillis?.let { fmtTime(it) } ?: "non tramonta in questo giorno"),
+        stringResource(R.string.moon_rises) to (times.riseMillis?.let { fmtTime(it) } ?: stringResource(R.string.moon_no_rise)),
+        stringResource(R.string.moon_sets) to (times.setMillis?.let { fmtTime(it) } ?: stringResource(R.string.moon_no_set)),
       ),
     )
-    PageNote("Circa una volta al mese la luna non sorge (o non tramonta) nell'arco di un giorno: ritarda di ~50 minuti ogni giorno.")
+    PageNote(stringResource(R.string.moon_skip_note))
   }
 
-  PageSection("Prossime fasi")
+  PageSection(stringResource(R.string.moon_next_phases))
   nextPhases(now).forEach { (label, millis) ->
     StatRow(label, fmtDay(millis), fmtTime(millis))
   }
 
   val month = YearMonth.from(date)
-  PageSection("Calendario di " + DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()).format(month).replaceFirstChar { it.uppercase() })
+  PageSection(stringResource(R.string.moon_calendar_of) + DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()).format(month).replaceFirstChar { it.uppercase() })
   MonthCalendar(month = month, selected = date, today = localDate(now))
   PageNote(
-    "Fasi e illuminazione dal mese sinodico medio (errore di poche ore); distanza, sorgere e " +
-      "tramonto dalle effemeridi (MiniMoon di Montenbruck + termini di Meeus), entro pochi minuti.",
+    stringResource(R.string.moon_method_note),
   )
 }
 
 /** Le quattro fasi principali che verranno, in ordine di arrivo. */
+@Composable
 private fun nextPhases(nowMillis: Long): List<Pair<String, Long>> {
   val age = Moon.ageDays(nowMillis)
   val synodic = Moon.SYNODIC_MONTH_DAYS
   val targets = listOf(
-    "Luna nuova" to 0.0,
-    "Primo quarto" to synodic / 4,
-    "Luna piena" to synodic / 2,
-    "Ultimo quarto" to synodic * 3 / 4,
+    stringResource(R.string.moon_new) to 0.0,
+    stringResource(R.string.moon_first_quarter) to synodic / 4,
+    stringResource(R.string.moon_full) to synodic / 2,
+    stringResource(R.string.moon_last_quarter) to synodic * 3 / 4,
   )
   return targets.map { (label, targetAge) ->
     val daysTo = ((targetAge - age) % synodic + synodic) % synodic
@@ -176,7 +182,9 @@ private fun MonthCalendar(month: YearMonth, selected: LocalDate, today: LocalDat
   val leading = first.dayOfWeek.value - 1 // lunedi' = 0
   val cells = List(leading) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
   Row(Modifier.fillMaxWidth()) {
-    listOf("L", "M", "M", "G", "V", "S", "D").forEach {
+    // Le iniziali dei giorni nella lingua del telefono, da lunedi'.
+    DayOfWeek.entries.forEach { dayOfWeek ->
+      val it = dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault())
       Text(it, style = MaterialTheme.typography.labelSmall, color = Faint, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
     }
   }

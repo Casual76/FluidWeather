@@ -19,6 +19,7 @@ import dev.antigravity.fluidengine.ui.fluid.GlassDefaults
 import dev.antigravity.fluidengine.ui.fluid.GlassRole
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidCanvasBackdrop
 import dev.antigravity.fluidengine.ui.fluid.glassSurface
+import androidx.compose.ui.semantics.semantics
 
 /**
  * La tessera della griglia: vetro di contenuto quando c'e' un canvas in scena (il cielo),
@@ -29,6 +30,8 @@ import dev.antigravity.fluidengine.ui.fluid.glassSurface
 fun GlassTile(
   modifier: Modifier = Modifier,
   onClick: (() -> Unit)? = null,
+  /** Cosa fa il tocco, per TalkBack: "tocca due volte per Apri Nowcast". */
+  onClickLabel: String? = null,
   content: @Composable ColumnScope.() -> Unit,
 ) {
   val canvas = LocalFluidCanvasBackdrop.current
@@ -56,7 +59,10 @@ fun GlassTile(
       .then(surface)
       .then(
         if (onClick != null) {
-          Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick)
+          // Un solo nodo per TalkBack: la tessera si legge intera, poi il suo gesto.
+          Modifier
+            .semantics(mergeDescendants = true) {}
+            .clickable(interactionSource = interaction, indication = null, onClickLabel = onClickLabel, onClick = onClick)
         } else {
           Modifier
         },

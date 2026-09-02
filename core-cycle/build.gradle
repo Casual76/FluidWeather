@@ -29,6 +29,8 @@ dependencies {
   // istantanea, allerte ufficiali); la politica delle notifiche e' pura e si prova sul computer.
   api project(':core-sensor')
   api project(':core-weather')
+  // I testi delle notifiche, nella lingua del telefono.
+  implementation project(':core-strings')
 
   implementation "androidx.core:core-ktx:${engine.coreKtx}"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"

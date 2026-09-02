@@ -13,19 +13,19 @@ class ReadinessAndCsvTest {
     assertTrue(running.calibrationRunning)
     assertEquals(0.5f, running.calibrationFraction, 1e-6f)
     assertEquals(0.1f, running.overallFraction, 1e-6f)
-    assertEquals("Raffica iniziale: 5:00 di 10:00", running.stageLabel)
+    assertEquals(ReadinessStage.CALIBRATING, running.stage)
 
     val record = CalibrationRecord(0.8, 0.35, 0L, 600, 1013.0, 1012.2, 41.0)
     val halfway = NowcastReadiness.of(record, null, historyHours = 6.5)
     assertEquals(0.5f, halfway.historyFraction, 1e-6f)
     assertEquals(0.6f, halfway.overallFraction, 1e-6f)
-    assertEquals("Storia barometrica: 6 h 30 min di 13 ore", halfway.stageLabel)
+    assertEquals(ReadinessStage.HISTORY, halfway.stage)
     assertFalse(halfway.ready)
 
     val ready = NowcastReadiness.of(record, null, historyHours = 17.0)
     assertTrue(ready.ready)
     assertEquals(1f, ready.overallFraction, 1e-6f)
-    assertEquals("Barometro pronto", ready.stageLabel)
+    assertEquals(ReadinessStage.READY, ready.stage)
   }
 
   @Test

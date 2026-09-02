@@ -1,5 +1,7 @@
 package dev.pampa.fluidweather.core.weather
 
+import dev.pampa.fluidweather.strings.R
+
 /** Un fotogramma del radar: quando, e il pezzo di percorso che identifica i suoi tile. */
 data class RadarFrame(
   val timeMillis: Long,
@@ -79,24 +81,24 @@ object RainViewerPalette {
 
   const val UNIVERSAL_BLUE = 2
 
-  data class Stop(val dbz: Int, val argb: Long, val label: String?)
+  data class Stop(val dbz: Int, val argb: Long, val labelRes: Int?)
 
   /** I gradini della tabella ufficiale, ogni 5 dBZ; le etichette solo dove servono alla legenda. */
   val universalBlue: List<Stop> = listOf(
     Stop(5, 0x64928871L, null),
-    Stop(10, 0x96CEC087L, "pioviggine"),
+    Stop(10, 0x96CEC087L, R.string.radar_legend_drizzle),
     Stop(15, 0xFF88DDEEL, null),
-    Stop(20, 0xFF00A3E0L, "debole"),
+    Stop(20, 0xFF00A3E0L, R.string.radar_legend_light),
     Stop(25, 0xFF0077AAL, null),
-    Stop(30, 0xFF005588L, "moderata"),
+    Stop(30, 0xFF005588L, R.string.radar_legend_moderate),
     Stop(35, 0xFFFFEE00L, null),
-    Stop(40, 0xFFFFAA00L, "forte"),
+    Stop(40, 0xFFFFAA00L, R.string.radar_legend_heavy),
     Stop(45, 0xFFFF4400L, null),
-    Stop(50, 0xFFC10000L, "molto forte"),
+    Stop(50, 0xFFC10000L, R.string.radar_legend_very_heavy),
     Stop(55, 0xFFFFAAFFL, null),
-    Stop(60, 0xFFFF77FFL, "grandine"),
+    Stop(60, 0xFFFF77FFL, R.string.radar_legend_hail),
     Stop(65, 0xFFFFFFFFL, null),
   )
 
-  val legend: List<Stop> get() = universalBlue.filter { it.label != null }
+  val legend: List<Stop> get() = universalBlue.filter { it.labelRes != null }
 }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
 
 /**
  * Accende e spegne la marcia di sorveglianza. Su Android 12+ un avvio dal background puo' essere
@@ -88,16 +89,16 @@ class SurveillanceService : Service() {
     manager.createNotificationChannel(
       NotificationChannel(
         CHANNEL_ID,
-        "Sorveglianza barometrica",
+        getString(R.string.surv_channel),
         NotificationManager.IMPORTANCE_LOW,
       ).apply {
-        description = "Attiva solo mentre la pressione sta cambiando rapidamente."
+        description = getString(R.string.surv_channel_desc)
       },
     )
     val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_menu_compass)
-      .setContentTitle("Sorveglianza barometrica attiva")
-      .setContentText("La pressione sta cambiando in fretta: letture piu' frequenti per un po'.")
+      .setContentTitle(getString(R.string.surv_title))
+      .setContentText(getString(R.string.surv_text))
       .setOngoing(true)
       .build()
     val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

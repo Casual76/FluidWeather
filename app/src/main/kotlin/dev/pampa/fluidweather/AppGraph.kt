@@ -68,6 +68,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.abs
+import dev.pampa.fluidweather.core.cycle.ResourceNotificationTexts
+import dev.pampa.fluidweather.core.data.UnitsStore
+import dev.pampa.fluidweather.strings.UnitFormatter
+import kotlinx.coroutines.runBlocking
 
 /**
  * La DI dell'app, a mano: un grafo costruito una volta nell'Application. Niente framework —
@@ -158,6 +162,8 @@ class AppGraph(context: Context) {
   // Fondamenta UI (fase 8): aspetto, layout della griglia, accento derivato dal meteo.
   val appearanceSettingsStore = AppearanceSettingsStore(context)
   val homeLayoutStore = HomeLayoutStore(context)
+  // Le unita' scelte (fase 17): le legge la UI, e le notifiche quando devono scrivere un numero.
+  val unitsStore = UnitsStore(context)
   val weatherAccent = MutableStateFlow<AccentPreset?>(null)
 
   // Localita' (fase 10): salvate su Room, selezione persistita, ricerca keyless.
@@ -173,6 +179,9 @@ class AppGraph(context: Context) {
   val notificationSettingsStore = NotificationSettingsStore(context)
   val notificationLedgerStore = NotificationLedgerStore(context)
   val systemNotifier = SystemNotifier(context)
+  val notificationTexts = ResourceNotificationTexts(context) {
+    UnitFormatter(context.resources, runBlocking { unitsStore.current() })
+  }
   val inAppAlerts = InAppAlertBus()
   val appVisibility = AppVisibility()
   val backgroundCycle = BackgroundCycle(
@@ -194,6 +203,7 @@ class AppGraph(context: Context) {
     notifier = systemNotifier,
     inAppAlerts = inAppAlerts,
     appVisibility = appVisibility,
+    texts = notificationTexts,
   )
 
   // Taratura iniziale (fase 15): dieci minuti in un foreground service, riferimento dai provider.

@@ -103,6 +103,11 @@ import dev.pampa.fluidweather.core.ui.toSceneQuality
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.strings.labelRes
+import dev.pampa.fluidweather.strings.windowLabelRes
 
 /**
  * La home: cielo a tutto schermo, testata gigante che collassa con parallasse, griglia di
@@ -364,6 +369,7 @@ private fun HomeGrid(
       val dragging = drag.draggingKey == id
       GlassTile(
         onClick = { onOpenWidget(widget) },
+        onClickLabel = stringResource(R.string.a11y_open_widget, stringResource(widget.titleRes)),
         modifier = Modifier
           .zIndex(if (dragging) 1f else 0f)
           .then(if (dragging) Modifier else Modifier.animateItem())
@@ -390,7 +396,7 @@ private fun HomeGrid(
           )
           Spacer(Modifier.size(6.dp))
           Text(
-            text = widget.title.uppercase(),
+            text = stringResource(widget.titleRes).uppercase(),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
           )
@@ -437,13 +443,14 @@ private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: H
         alpha = 1f - progress * 1.15f
       },
   ) {
+    val units = rememberUnitFormatter()
     Text(
-      text = state.locationName ?: if (state.hasLocation) "La mia posizione" else "Posizione sconosciuta",
+      text = state.locationName ?: if (state.hasLocation) stringResource(R.string.place_my_location) else stringResource(R.string.place_unknown),
       style = MaterialTheme.typography.titleLarge.copy(shadow = shadow),
       color = Color.White,
     )
     Text(
-      text = state.temperatureC?.let { "${it.toInt()}°" } ?: "—",
+      text = state.temperatureC?.let { units.degrees(it) } ?: "—",
       fontSize = 108.sp,
       fontWeight = FontWeight.ExtraLight,
       style = MaterialTheme.typography.displayLarge.copy(shadow = shadow),
@@ -457,7 +464,7 @@ private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: H
     )
     if (state.maxC != null && state.minC != null) {
       Text(
-        text = "Max ${state.maxC.toInt()}°  Min ${state.minC.toInt()}°",
+        text = stringResource(R.string.home_max_min, units.degrees(state.maxC), units.degrees(state.minC)),
         style = MaterialTheme.typography.titleSmall.copy(shadow = shadow),
         color = Color.White.copy(alpha = 0.9f),
         modifier = Modifier.padding(top = 2.dp),
@@ -491,7 +498,7 @@ private fun CompactHeader(
     ) {
       FluidGlassButton(
         text = buildString {
-          append(state.locationName ?: "La mia posizione")
+          append(state.locationName ?: stringResource(R.string.place_my_location))
           state.temperatureC?.let { append("  ·  ${it.toInt()}°") }
         },
         onClick = onTap,
@@ -517,14 +524,14 @@ private fun BarometerAlertRow(verdict: NowcastVerdict) {
       Spacer(Modifier.size(8.dp))
       Column {
         Text(
-          text = if (verdict.level == AlertLevel.ALLERTA) "Allerta del barometro" else "Sorveglianza",
+          text = if (verdict.level == AlertLevel.ALLERTA) stringResource(R.string.notif_nowcast_title) else stringResource(R.string.level_watch),
           style = MaterialTheme.typography.titleSmall,
           color = MaterialTheme.colorScheme.onSurface,
         )
         val strongest = verdict.windows.maxByOrNull { it.probability }
         if (strongest != null) {
           Text(
-            text = "Pioggia ${strongest.window}: ${(strongest.probability * 100).toInt()}%",
+            text = stringResource(R.string.home_banner_rain, stringResource(windowLabelRes(strongest.window)).lowercase(), (strongest.probability * 100).toInt()),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
           )
@@ -534,21 +541,8 @@ private fun BarometerAlertRow(verdict: NowcastVerdict) {
   }
 }
 
-private fun kindLabel(kind: WeatherKind?): String? = when (kind) {
-  WeatherKind.CLEAR -> "Sereno"
-  WeatherKind.MOSTLY_CLEAR -> "Poco nuvoloso"
-  WeatherKind.PARTLY_CLOUDY -> "Parzialmente nuvoloso"
-  WeatherKind.CLOUDY -> "Nuvoloso"
-  WeatherKind.FOG -> "Nebbia"
-  WeatherKind.DRIZZLE -> "Pioviggine"
-  WeatherKind.RAIN -> "Pioggia"
-  WeatherKind.HEAVY_RAIN -> "Pioggia forte"
-  WeatherKind.SLEET -> "Pioggia gelata"
-  WeatherKind.SNOW -> "Neve"
-  WeatherKind.HEAVY_SNOW -> "Neve forte"
-  WeatherKind.THUNDERSTORM -> "Temporale"
-  WeatherKind.UNKNOWN, null -> null
-}
+@Composable
+private fun kindLabel(kind: WeatherKind?): String? = kind?.labelRes()?.let { stringResource(it) }
 
 // ------------------------------------------------------------------------------ trascinamento
 

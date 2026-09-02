@@ -61,14 +61,15 @@ import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.BlackSheet
 import dev.pampa.fluidweather.core.ui.BlackSheetNote
 import dev.pampa.fluidweather.core.ui.BlackSheetSectionTitle
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.pampa.fluidweather.strings.R
+import dev.pampa.fluidweather.strings.labelRes
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.strings.TimeFormats
 
 /** Tutto quello che la segnalazione tocca; lo costruisce :app dal suo grafo. */
 class ReportDependencies(
@@ -93,7 +94,7 @@ private data class ReportPlace(val latitude: Double?, val longitude: Double?, va
 @Composable
 fun ReportSheet(open: Boolean, deps: ReportDependencies, onDismiss: () -> Unit) {
   if (!open) return
-  BlackSheet(title = "Segnala osservazione", onDismiss = onDismiss) {
+  BlackSheet(title = stringResource(R.string.report_title), onDismiss = onDismiss) {
     ReportContent(deps)
   }
 }
@@ -122,12 +123,12 @@ private fun ReportContent(deps: ReportDependencies) {
 
   val done = sent
   if (done != null) {
-    BlackSheetSectionTitle("Segnalato")
+    BlackSheetSectionTitle(stringResource(R.string.report_done))
     Row(verticalAlignment = Alignment.CenterVertically) {
       Icon(conditionIcon(done.condition), contentDescription = null, tint = Blue, modifier = Modifier.size(40.dp))
       Spacer(Modifier.width(14.dp))
       Column {
-        Text(done.condition.label, style = MaterialTheme.typography.titleLarge, color = White)
+        Text(stringResource(done.condition.labelRes()), style = MaterialTheme.typography.titleLarge, color = White)
         Text(
           "${fmtTime(done.timestampMillis)}${done.placeName?.let { " · $it" } ?: ""}",
           style = MaterialTheme.typography.bodyMedium,
@@ -137,13 +138,12 @@ private fun ReportContent(deps: ReportDependencies) {
     }
     Spacer(Modifier.height(12.dp))
     BlackSheetNote(
-      "Grazie. La tua osservazione vale come verita' per la verifica di quest'ora: i provider e il " +
-        "barometro verranno giudicati anche su quello che hai visto tu.",
+      stringResource(R.string.report_thanks),
     )
     Spacer(Modifier.height(12.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       FluidButton(
-        text = "Ho sbagliato, annulla",
+        text = stringResource(R.string.report_undo),
         style = FluidButtonStyle.Tinted,
         onClick = {
           scope.launch {
@@ -153,20 +153,20 @@ private fun ReportContent(deps: ReportDependencies) {
           }
         },
       )
-      FluidButton(text = "Un'altra", style = FluidButtonStyle.Tinted, onClick = { sent = null; selected = null })
+      FluidButton(text = stringResource(R.string.report_another), style = FluidButtonStyle.Tinted, onClick = { sent = null; selected = null })
     }
   } else {
     Text(
-      "Che tempo fa da te adesso?",
+      stringResource(R.string.report_question),
       style = MaterialTheme.typography.headlineSmall,
       color = White,
     )
     Text(
       when {
-        place == null -> "Cerco la posizione…"
+        place == null -> stringResource(R.string.report_locating)
         place?.name != null -> "${place!!.name} · ${fmtTime(System.currentTimeMillis())}"
-        place?.latitude != null -> "Posizione del telefono · ${fmtTime(System.currentTimeMillis())}"
-        else -> "Senza posizione (permesso assente): l'osservazione vale solo per l'archivio."
+        place?.latitude != null -> stringResource(R.string.report_phone_position, fmtTime(System.currentTimeMillis()))
+        else -> stringResource(R.string.report_no_position)
       },
       style = MaterialTheme.typography.bodyMedium,
       color = Dim,
@@ -193,7 +193,7 @@ private fun ReportContent(deps: ReportDependencies) {
 
     Spacer(Modifier.height(6.dp))
     FluidButton(
-      text = selected?.let { "Segnala: ${it.label}" } ?: "Scegli una condizione",
+      text = selected?.let { stringResource(R.string.report_submit, stringResource(it.labelRes())) } ?: stringResource(R.string.report_pick),
       style = FluidButtonStyle.Filled,
       enabled = selected != null,
       onClick = {
@@ -211,11 +211,11 @@ private fun ReportContent(deps: ReportDependencies) {
       },
       modifier = Modifier.fillMaxWidth(),
     )
-    BlackSheetNote("Solo il momento presente: quello che vedi ora dalla finestra, non una previsione.")
+    BlackSheetNote(stringResource(R.string.report_present_only))
   }
 
   if (recent.isNotEmpty()) {
-    BlackSheetSectionTitle("Le tue ultime osservazioni")
+    BlackSheetSectionTitle(stringResource(R.string.report_recent))
     recent.forEach { observation ->
       Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -225,7 +225,7 @@ private fun ReportContent(deps: ReportDependencies) {
       ) {
         Icon(conditionIcon(observation.condition), contentDescription = null, tint = Dim, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        Text(observation.condition.label, style = MaterialTheme.typography.bodyMedium, color = White, modifier = Modifier.weight(1f))
+        Text(stringResource(observation.condition.labelRes()), style = MaterialTheme.typography.bodyMedium, color = White, modifier = Modifier.weight(1f))
         Text(
           fmtDayTime(observation.timestampMillis) + (observation.placeName?.let { " · $it" } ?: ""),
           style = MaterialTheme.typography.bodySmall,
@@ -272,7 +272,7 @@ private fun ConditionTile(
     )
     Spacer(Modifier.height(6.dp))
     Text(
-      condition.label,
+      stringResource(condition.labelRes()),
       style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal),
       color = if (selected) White else Dim,
       textAlign = TextAlign.Center,
@@ -294,13 +294,9 @@ private fun conditionIcon(condition: ObservedCondition): ImageVector = when (con
   ObservedCondition.HAIL -> Icons.Rounded.Hail
 }
 
-private fun fmtTime(millis: Long): String =
-  DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
+private fun fmtTime(millis: Long): String = TimeFormats.time(millis)
 
-private fun fmtDayTime(millis: Long): String =
-  DateTimeFormatter.ofPattern("EEE d MMM HH:mm", Locale.getDefault())
-    .format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
-    .replaceFirstChar { it.uppercase() }
+private fun fmtDayTime(millis: Long): String = TimeFormats.dayTime(millis)
 
 private suspend fun reverseGeocode(context: Context, latitude: Double, longitude: Double): String? =
   withContext(Dispatchers.IO) {

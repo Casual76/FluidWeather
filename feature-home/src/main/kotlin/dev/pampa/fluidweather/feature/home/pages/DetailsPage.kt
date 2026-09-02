@@ -14,21 +14,27 @@ import dev.pampa.fluidweather.core.model.ApparentTemperature
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.ui.PageCharts
 import dev.pampa.fluidweather.feature.home.HomeUiState
-import java.util.Locale
 import kotlin.math.abs
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.strings.compassPoint
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * Ogni misura del widget Dettagli, estesa: il valore adesso, la sua curva nelle prossime 24
  * ore, e la spiegazione di cosa significa. In fondo, il confronto fra la pressione al mare
  * dei provider e quella del barometro del telefono: lo scarto e' l'indizio del bias del
- * dispositivo che la taratura (fase 15) stimera' per bene.
+ * dispositivo che la taratura stima per bene.
  */
 @Composable
 internal fun DetailsPage(state: HomeUiState) {
   val now = System.currentTimeMillis()
+  val units = rememberUnitFormatter()
+  val context = LocalContext.current
   val current = state.fusedHours.minByOrNull { abs(it.timestampMillis - now) }
   if (current == null) {
-    PageNote("In attesa dei provider…")
+    PageNote(stringResource(R.string.common_waiting_providers))
     return
   }
   val next24 = state.fusedHours.filter { it.timestampMillis >= now - 30 * 60_000L }.take(24)
@@ -37,7 +43,7 @@ internal fun DetailsPage(state: HomeUiState) {
   fun series(variable: String): List<Double> = next24.mapNotNull { it.values[variable]?.value }
 
   // ------------------------------------------------------------------------------- vento
-  PageSection("Vento")
+  PageSection(stringResource(R.string.common_wind))
   val wind = value(FusionVariables.WIND_SPEED)
   val gust = value(FusionVariables.WIND_GUST)
   val direction = current.windDirectionDeg
@@ -53,21 +59,21 @@ internal fun DetailsPage(state: HomeUiState) {
     }
     Column {
       BigStat(
-        wind?.let { "${it.toInt()}" } ?: "—",
-        "km/h",
-        direction?.let { "da ${windDirectionName(it)} (${it.toInt()}°)" } ?: "direzione non disponibile",
+        wind?.let { units.windValue(it) } ?: "—",
+        units.windSymbol(),
+        direction?.let { stringResource(R.string.details_wind_from, compassPoint(context.resources, it), it.toInt()) } ?: stringResource(R.string.details_no_direction),
       )
-      if (gust != null) StatRow("Raffiche", "${gust.toInt()} km/h")
+      if (gust != null) StatRow(stringResource(R.string.details_gusts), units.wind(gust))
     }
   }
   if (series(FusionVariables.WIND_SPEED).size >= 2) {
     Spacer(Modifier.height(6.dp))
-    CurveWithLabels(series(FusionVariables.WIND_SPEED), labels, PageBlue, " km/h", height = 70.dp)
+    CurveWithLabels(units.windSeries(series(FusionVariables.WIND_SPEED)), labels, PageBlue, " " + units.windSymbol(), height = 70.dp)
   }
-  PageNote("La freccia indica dove il vento va; il nome dice da dove viene, come si e' sempre detto.")
+  PageNote(stringResource(R.string.details_wind_note))
 
   // ------------------------------------------------------------------- umidita' e rugiada
-  PageSection("Umidita' e punto di rugiada")
+  PageSection(stringResource(R.string.details_humidity_title))
   val humidity = value(FusionVariables.HUMIDITY)
   val dewPoint = value(FusionVariables.DEW_POINT)
   val apparent = if (state.temperatureC != null && humidity != null && wind != null) {
@@ -77,87 +83,87 @@ internal fun DetailsPage(state: HomeUiState) {
   }
   StatGrid(
     listOf(
-      "Umidita' relativa" to (humidity?.let { "${it.toInt()}%" } ?: "—"),
-      "Punto di rugiada" to (dewPoint?.let { "${it.toInt()}°" } ?: "—"),
-      "Percepita" to (apparent?.let { "${it.toInt()}°" } ?: "—"),
-      "Temperatura" to (state.temperatureC?.let { "${it.toInt()}°" } ?: "—"),
+      stringResource(R.string.details_rh) to (humidity?.let { "${it.toInt()}%" } ?: "—"),
+      stringResource(R.string.details_dew_point) to (dewPoint?.let { units.degrees(it) } ?: "—"),
+      stringResource(R.string.common_feels_like) to (apparent?.let { units.degrees(it) } ?: "—"),
+      stringResource(R.string.common_temperature) to (state.temperatureC?.let { units.degrees(it) } ?: "—"),
     ),
   )
   if (dewPoint != null) {
     Spacer(Modifier.height(6.dp))
     PageNote(
-      "Punto di rugiada: " + when {
-        dewPoint < 10 -> "aria secca e gradevole."
-        dewPoint < 16 -> "aria confortevole."
-        dewPoint < 21 -> "aria umida, un po' appiccicosa."
-        else -> "afa: l'aria e' satura e il sudore non evapora."
-      } + " E' la temperatura a cui l'aria si satura: dice quanta acqua c'e' davvero, piu' dell'umidita' relativa.",
+      stringResource(R.string.details_dew_prefix) + when {
+        dewPoint < 10 -> stringResource(R.string.details_dew_dry)
+        dewPoint < 16 -> stringResource(R.string.details_dew_comfortable)
+        dewPoint < 21 -> stringResource(R.string.details_dew_humid)
+        else -> stringResource(R.string.details_dew_muggy)
+      } + stringResource(R.string.details_dew_explain),
     )
   }
   if (series(FusionVariables.HUMIDITY).size >= 2) {
     CurveWithLabels(series(FusionVariables.HUMIDITY), labels, PageBlue, "%", height = 70.dp)
   }
   if (apparent != null) {
-    PageNote("Percepita con la formula di Steadman (la stessa del servizio australiano): temperatura, umidita' e vento insieme.")
+    PageNote(stringResource(R.string.details_feels_note))
   }
 
   // ------------------------------------------------------------------------------- UV
-  PageSection("Indice UV")
+  PageSection(stringResource(R.string.details_uv))
   val uv = value(FusionVariables.UV_INDEX)
-  StatRow("Adesso", uv?.let { fmt0(it) } ?: "—", uv?.let { uvLabel(it) })
+  StatRow(stringResource(R.string.common_now), uv?.let { fmt0(it) } ?: "—", uv?.let { uvLabel(it) })
   val uvPeak = next24.filter { localDate(it.timestampMillis) == localDate(now) }
     .mapNotNull { hour -> hour.values[FusionVariables.UV_INDEX]?.value?.let { hour.timestampMillis to it } }
     .maxByOrNull { it.second }
   if (uvPeak != null) {
-    StatRow("Massimo di oggi", fmt0(uvPeak.second), "alle ${fmtTime(uvPeak.first)} · ${uvLabel(uvPeak.second)}")
+    StatRow(stringResource(R.string.details_uv_max), fmt0(uvPeak.second), stringResource(R.string.details_uv_at, fmtTime(uvPeak.first), uvLabel(uvPeak.second)))
   }
   if (series(FusionVariables.UV_INDEX).size >= 2) {
     CurveWithLabels(series(FusionVariables.UV_INDEX), labels, PageAmber, "", height = 60.dp)
   }
-  PageNote("Scala OMS: 0-2 basso, 3-5 moderato, 6-7 alto, 8-10 molto alto, 11 e oltre estremo.")
+  PageNote(stringResource(R.string.details_uv_scale))
 
   // ------------------------------------------------------------------------ visibilita'
-  PageSection("Visibilita'")
+  PageSection(stringResource(R.string.common_visibility))
   val visibility = value(FusionVariables.VISIBILITY)
   StatRow(
-    "Adesso",
-    visibility?.let { String.format(Locale.getDefault(), "%.1f km", it / 1000) } ?: "—",
+    stringResource(R.string.common_now),
+    visibility?.let { units.visibilityMeters(it, 1) } ?: "—",
     visibility?.let { visibilityLabel(it) },
   )
   if (series(FusionVariables.VISIBILITY).size >= 2) {
-    CurveWithLabels(series(FusionVariables.VISIBILITY).map { it / 1000 }, labels, PageBlue, " km", height = 60.dp)
+    CurveWithLabels(units.distanceSeries(series(FusionVariables.VISIBILITY).map { it / 1000 }), labels, PageBlue, " " + units.distanceSymbol(), height = 60.dp)
   }
 
   // ---------------------------------------------------------- pressione: provider vs barometro
-  PageSection("Pressione al mare: provider e barometro")
+  PageSection(stringResource(R.string.details_pressure_title))
   val fusedMsl = value(FusionVariables.PRESSURE_MSL)
   val local = state.cleaning?.latest?.levelHpa
-  StatRow("Provider (fusa)", fusedMsl?.let { "${fmt1(it)} hPa" } ?: "—")
-  StatRow("Barometro (ridotto al mare)", local?.let { "${fmt1(it)} hPa" } ?: "—")
+  StatRow(stringResource(R.string.details_pressure_fused), fusedMsl?.let { units.pressure(it, 1) } ?: "—")
+  StatRow(stringResource(R.string.details_pressure_local), local?.let { units.pressure(it, 1) } ?: "—")
   if (fusedMsl != null && local != null) {
-    StatRow("Scarto", String.format(Locale.ROOT, "%+.1f hPa", local - fusedMsl), "l'indizio del bias del dispositivo")
+    StatRow(stringResource(R.string.details_pressure_gap), units.pressureDelta(local - fusedMsl), stringResource(R.string.details_gap_hint))
   }
   if (series(FusionVariables.PRESSURE_MSL).size >= 2) {
-    CurveWithLabels(series(FusionVariables.PRESSURE_MSL), labels, PageAmber, " hPa", height = 70.dp, decimals = 1)
+    CurveWithLabels(units.pressureSeries(series(FusionVariables.PRESSURE_MSL)), labels, PageAmber, " " + units.pressureSymbol(), height = 70.dp, decimals = units.pressureChartDecimals() + 1)
   }
   PageNote(
-    "Uno scarto costante fra barometro e provider e' il bias del sensore, che la letteratura da' " +
-      "di qualche hPa e stabile nel tempo; la taratura iniziale (fase 15) lo stimera' contro la " +
-      "stazione piu' vicina. Per il nowcast conta la tendenza, e un offset non la tocca.",
+    stringResource(R.string.details_bias_note),
   )
 }
 
+@Composable
 private fun uvLabel(uv: Double): String = when {
-  uv < 3 -> "basso"
-  uv < 6 -> "moderato"
-  uv < 8 -> "alto"
-  uv < 11 -> "molto alto"
-  else -> "estremo"
+  uv < 3 -> stringResource(R.string.uv_low)
+  uv < 6 -> stringResource(R.string.uv_moderate)
+  uv < 8 -> stringResource(R.string.uv_high)
+  uv < 11 -> stringResource(R.string.uv_very_high)
+  else -> stringResource(R.string.uv_extreme)
 }
 
+@Composable
 private fun visibilityLabel(meters: Double): String = when {
-  meters >= 10_000 -> "ottima"
-  meters >= 4_000 -> "buona"
-  meters >= 1_000 -> "ridotta"
-  else -> "nebbia o foschia"
+  meters >= 10_000 -> stringResource(R.string.visibility_excellent)
+  meters >= 4_000 -> stringResource(R.string.visibility_good)
+  meters >= 1_000 -> stringResource(R.string.visibility_reduced)
+  else -> stringResource(R.string.details_visibility_fog)
 }

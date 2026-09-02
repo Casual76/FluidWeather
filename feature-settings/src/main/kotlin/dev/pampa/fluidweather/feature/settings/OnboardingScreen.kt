@@ -70,6 +70,8 @@ import dev.pampa.fluidweather.core.ui.deviceGlassTier
 import dev.pampa.fluidweather.core.ui.toSceneQuality
 import java.time.LocalTime
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /** Tutto quello che il primo avvio tocca; lo costruisce :app dal suo grafo. */
 class OnboardingDependencies(
@@ -149,37 +151,31 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
         when (page) {
           0 -> Page(
             eyebrow = "FluidWeather",
-            title = "Il meteo che parte dal tuo telefono",
-            body = "Dentro c'e' un barometro. Qui diventa un motore di previsione a breve, tarato su " +
-              "anni di dati veri, e si aggiunge a una costellazione di servizi meteo fusi con pesi " +
-              "che imparano dove sei. Tre permessi, due scelte, e si parte.",
+            title = stringResource(R.string.onb_welcome_title),
+            body = stringResource(R.string.onb_welcome_text),
           ) {
-            FluidButton(text = "Avanti", onClick = { next() }, fillWidth = true)
+            FluidButton(text = stringResource(R.string.common_next), onClick = { next() }, fillWidth = true)
           }
           1 -> Page(
-            eyebrow = "1 di 3 · Posizione",
-            title = "Dove sei, per davvero",
-            body = "La posizione serve al cielo (che colora lo schermo), ai provider (che coprono il tuo " +
-              "punto), alla riduzione al livello del mare (la quota GPS vale hPa interi) e ai pin del " +
-              "radar. Resta sul telefono: ai servizi arrivano coordinate arrotondate a cento metri.",
+            eyebrow = stringResource(R.string.onb_step_location),
+            title = stringResource(R.string.onb_location_title),
+            body = stringResource(R.string.onb_location_text),
           ) {
             PermissionActions(
               granted = locationGranted,
-              grantLabel = "Consenti la posizione",
+              grantLabel = stringResource(R.string.onb_allow_location),
               onGrant = { launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
               onNext = { next() },
             )
           }
           2 -> Page(
-            eyebrow = "2 di 3 · Notifiche",
-            title = "Quando il barometro ha qualcosa da dire",
-            body = "L'allerta locale, la pioggia in arrivo, le allerte ufficiali e il riepilogo del " +
-              "mattino sono quattro canali separati, ognuno col suo interruttore. Con l'app aperta " +
-              "arrivano come banner, mai in tendina.",
+            eyebrow = stringResource(R.string.onb_step_notifications),
+            title = stringResource(R.string.onb_notifications_title),
+            body = stringResource(R.string.onb_notifications_text),
           ) {
             PermissionActions(
               granted = notificationsGranted,
-              grantLabel = "Consenti le notifiche",
+              grantLabel = stringResource(R.string.onb_allow_notifications),
               onGrant = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                   launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -189,34 +185,30 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
             )
           }
           3 -> Page(
-            eyebrow = "3 di 3 · Attivita'",
-            title = "Un ascensore non e' un fronte",
-            body = "Il riconoscimento dell'attivita' dice al motore quando sei in auto, in bici o in " +
-              "movimento: quelle letture si scartano prima che diventino un falso cambio di tempo. " +
-              "Senza, il motore si affida alla sola quota GPS.",
+            eyebrow = stringResource(R.string.onb_step_activity),
+            title = stringResource(R.string.onb_activity_title),
+            body = stringResource(R.string.onb_activity_text),
           ) {
             PermissionActions(
               granted = activityGranted,
-              grantLabel = "Consenti il riconoscimento",
+              grantLabel = stringResource(R.string.onb_allow_activity),
               onGrant = { launcher.launch(Manifest.permission.ACTIVITY_RECOGNITION) },
               onNext = { next() },
             )
           }
           4 -> Page(
-            eyebrow = "Aspetto",
-            title = "Quanto vetro",
-            body = "Il vetro rifrange il cielo e costa GPU. Scegli tu il livello, oppure lascia decidere " +
-              "al telefono; in risparmio energia puo' scendere di un gradino da solo.",
+            eyebrow = stringResource(R.string.appear_title),
+            title = stringResource(R.string.onb_glass_title),
+            body = stringResource(R.string.onb_glass_text),
           ) {
             GlassChoice(appearance, deps.appearanceStore, scope)
             Spacer(Modifier.height(16.dp))
-            FluidButton(text = "Avanti", onClick = { next() }, fillWidth = true)
+            FluidButton(text = stringResource(R.string.common_next), onClick = { next() }, fillWidth = true)
           }
           5 -> Page(
-            eyebrow = "Accuratezza",
-            title = "Quanto spesso leggere il barometro",
-            body = "Piu' letture, piu' segnale, piu' batteria. Bilanciata e' il compromesso suggerito; " +
-              "si cambia quando vuoi dalle impostazioni.",
+            eyebrow = stringResource(R.string.onb_accuracy),
+            title = stringResource(R.string.onb_sampling_title),
+            body = stringResource(R.string.onb_sampling_text),
           ) {
             SamplingMode.entries.forEach { mode ->
               ChoiceRow(
@@ -232,18 +224,15 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
               )
             }
             Spacer(Modifier.height(16.dp))
-            FluidButton(text = "Avanti", onClick = { next() }, fillWidth = true)
+            FluidButton(text = stringResource(R.string.common_next), onClick = { next() }, fillWidth = true)
           }
           else -> Page(
-            eyebrow = "Taratura iniziale",
-            title = "Dieci minuti, in sottofondo",
-            body = "Adesso parte una raffica di dieci minuti a una lettura al secondo: la sua mediana, " +
-              "confrontata con la pressione al mare dei servizi, stima il bias del tuo sensore. Non " +
-              "serve restare qui. Poi al motore servono circa tredici ore di storia prima del primo " +
-              "verdetto: la barra in home ti dice a che punto e'.",
+            eyebrow = stringResource(R.string.onb_calibration),
+            title = stringResource(R.string.onb_calibration_title),
+            body = stringResource(R.string.onb_calibration_text),
           ) {
             FluidButton(
-              text = "Inizia",
+              text = stringResource(R.string.onb_begin),
               onClick = {
                 scope.launch {
                   deps.onboardingStore.setDone(true)
@@ -297,13 +286,13 @@ private fun PermissionActions(granted: Boolean, grantLabel: String, onGrant: () 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
       Icon(Icons.Rounded.Check, contentDescription = null, tint = Color.White)
       Spacer(Modifier.width(8.dp))
-      Text("Concesso", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+      Text(stringResource(R.string.onb_granted), style = MaterialTheme.typography.bodyMedium, color = Color.White)
     }
-    FluidButton(text = "Avanti", onClick = onNext, fillWidth = true)
+    FluidButton(text = stringResource(R.string.common_next), onClick = onNext, fillWidth = true)
   } else {
     FluidButton(text = grantLabel, onClick = onGrant, fillWidth = true)
     Spacer(Modifier.height(8.dp))
-    FluidButton(text = "Piu' tardi", style = FluidButtonStyle.Plain, onClick = onNext, fillWidth = true)
+    FluidButton(text = stringResource(R.string.onb_later), style = FluidButtonStyle.Plain, onClick = onNext, fillWidth = true)
   }
 }
 
@@ -323,8 +312,8 @@ private fun GlassChoice(
     )
   }
   Spacer(Modifier.height(8.dp))
-  ToggleRow("Decidi tu automaticamente", appearance.autoGlass) { scope.launch { store.setAutoGlass(it) } }
-  ToggleRow("Riduci in risparmio energia", appearance.reduceOnPowerSave) { scope.launch { store.setReduceOnPowerSave(it) } }
+  ToggleRow(stringResource(R.string.appear_glass_auto), appearance.autoGlass) { scope.launch { store.setAutoGlass(it) } }
+  ToggleRow(stringResource(R.string.appear_glass_power_save), appearance.reduceOnPowerSave) { scope.launch { store.setReduceOnPowerSave(it) } }
 }
 
 @Composable
@@ -345,7 +334,7 @@ private fun ChoiceRow(title: String, subtitle: String, selected: Boolean, enable
       Text(title, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = if (enabled) 1f else 0.5f))
       Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = if (enabled) 0.75f else 0.4f))
     }
-    if (selected) Icon(Icons.Rounded.Check, contentDescription = "Scelto", tint = Color.White)
+    if (selected) Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = Color.White)
   }
 }
 

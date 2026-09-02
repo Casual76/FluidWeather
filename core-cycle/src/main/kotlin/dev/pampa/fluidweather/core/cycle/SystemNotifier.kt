@@ -12,6 +12,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.pampa.fluidweather.core.model.AppNotification
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
+import dev.pampa.fluidweather.strings.descriptionRes
+import dev.pampa.fluidweather.strings.labelRes
 
 /**
  * I quattro canali del piano, registrati presso Android. Idempotente: si chiama a ogni avvio
@@ -28,8 +30,8 @@ object NotificationChannels {
         NotificationManager.IMPORTANCE_DEFAULT
       }
       manager.createNotificationChannel(
-        NotificationChannel(kind.id, kind.label, importance).apply {
-          description = kind.description
+        NotificationChannel(kind.id, context.getString(kind.labelRes()), importance).apply {
+          description = context.getString(kind.descriptionRes())
         },
       )
     }

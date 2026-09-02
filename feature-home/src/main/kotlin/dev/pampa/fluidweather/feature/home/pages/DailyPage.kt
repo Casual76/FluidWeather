@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.SunTimes
-import dev.pampa.fluidweather.core.model.WeatherKindLabels
 import dev.pampa.fluidweather.core.ui.Charts
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import dev.pampa.fluidweather.feature.home.WeatherKindIcon
@@ -31,6 +30,10 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.strings.labelRes
 
 /**
  * Giorno per giorno, fino all'orizzonte del servizio piu' lungo: condizione prevalente di
@@ -48,26 +51,27 @@ internal fun DailyPage(state: HomeUiState) {
     .filter { it.key >= today }
     .take(10)
   if (byDay.isEmpty()) {
-    PageNote("In attesa dei provider…")
+    PageNote(stringResource(R.string.common_waiting_providers))
     return
   }
   val allTemps = byDay.flatMap { (_, hours) -> hours.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value } }
   if (allTemps.isEmpty()) {
-    PageNote("Nessuna temperatura fusa disponibile.")
+    PageNote(stringResource(R.string.tile_no_fused_temperature))
     return
   }
   val periodMin = allTemps.min()
   val periodMax = allTemps.max()
   var expanded by remember { mutableStateOf<LocalDate?>(null) }
+  val units = rememberUnitFormatter()
   val dayFormatter = DateTimeFormatter.ofPattern("EEE d", Locale.getDefault())
 
-  PageNote("Tocca un giorno per aprire le sue ore. La barra e' l'escursione del giorno dentro quella del periodo.")
+  PageNote(stringResource(R.string.daily_hint))
   Spacer(Modifier.height(6.dp))
 
   byDay.forEach { (date, hours) ->
     val temps = hours.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
     if (temps.isEmpty()) return@forEach
-    val daytime = hours.filter { fmtHour(it.timestampMillis).toInt() in 8..20 }.ifEmpty { hours }
+    val daytime = hours.filter { hourOfDay(it.timestampMillis) in 8..20 }.ifEmpty { hours }
     val kind = daytime.mapNotNull { it.kind }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
     val popMax = hours.mapNotNull { it.values[FusionVariables.PRECIP_PROBABILITY]?.value }.maxOrNull()
     val mm = hours.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 }
@@ -93,7 +97,7 @@ internal fun DailyPage(state: HomeUiState) {
     ) {
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-          if (date == today) "Oggi" else dayFormatter.format(date).replaceFirstChar { it.uppercase() },
+          if (date == today) stringResource(R.string.common_today) else dayFormatter.format(date).replaceFirstChar { it.uppercase() },
           style = MaterialTheme.typography.titleSmall,
           color = White,
           modifier = Modifier.width(64.dp),
@@ -101,12 +105,12 @@ internal fun DailyPage(state: HomeUiState) {
         WeatherKindIcon(kind, size = 20.dp)
         Spacer(Modifier.width(8.dp))
         Text(
-          WeatherKindLabels.of(kind) ?: "",
+          kind?.labelRes()?.let { stringResource(it) } ?: "",
           style = MaterialTheme.typography.bodySmall,
           color = Dim,
           modifier = Modifier.weight(1f),
         )
-        Text("${temps.min().toInt()}°", style = MaterialTheme.typography.labelMedium, color = Faint, modifier = Modifier.width(30.dp))
+        Text(units.degrees(temps.min()), style = MaterialTheme.typography.labelMedium, color = Faint, modifier = Modifier.width(30.dp))
         Charts.RangeBar(
           periodMin = periodMin,
           periodMax = periodMax,
@@ -120,7 +124,7 @@ internal fun DailyPage(state: HomeUiState) {
             .height(6.dp),
         )
         Text(
-          "${temps.max().toInt()}°",
+          units.degrees(temps.max()),
           style = MaterialTheme.typography.labelMedium,
           color = White,
           modifier = Modifier
@@ -130,9 +134,9 @@ internal fun DailyPage(state: HomeUiState) {
       }
       Text(
         buildString {
-          if (popMax != null) append("pioggia ${popMax.toInt()}%")
-          if (mm >= 0.1) append(" · ${fmt1(mm)} mm")
-          if (windMax != null) append(" · vento ${windMax.toInt()} km/h")
+          if (popMax != null) append(stringResource(R.string.daily_rain, popMax.toInt()))
+          if (mm >= 0.1) append(stringResource(R.string.daily_mm_suffix, units.precipitation(mm)))
+          if (windMax != null) append(stringResource(R.string.daily_wind_suffix, units.wind(windMax)))
           val sunrise = sun?.sunriseMillis
           val sunset = sun?.sunsetMillis
           if (sunrise != null && sunset != null) {
@@ -151,7 +155,7 @@ internal fun DailyPage(state: HomeUiState) {
             WeatherKindIcon(hour.kind, size = 14.dp)
             Spacer(Modifier.width(8.dp))
             Text(
-              hour.values[FusionVariables.TEMPERATURE]?.value?.let { "${it.toInt()}°" } ?: "—",
+              hour.values[FusionVariables.TEMPERATURE]?.value?.let { units.degrees(it) } ?: "—",
               style = MaterialTheme.typography.bodySmall,
               color = White,
               modifier = Modifier.width(40.dp),
@@ -165,7 +169,7 @@ internal fun DailyPage(state: HomeUiState) {
             )
             val hourMm = hour.values[FusionVariables.PRECIPITATION]?.value
             Text(
-              if (hourMm != null && hourMm >= 0.05) "${fmt1(hourMm)} mm" else "",
+              if (hourMm != null && hourMm >= 0.05) units.precipitation(hourMm) else "",
               style = MaterialTheme.typography.bodySmall,
               color = Dim,
             )

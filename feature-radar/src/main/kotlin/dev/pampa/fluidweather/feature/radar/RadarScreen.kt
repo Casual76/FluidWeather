@@ -97,6 +97,8 @@ import dev.pampa.fluidweather.core.weather.RainViewerClient
 import dev.pampa.fluidweather.core.weather.RainViewerPalette
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
 
 /** Tutto quello che il radar tocca; lo costruisce :app dal suo grafo. */
 class RadarDependencies(
@@ -142,17 +144,17 @@ fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
 
 @Composable
 private fun RadarUnavailable(status: MapsStatus, onBack: () -> Unit) {
-  FluidScreen(title = "Radar", onBack = onBack) {
+  FluidScreen(title = stringResource(R.string.radar_title), onBack = onBack) {
     item {
       FluidListGroup {
         when (status) {
           MapsStatus.PLAY_SERVICES_MISSING -> FluidListRow(
-            title = "Google Play Services assenti",
-            subtitle = "La mappa del radar poggia su Google Maps: su questo dispositivo non puo' aprirsi.",
+            title = stringResource(R.string.radar_no_play),
+            subtitle = stringResource(R.string.radar_no_play_desc),
           )
           MapsStatus.KEY_MISSING -> FluidListRow(
-            title = "Chiave Google Maps assente",
-            subtitle = "Aggiungi maps.apiKey a local.properties e ricompila: la chiave resta fuori da git.",
+            title = stringResource(R.string.radar_no_key),
+            subtitle = stringResource(R.string.radar_no_key_desc),
           )
           MapsStatus.READY -> Unit
         }
@@ -208,6 +210,8 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
   }
 
   // I pin: le salvate piu' il telefono, con la temperatura di adesso in UNA chiamata.
+  // Il nome del pin "qui" si legge nel composable: produceState non lo e'.
+  val hereLabel = stringResource(R.string.radar_here)
   val pins by produceState<List<RadarPin>>(initialValue = emptyList(), places) {
     val saved = places.filter { !it.isGps }
     val here = if (deps.locationProvider.hasPermission()) deps.locationProvider.snapshot() else null
@@ -217,7 +221,7 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
     value = saved.mapIndexed { index, place ->
       RadarPin(place.name, LatLng(place.latitude, place.longitude), now.getOrNull(index)?.temperatureC)
     } + listOfNotNull(
-      here?.let { RadarPin("Qui", LatLng(it.latitude, it.longitude), now.getOrNull(saved.size)?.temperatureC) },
+      here?.let { RadarPin(hereLabel, LatLng(it.latitude, it.longitude), now.getOrNull(saved.size)?.temperatureC) },
     )
   }
 
@@ -293,17 +297,26 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
         .statusBarsPadding()
         .padding(12.dp),
     ) {
-      Icon(Icons.Rounded.Close, contentDescription = "Chiudi", tint = White, modifier = Modifier.size(20.dp))
+      Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_close), tint = White, modifier = Modifier.size(20.dp))
     }
 
     // Selettore dei livelli in alto a destra: il tasto che diventa il proprio menu'.
     val menu = rememberFluidMorphMenuState()
     var menuBounds by remember { mutableStateOf<Rect?>(null) }
+    // Le etichette si leggono nel composable; il menu' le riceve gia' pronte.
+    val layerLabels = RadarLayer.entries.associateWith { candidate ->
+      val note = candidate.unavailableNoteRes()
+      if (candidate.available(owmKey != null) || note == null) {
+        stringResource(candidate.labelRes)
+      } else {
+        stringResource(candidate.labelRes) + " · " + stringResource(note)
+      }
+    }
     val layerActions = {
       RadarLayer.entries.map { candidate ->
         val available = candidate.available(owmKey != null)
         FluidContextAction(
-          label = if (available) candidate.label else "${candidate.label} · ${candidate.unavailableNote()}",
+          label = layerLabels.getValue(candidate),
           icon = layerIcon(candidate),
           enabled = available,
         ) { layer = candidate }
@@ -349,7 +362,7 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
           .align(Alignment.BottomEnd)
           .padding(end = 12.dp, bottom = navigationBottom + barHeight + 8.dp),
       ) {
-        Icon(Icons.Rounded.MyLocation, contentDescription = "La mia posizione", tint = White, modifier = Modifier.size(20.dp))
+        Icon(Icons.Rounded.MyLocation, contentDescription = stringResource(R.string.place_my_location), tint = White, modifier = Modifier.size(20.dp))
       }
     }
 
@@ -410,7 +423,7 @@ private fun RadarLegend(modifier: Modifier = Modifier) {
       .background(Panel, ContinuousCornerShape(FluidRadius.Group))
       .padding(10.dp),
   ) {
-    Text("Precipitazioni", style = MaterialTheme.typography.labelSmall, color = Faint)
+    Text(stringResource(R.string.radar_precipitation), style = MaterialTheme.typography.labelSmall, color = Faint)
     Spacer(Modifier.height(6.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
       stops.forEach { stop ->
@@ -424,9 +437,9 @@ private fun RadarLegend(modifier: Modifier = Modifier) {
     }
     Spacer(Modifier.height(4.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      Text("debole", style = MaterialTheme.typography.labelSmall, color = Faint)
-      Text("forte", style = MaterialTheme.typography.labelSmall, color = Faint)
-      Text("grandine", style = MaterialTheme.typography.labelSmall, color = Faint)
+      Text(stringResource(R.string.radar_legend_light), style = MaterialTheme.typography.labelSmall, color = Faint)
+      Text(stringResource(R.string.radar_legend_heavy), style = MaterialTheme.typography.labelSmall, color = Faint)
+      Text(stringResource(R.string.radar_legend_hail), style = MaterialTheme.typography.labelSmall, color = Faint)
     }
   }
 }
@@ -451,7 +464,7 @@ private fun RadarTimelineBar(
       IconButton(onClick = onTogglePlay, enabled = frames != null) {
         Icon(
           imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-          contentDescription = if (playing) "Pausa" else "Play",
+          contentDescription = if (playing) stringResource(R.string.radar_pause) else stringResource(R.string.radar_play),
           tint = White,
         )
       }
@@ -489,9 +502,9 @@ private fun RadarTimelineBar(
         }
       }
       val label = if (frames == null || count == 0) {
-        "radar…"
+        stringResource(R.string.radar_loading)
       } else {
-        RadarTimeline.label(frames.all[index.coerceIn(0, count - 1)].timeMillis, frames.past.last().timeMillis)
+        timelineLabel(RadarTimeline.offset(frames.all[index.coerceIn(0, count - 1)].timeMillis, frames.past.last().timeMillis))
       }
       Text(
         label,
@@ -502,7 +515,7 @@ private fun RadarTimelineBar(
       )
     }
     Text(
-      "${RainViewerClient.ATTRIBUTION} · Mappa © Google",
+      stringResource(R.string.radar_attribution, RainViewerClient.ATTRIBUTION),
       style = MaterialTheme.typography.labelSmall,
       color = Faint,
       textAlign = TextAlign.End,
@@ -511,4 +524,13 @@ private fun RadarTimelineBar(
         .padding(top = 4.dp, end = 4.dp),
     )
   }
+}
+
+/** "adesso", "−1 h 40 min", "+20 min": la distanza del fotogramma, nella lingua del telefono. */
+@Composable
+private fun timelineLabel(offset: RadarTimeline.Offset): String = when {
+  offset.isNow -> stringResource(R.string.radar_now)
+  offset.hours == 0 -> stringResource(R.string.radar_offset_min, offset.sign, offset.rest)
+  offset.rest == 0 -> stringResource(R.string.radar_offset_h, offset.sign, offset.hours)
+  else -> stringResource(R.string.radar_offset_h_min, offset.sign, offset.hours, offset.rest)
 }

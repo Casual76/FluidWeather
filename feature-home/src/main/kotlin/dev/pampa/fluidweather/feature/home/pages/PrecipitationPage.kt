@@ -21,6 +21,9 @@ import dev.pampa.fluidweather.core.ui.PageCharts
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 
 private val HourColumn = 26.dp
 
@@ -32,17 +35,18 @@ private val HourColumn = 26.dp
 @Composable
 internal fun PrecipitationPage(state: HomeUiState) {
   val now = System.currentTimeMillis()
+  val units = rememberUnitFormatter()
   val upcoming = state.fusedHours.filter { it.timestampMillis >= now }
   if (upcoming.isEmpty()) {
-    PageNote("In attesa dei provider…")
+    PageNote(stringResource(R.string.common_waiting_providers))
     return
   }
 
-  PageSection("Prossime 6 ore")
+  PageSection(stringResource(R.string.precip_next_6h))
   val next6 = upcoming.take(6)
   val pops6 = next6.map { it.values[FusionVariables.PRECIP_PROBABILITY]?.value ?: 0.0 }
   val mm6 = next6.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 }
-  BigStat(if (mm6 >= 0.1) "~${fmt1(mm6)}" else "0", "mm", "attesi dai provider nelle prossime sei ore")
+  BigStat(if (mm6 >= 0.1) "~" + units.precipitationValue(mm6) else "0", units.precipitationSymbol(), stringResource(R.string.precip_expected_6h))
   Spacer(Modifier.height(8.dp))
   Charts.ProbabilityBars(
     percentages = pops6,
@@ -60,12 +64,12 @@ internal fun PrecipitationPage(state: HomeUiState) {
   if (verdict != null) {
     Spacer(Modifier.height(6.dp))
     verdict.windows.forEach { window ->
-      StatRow(windowLabel(window.window), "${(window.probability * 100).toInt()}%", "barometro locale")
+      StatRow(windowLabel(window.window), "${(window.probability * 100).toInt()}%", stringResource(R.string.precip_local_barometer))
     }
-    PageNote("Le finestre sono il verdetto del barometro del telefono: indipendente dai provider, e per questo interessante quando non e' d'accordo.")
+    PageNote(stringResource(R.string.precip_windows_note))
   }
 
-  PageSection("Probabilita' ora per ora, tutto l'orizzonte")
+  PageSection(stringResource(R.string.precip_hourly_title))
   val pops = upcoming.map { it.values[FusionVariables.PRECIP_PROBABILITY]?.value ?: 0.0 }
   val dayFormatter = DateTimeFormatter.ofPattern("EEE d", Locale.getDefault())
   Column(Modifier.horizontalScroll(rememberScrollState())) {
@@ -79,10 +83,9 @@ internal fun PrecipitationPage(state: HomeUiState) {
     )
     Row {
       upcoming.forEach { hour ->
-        val label = fmtHour(hour.timestampMillis)
         Column(Modifier.width(HourColumn), horizontalAlignment = Alignment.CenterHorizontally) {
           Text(
-            if (label.toInt() % 3 == 0) label else " ",
+            if (hourOfDay(hour.timestampMillis) % 3 == 0) fmtHour(hour.timestampMillis) else " ",
             style = MaterialTheme.typography.labelSmall,
             color = Faint,
           )
@@ -91,9 +94,8 @@ internal fun PrecipitationPage(state: HomeUiState) {
     }
     Row {
       upcoming.forEach { hour ->
-        val label = fmtHour(hour.timestampMillis)
         Column(Modifier.width(HourColumn)) {
-          if (label == "00" || hour === upcoming.first()) {
+          if (hourOfDay(hour.timestampMillis) == 0 || hour === upcoming.first()) {
             Text(
               dayFormatter.format(localDate(hour.timestampMillis)).replaceFirstChar { it.uppercase() },
               style = MaterialTheme.typography.labelSmall,
@@ -107,12 +109,12 @@ internal fun PrecipitationPage(state: HomeUiState) {
     }
   }
   Text(
-    "Scorri per vedere tutto l'orizzonte (${upcoming.size} ore). Le barre sono la probabilita' media pesata dei provider.",
+    stringResource(R.string.precip_scroll_note, upcoming.size),
     style = MaterialTheme.typography.bodySmall,
     color = Faint,
   )
 
-  PageSection("Accumulo per giorno")
+  PageSection(stringResource(R.string.precip_daily_title))
   val byDay = upcoming.groupBy { localDate(it.timestampMillis) }.toSortedMap()
   var total = 0.0
   byDay.forEach { (date, hours) ->
@@ -121,10 +123,10 @@ internal fun PrecipitationPage(state: HomeUiState) {
     total += mm
     StatRow(
       fmtDate(date),
-      if (mm >= 0.05) "${fmt1(mm)} mm" else "—",
-      popMax?.let { "max ${it.toInt()}%" },
+      if (mm >= 0.05) units.precipitation(mm) else "—",
+      popMax?.let { stringResource(R.string.precip_max_pct, it.toInt()) },
     )
   }
-  StatRow("Totale sull'orizzonte", "${fmt1(total)} mm", "${byDay.size} giorni")
-  PageNote("L'accumulo e' la somma delle ore fuse; la probabilita' e' la media pesata dei provider che la dichiarano.")
+  StatRow(stringResource(R.string.precip_total), units.precipitation(total), stringResource(R.string.common_days_count, byDay.size))
+  PageNote(stringResource(R.string.precip_method_note))
 }

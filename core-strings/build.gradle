@@ -1,0 +1,37 @@
+// Tutte le parole dell'app, in italiano e in inglese, e la mappa dai modelli alle parole.
+// Un modulo solo, cosi' notifiche, servizi e schermate parlano dalla stessa tabella e le due
+// lingue non possono divergere senza che si veda nel diff.
+plugins {
+  id 'com.android.library'
+  id 'org.jetbrains.kotlin.android'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+
+android {
+  namespace 'dev.pampa.fluidweather.strings'
+  compileSdk engine.compileSdk
+
+  defaultConfig {
+    minSdk engine.minSdk
+  }
+
+  compileOptions {
+    sourceCompatibility engine.javaVersion
+    targetCompatibility engine.javaVersion
+  }
+
+  kotlinOptions {
+    jvmTarget = engine.jvmTarget
+  }
+}
+
+dependencies {
+  api project(':core-model')
+  // AlertLevel e i nomi delle feature del verdetto vivono nel motore puro.
+  api project(':nowcast')
+
+  implementation "androidx.annotation:annotation:1.9.1"
+
+  testImplementation "junit:junit:${engine.junit}"
+}

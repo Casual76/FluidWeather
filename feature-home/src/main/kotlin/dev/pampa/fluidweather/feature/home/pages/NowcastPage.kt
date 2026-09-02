@@ -23,8 +23,13 @@ import dev.pampa.fluidweather.nowcast.tide.TideSource
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.Factor
 import dev.pampa.fluidweather.nowcast.verdict.WindowVerdict
-import java.util.Locale
 import kotlin.math.abs
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.core.ui.stageText
+import dev.pampa.fluidweather.strings.featureLabelRes
+import dev.pampa.fluidweather.strings.windowLabelRes
 
 /**
  * La pagina del nowcast: il livello, le tre finestre con la loro banda, i fattori finestra per
@@ -34,52 +39,51 @@ import kotlin.math.abs
 @Composable
 internal fun NowcastPage(state: HomeUiState) {
   val verdict = state.verdict
+  val units = rememberUnitFormatter()
 
-  PageSection("Adesso")
+  PageSection(stringResource(R.string.common_now))
   if (verdict == null) {
     PageNote(
-      "Il verdetto compare dopo circa 13 ore di campionamento continuo: il modello vuole vedere " +
-        "la tendenza a 12 ore prima di parlare, e un verdetto costruito sul vuoto sarebbe un'invenzione.",
+      stringResource(R.string.nowcast_waiting_note),
     )
     val readiness = state.readiness
     if (readiness != null) {
       Spacer(Modifier.height(10.dp))
-      Text(readiness.stageLabel, style = MaterialTheme.typography.titleSmall, color = White)
+      Text(readiness.stageText(), style = MaterialTheme.typography.titleSmall, color = White)
       Spacer(Modifier.height(6.dp))
       FluidProgressBar(progress = { readiness.overallFraction }, color = PageBlue)
       Spacer(Modifier.height(6.dp))
     }
     val points = state.cleaning?.filtered?.size ?: 0
-    if (points > 0) StatRow("Punti puliti in archivio", "$points", "ultime 24 ore")
+    if (points > 0) StatRow(stringResource(R.string.nowcast_clean_points), "$points", stringResource(R.string.nowcast_last_24h))
   } else {
     val (title, body, color) = when (verdict.level) {
       AlertLevel.QUIETE -> Triple(
-        "Quiete",
-        "Il barometro non vede cambiamenti in arrivo: la pressione fa il suo corso normale.",
+        stringResource(R.string.level_quiet),
+        stringResource(R.string.nowcast_quiet_desc),
         PageGreen,
       )
       AlertLevel.SORVEGLIANZA -> Triple(
-        "Sorveglianza",
-        "La pressione si muove: il sensore legge piu' spesso e il verdetto e' in osservazione.",
+        stringResource(R.string.level_watch),
+        stringResource(R.string.nowcast_watch_desc),
         PageAmber,
       )
       AlertLevel.ALLERTA -> Triple(
-        "Allerta",
-        "Il barometro vede arrivare la pioggia: probabilita' forte nelle prossime ore.",
+        stringResource(R.string.level_alert),
+        stringResource(R.string.nowcast_alert_desc),
         PageRed,
       )
     }
     Text(title, style = MaterialTheme.typography.headlineMedium, color = color)
     Text(body, style = MaterialTheme.typography.bodyMedium, color = Dim)
 
-    PageSection("Probabilita' di precipitazione, 0-6 ore")
+    PageSection(stringResource(R.string.nowcast_prob_title))
     verdict.windows.forEach { WindowRow(it) }
     PageNote(
-      "La banda e' la dispersione dei cinque modelli addestrati sullo stesso banco (bagging): " +
-        "stretta quando sono d'accordo, larga quando la situazione e' ambigua.",
+      stringResource(R.string.nowcast_band_note),
     )
 
-    PageSection("I fattori del verdetto")
+    PageSection(stringResource(R.string.nowcast_factors_title))
     verdict.windows.forEach { window ->
       Text(
         windowLabel(window.window),
@@ -88,7 +92,7 @@ internal fun NowcastPage(state: HomeUiState) {
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
       )
       if (window.topFactors.isEmpty()) {
-        Text("Niente fuori dal neutro: e' la climatologia a parlare.", style = MaterialTheme.typography.bodySmall, color = Faint)
+        Text(stringResource(R.string.nowcast_no_factors), style = MaterialTheme.typography.bodySmall, color = Faint)
       } else {
         val strongest = window.topFactors.maxOf { abs(it.contribution) }.coerceAtLeast(1e-9)
         window.topFactors.forEach { FactorRow(it, strongest) }
@@ -98,7 +102,7 @@ internal fun NowcastPage(state: HomeUiState) {
 
   val explanation = state.nowcastExplanation
   if (explanation != null) {
-    PageSection("Cosa ha imparato il telefono")
+    PageSection(stringResource(R.string.learning_title))
     explanation.verdict.windows.forEach { window ->
       val raw = explanation.rawVerdict.forWindow(window.window)
       val analogs = explanation.analogs[window.window]
@@ -107,55 +111,52 @@ internal fun NowcastPage(state: HomeUiState) {
         windowLabel(window.window),
         "${(window.probability * 100).toInt()}%",
         buildString {
-          append("modello " + ((raw?.probability ?: 0.0) * 100).toInt() + "%")
-          if (recalibrated) append(" · ricalibrato")
-          if (analogs != null) append(" · analoghi ${analogs.rained}/${analogs.neighbours}")
+          append(stringResource(R.string.nowcast_model_prefix) + ((raw?.probability ?: 0.0) * 100).toInt() + "%")
+          if (recalibrated) append(stringResource(R.string.nowcast_recalibrated))
+          if (analogs != null) append(stringResource(R.string.nowcast_analogs, analogs.rained, analogs.neighbours))
         },
       )
     }
     PageNote(
       if (explanation.recalibrated.isEmpty() && explanation.analogs.isEmpty()) {
-        "Ancora niente da imparare: servono almeno trenta verifiche per finestra per ricalibrare, e " +
-          "situazioni passate con esito noto per gli analoghi. Il telefono le raccoglie da solo."
+        stringResource(R.string.learning_nothing_yet)
       } else {
-        "Ricalibrato = la probabilita' del modello portata sulla frequenza vera delle tue verifiche " +
-          "(Platt scaling). Analoghi = fra le situazioni bariche piu' simili nel tuo archivio, quante " +
-          "sono finite in pioggia; pesano N/(N+40)."
+        stringResource(R.string.learning_explain)
       },
     )
   }
 
   val cleaning = state.cleaning
   if (cleaning != null && cleaning.filtered.size >= 2) {
-    PageSection("Il segnale pulito (12 ore, livello del mare)")
+    PageSection(stringResource(R.string.nowcast_clean_signal))
     CurveWithLabels(
-      values = cleaning.filtered.map { it.levelHpa },
+      values = units.pressureSeries(cleaning.filtered.map { it.levelHpa }),
       labels = timeLabels(cleaning.filtered.map { it.timestampMillis }),
       color = PageBlue,
-      unit = " hPa",
-      decimals = 1,
+      unit = " " + units.pressureSymbol(),
+      decimals = units.pressureChartDecimals() + 1,
     )
     val latest = cleaning.latest
     if (latest != null) {
-      StatRow("Livello", "${fmt1(latest.levelHpa)} hPa", "±${fmt1(latest.levelSigmaHpa)}")
+      StatRow(stringResource(R.string.pressure_level), units.pressure(latest.levelHpa, 1), units.pressureSigma(latest.levelSigmaHpa))
       StatRow(
-        "Tendenza",
-        String.format(Locale.ROOT, "%+.2f hPa/h", latest.trendHpaPerHour),
-        "±${String.format(Locale.ROOT, "%.2f", latest.trendSigmaHpaPerHour)}",
+        stringResource(R.string.pressure_trend),
+        units.pressureRate(latest.trendHpaPerHour, 2),
+        units.pressureSigma(latest.trendSigmaHpaPerHour, 2),
       )
     }
     val tide = cleaning.tide
     StatRow(
-      "Marea atmosferica",
+      stringResource(R.string.pressure_tide),
       tideSourceLabel(tide.source),
-      "S1 ${fmt1(tide.s1AmplitudeHpa)} · S2 ${fmt1(tide.s2AmplitudeHpa)} hPa",
+      "S1 ${units.pressureValue(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}",
     )
     if (tide.source != TideSource.NONE) {
-      StatRow("Spinta della marea adesso", String.format(Locale.ROOT, "%+.2f hPa", tide.tideAtLatestHpa), "gia' sottratta")
+      StatRow(stringResource(R.string.nowcast_tide_now), units.pressureDelta(tide.tideAtLatestHpa, 2), stringResource(R.string.nowcast_tide_subtracted))
     }
   }
 
-  PageSection("Storico dei verdetti, 24 ore")
+  PageSection(stringResource(R.string.nowcast_history_title))
   val history = state.verdictHistory
   if (history.size >= 2) {
     CurveWithLabels(
@@ -165,20 +166,20 @@ internal fun NowcastPage(state: HomeUiState) {
       unit = "%",
     )
     Text(
-      "Probabilita' di pioggia a 1-3 ore, com'era ogni volta che il ciclo ha giudicato.",
+      stringResource(R.string.nowcast_history_note),
       style = MaterialTheme.typography.bodySmall,
       color = Faint,
     )
     val alerts = history.count { it.level == AlertLevel.ALLERTA.name }
     val watches = history.count { it.level == AlertLevel.SORVEGLIANZA.name }
-    StatRow("Verdetti registrati", "${history.size}", "allerta $alerts · sorveglianza $watches")
+    StatRow(stringResource(R.string.nowcast_verdicts_recorded), "${history.size}", stringResource(R.string.nowcast_verdict_counts, alerts, watches))
   } else {
-    PageNote("Il ciclo in background sta accumulando i verdetti: torna fra qualche ora.")
+    PageNote(stringResource(R.string.nowcast_history_empty))
   }
 
   val observed = state.observedPrecipitation
   if (observed.isNotEmpty()) {
-    PageSection("Cosa e' successo davvero")
+    PageSection(stringResource(R.string.nowcast_truth_title))
     PageCharts.Bars(
       values = observed.map { it.second },
       color = PageBlue,
@@ -190,10 +191,9 @@ internal fun NowcastPage(state: HomeUiState) {
       Text(fmtTime(observed.first().first), style = MaterialTheme.typography.labelSmall, color = Faint)
       Text(fmtTime(observed.last().first), style = MaterialTheme.typography.labelSmall, color = Faint)
     }
-    StatRow("Pioggia osservata", "${fmt1(observed.sumOf { it.second })} mm", "nelle ultime ${observed.size} ore")
+    StatRow(stringResource(R.string.nowcast_rain_observed), units.precipitation(observed.sumOf { it.second }), stringResource(R.string.nowcast_last_hours, observed.size))
     PageNote(
-      "Le ore passate dell'opinione piu' completa (Open-Meteo) sono analisi, non previsioni: " +
-        "e' il metro con cui la pagella giudichera' il barometro.",
+      stringResource(R.string.nowcast_truth_note),
     )
   }
 }
@@ -226,7 +226,7 @@ private fun WindowRow(window: WindowVerdict) {
           .height(10.dp),
       )
       Text(
-        "banda ${(window.probabilityLow * 100).toInt()}-${(window.probabilityHigh * 100).toInt()}%",
+        stringResource(R.string.nowcast_band, (window.probabilityLow * 100).toInt(), (window.probabilityHigh * 100).toInt()),
         style = MaterialTheme.typography.labelSmall,
         color = Faint,
       )
@@ -245,7 +245,7 @@ private fun FactorRow(factor: Factor, strongest: Double) {
       .padding(vertical = 3.dp),
   ) {
     Text(if (positive) "▲" else "▼", color = color, modifier = Modifier.width(22.dp))
-    Text(factor.name, style = MaterialTheme.typography.bodyMedium, color = White.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+    Text(stringResource(featureLabelRes(factor.name)), style = MaterialTheme.typography.bodyMedium, color = White.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
     Spacer(Modifier.width(8.dp))
     Box(
       Modifier
@@ -256,15 +256,12 @@ private fun FactorRow(factor: Factor, strongest: Double) {
   }
 }
 
-internal fun windowLabel(window: String): String = when (window) {
-  "0-1h" -> "Entro un'ora"
-  "1-3h" -> "Fra 1 e 3 ore"
-  "3-6h" -> "Fra 3 e 6 ore"
-  else -> window
-}
+@Composable
+internal fun windowLabel(window: String): String = stringResource(windowLabelRes(window))
 
+@Composable
 internal fun tideSourceLabel(source: TideSource): String = when (source) {
-  TideSource.NONE -> "non sottratta (posizione ignota)"
-  TideSource.CLIMATOLOGICAL -> "climatologica"
-  else -> "stimata sul posto"
+  TideSource.NONE -> stringResource(R.string.nowcast_tide_not_subtracted)
+  TideSource.CLIMATOLOGICAL -> stringResource(R.string.nowcast_climatological)
+  else -> stringResource(R.string.nowcast_tide_local)
 }

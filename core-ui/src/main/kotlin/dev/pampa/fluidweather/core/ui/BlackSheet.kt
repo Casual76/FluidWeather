@@ -31,6 +31,10 @@ import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidGrabber
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
+import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 /** Il nero delle pagine di dettaglio: una stanza buia sopra il cielo, non una surface scura. */
 val BlackSheetColor: Color = Color(0xFF0B0B0E)
@@ -82,7 +86,7 @@ fun BlackSheet(
           modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onDismiss) {
-          Icon(Icons.Rounded.Close, contentDescription = "Chiudi", tint = Color.White)
+          Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_close), tint = Color.White)
         }
       }
       Spacer(Modifier.height(8.dp))
@@ -99,7 +103,10 @@ fun BlackSheetSectionTitle(text: String) {
     text = text.uppercase(),
     style = MaterialTheme.typography.labelMedium,
     color = Color.White.copy(alpha = 0.55f),
-    modifier = Modifier.padding(top = 14.dp, bottom = 6.dp),
+    modifier = Modifier
+      .padding(top = 14.dp, bottom = 6.dp)
+      // Un titolo di sezione: TalkBack lo annuncia come intestazione e ci salta sopra.
+      .semantics { heading() },
   )
 }
 

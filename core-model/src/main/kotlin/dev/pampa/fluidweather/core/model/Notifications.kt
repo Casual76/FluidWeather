@@ -7,37 +7,27 @@ package dev.pampa.fluidweather.core.model
  */
 enum class NotificationChannelKind(
   val id: String,
-  val label: String,
-  val description: String,
   val defaultEnabled: Boolean,
   /** Importanza alta = suono e heads-up; altrimenti default (suono, niente heads-up). */
   val highImportance: Boolean,
 ) {
   NOWCAST_ALERT(
     id = "nowcast-alert",
-    label = "Allerta nowcast locale",
-    description = "Il barometro del telefono vede arrivare la pioggia: probabilita' forte nelle prossime ore.",
     defaultEnabled = true,
     highImportance = true,
   ),
   PRECIPITATION(
     id = "precipitation",
-    label = "Inizio e fine della precipitazione",
-    description = "Quando la pioggia sta per iniziare o per smettere dove sei.",
     defaultEnabled = true,
     highImportance = false,
   ),
   OFFICIAL_ALERTS(
     id = "official-alerts",
-    label = "Allerte ufficiali",
-    description = "Avvisi dei servizi meteorologici nazionali (Meteoalarm, NWS), riportati senza reinterpretazione.",
     defaultEnabled = false,
     highImportance = true,
   ),
   DAILY_SUMMARY(
     id = "daily-summary",
-    label = "Riepilogo giornaliero",
-    description = "Il tempo di oggi in una riga, all'ora che scegli.",
     defaultEnabled = false,
     highImportance = false,
   ),

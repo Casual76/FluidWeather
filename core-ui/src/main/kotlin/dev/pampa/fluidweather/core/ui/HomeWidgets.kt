@@ -1,24 +1,28 @@
 package dev.pampa.fluidweather.core.ui
 
+import androidx.annotation.StringRes
+import dev.pampa.fluidweather.strings.R
+
 /**
  * Il catalogo dei widget della home, con l'ordine di default deciso dal piano. Gli id sono
  * stringhe stabili: finiscono nella preferenza dell'ordine e devono sopravvivere ai refactor.
+ * Il titolo e' una risorsa (fase 17): la lingua la mette chi lo mostra.
  */
 enum class HomeWidget(
   val id: String,
-  val title: String,
+  @param:StringRes val titleRes: Int,
   /** 1 = mezza larghezza (compatto), 2 = tutta la riga (esteso). */
   val span: Int,
 ) {
-  NOWCAST("nowcast", "Nowcast", 2),
-  HOURLY("hourly", "Orario", 2),
-  DAILY("daily", "Giornaliero", 2),
-  PRECIPITATION("precipitation", "Precipitazioni", 2),
-  PRESSURE("pressure", "Pressione", 1),
-  AIR_QUALITY("air-quality", "Qualita' aria", 1),
-  SUN("sun", "Sole", 2),
-  MOON("moon", "Luna", 2),
-  DETAILS("details", "Dettagli", 2);
+  NOWCAST("nowcast", R.string.widget_nowcast, 2),
+  HOURLY("hourly", R.string.widget_hourly, 2),
+  DAILY("daily", R.string.widget_daily, 2),
+  PRECIPITATION("precipitation", R.string.widget_precipitation, 2),
+  PRESSURE("pressure", R.string.widget_pressure, 1),
+  AIR_QUALITY("air-quality", R.string.widget_air, 1),
+  SUN("sun", R.string.widget_sun, 2),
+  MOON("moon", R.string.widget_moon, 2),
+  DETAILS("details", R.string.widget_details, 2);
 
   companion object {
 
