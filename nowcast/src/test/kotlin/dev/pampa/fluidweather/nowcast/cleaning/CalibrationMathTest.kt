@@ -35,7 +35,7 @@ class CalibrationMathTest {
   }
 
   @Test
-  fun `poche letture, poca fiducia; nessuna lettura, nessuna stima`() {
+  fun `poche letture poca fiducia, nessuna lettura nessuna stima`() {
     val few = CalibrationMath.estimate(List(60) { 1013.0 }, 0.0, 15.0, 1013.0, 0L)!!
     assertEquals(CalibrationMath.CONFIDENCE_WITH_ALTITUDE * 0.1, few.confidence, 1e-9)
     assertNull(CalibrationMath.estimate(emptyList(), 0.0, 15.0, 1013.0, 0L))
