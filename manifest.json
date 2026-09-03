@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.0.3",
+        "releaseDate": "2026-09-03",
+        "changelog": "Correzioni: i feedback tattili non si sentivano da nessuna parte (mancava il permesso VIBRATE) e la home andava a scatti con i suggerimenti accesi. Nuovo: un quaderno degli errori in Impostazioni, Diagnostica — se l'app si chiude da sola, ora lascia la traccia e la si puo' copiare. Questa versione e' piu' pesante di proposito: niente offuscamento, cosi' le tracce si leggono.",
+        "releaseTag": "beta-fluidweather-v1.0.3",
+        "apkAsset": "fluidweather-1.0.3.apk",
+        "sizeBytes": 17533095
+      },
+      {
         "version": "1.0.2",
         "releaseDate": "2026-09-03",
         "changelog": "Correzione: la 1.0.1 si avviava ma non rispondeva al tocco — i suggerimenti al primo uso mettevano uno strato invisibile sopra la pagina che si prendeva tutti i tocchi. Nuovo: l'app controlla gli aggiornamenti a ogni apertura e lo dice con un avviso (Aggiorna, Piu' tardi, Salta questa versione).",
@@ -41,12 +49,12 @@
       }
     ],
     "beta": {
-      "version": "1.0.3",
+      "version": "1.0.4",
       "releaseDate": "2026-09-03",
-      "changelog": "Correzioni: i feedback tattili non si sentivano da nessuna parte (mancava il permesso VIBRATE) e la home andava a scatti con i suggerimenti accesi. Nuovo: un quaderno degli errori in Impostazioni, Diagnostica — se l'app si chiude da sola, ora lascia la traccia e la si puo' copiare. Questa versione e' piu' pesante di proposito: niente offuscamento, cosi' le tracce si leggono.",
-      "releaseTag": "beta-fluidweather-v1.0.3",
-      "apkAsset": "fluidweather-1.0.3.apk",
-      "sizeBytes": 17533095
+      "changelog": "Corretto il salvataggio delle chiavi dell'assistente: la prima chiave di ogni provider non si salvava e faceva cadere l'app (una cancellazione che rileggeva un valore inesistente). Ora si verificano Groq, Gemini e OpenRouter. L'app torna leggera: 4 MB invece di 17.",
+      "releaseTag": "beta-fluidweather-v1.0.4",
+      "apkAsset": "fluidweather-1.0.4.apk",
+      "sizeBytes": 3979644
     }
   },
   "engine": {
