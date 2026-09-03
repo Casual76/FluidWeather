@@ -14,14 +14,23 @@
       "manifestPath": "manifest.json",
       "ref": "main"
     },
-    "history": [],
+    "history": [
+      {
+        "version": "1.0.0",
+        "releaseDate": "2026-09-02",
+        "changelog": "Prima versione: nowcast 0-6 ore dal barometro del telefono, costellazione di provider fusi con pesi appresi, radar, qualita' dell'aria, sole e luna, notifiche, benchmark, segnalazioni, apprendimento on-device, italiano e inglese, unita' a scelta.",
+        "releaseTag": "beta-fluidweather-v1.0.0",
+        "apkAsset": "fluidweather-1.0.0.apk",
+        "sizeBytes": 3594343
+      }
+    ],
     "beta": {
-      "version": "1.0.0",
-      "releaseDate": "2026-09-02",
-      "changelog": "Prima versione: nowcast 0-6 ore dal barometro del telefono, costellazione di provider fusi con pesi appresi, radar, qualita' dell'aria, sole e luna, notifiche, benchmark, segnalazioni, apprendimento on-device, italiano e inglese, unita' a scelta.",
-      "releaseTag": "beta-fluidweather-v1.0.0",
-      "apkAsset": "fluidweather-1.0.0.apk",
-      "sizeBytes": 3594343
+      "version": "1.0.1",
+      "releaseDate": "2026-09-03",
+      "changelog": "Assistente IA opzionale, spento di default: con una chiave gratuita di Groq, Gemini o OpenRouter risponde a voce o per iscritto sui dati veri dell'app (nowcast, radar, provider, orari), con aureola e card in vetro. Feedback tattili in tutta l'app, con interruttore in Aspetto e pagina di prova in Diagnostica. Suggerimenti al primo uso: una riga la prima volta che incontri una funzione.",
+      "releaseTag": "beta-fluidweather-v1.0.1",
+      "apkAsset": "fluidweather-1.0.1.apk",
+      "sizeBytes": 3863231
     }
   },
   "engine": {
