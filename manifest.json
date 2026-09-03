@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.0.4",
+        "releaseDate": "2026-09-03",
+        "changelog": "Corretto il salvataggio delle chiavi dell'assistente: la prima chiave di ogni provider non si salvava e faceva cadere l'app (una cancellazione che rileggeva un valore inesistente). Ora si verificano Groq, Gemini e OpenRouter. L'app torna leggera: 4 MB invece di 17.",
+        "releaseTag": "beta-fluidweather-v1.0.4",
+        "apkAsset": "fluidweather-1.0.4.apk",
+        "sizeBytes": 3979644
+      },
+      {
         "version": "1.0.3",
         "releaseDate": "2026-09-03",
         "changelog": "Correzioni: i feedback tattili non si sentivano da nessuna parte (mancava il permesso VIBRATE) e la home andava a scatti con i suggerimenti accesi. Nuovo: un quaderno degli errori in Impostazioni, Diagnostica — se l'app si chiude da sola, ora lascia la traccia e la si puo' copiare. Questa versione e' piu' pesante di proposito: niente offuscamento, cosi' le tracce si leggono.",
@@ -49,12 +57,12 @@
       }
     ],
     "beta": {
-      "version": "1.0.4",
+      "version": "1.1.0",
       "releaseDate": "2026-09-03",
-      "changelog": "Corretto il salvataggio delle chiavi dell'assistente: la prima chiave di ogni provider non si salvava e faceva cadere l'app (una cancellazione che rileggeva un valore inesistente). Ora si verificano Groq, Gemini e OpenRouter. L'app torna leggera: 4 MB invece di 17.",
-      "releaseTag": "beta-fluidweather-v1.0.4",
-      "apkAsset": "fluidweather-1.0.4.apk",
-      "sizeBytes": 3979644
+      "changelog": "## La voce che sente davvero\n\n- Il microfono si ferma da solo quando smetti di parlare, e non dice più \"non ho sentito nulla\"\n  quando invece parlavi: la soglia si tara sul rumore della stanza, non su un numero deciso a\n  tavolino.\n- Se fermi la registrazione a mano, quello che avevi detto non si butta.\n- L'aureola dell'assistente reagisce alla tua voce, non a un'animazione finta.\n- Il blocco della scrittura si chiude appena mandi il messaggio e lascia il posto al pensiero\n  dell'IA; il pannello nasce dal tasto invece di comparire dal nulla.\n- Il tasto per fermare l'ascolto è in vetro, alla portata del pollice, e i controlli si accendono\n  sotto le dita.\n- Con l'assistente aperto la scritta compatta di posto e temperatura si toglie di mezzo.\n\n## Il vetro paga solo quello che si vede\n\n- Le tessere in vetro non perdono più lo sfondo e non si \"congelano\" a metà.\n- Aprire una pagina di dettaglio è immediato: la pagina Orario era la peggiore, ora scorre.\n- Durante lo scorrimento il vetro rinuncia agli effetti fini e tiene il blur, con\n  l'aggiornamento a 30 Hz: si scorre liscio e non si vede più lo sfarfallio.\n- Il cielo animato si ferma quando l'app è in secondo piano.\n- Pull to refresh sulla home: rifà i dati e ricalcola la posizione.\n\n## Il barometro parla solo di dove sei\n\n- Il nowcast usa il barometro di questo telefono, quindi vale solo dove sei: su una località\n  lontana la tessera Nowcast non c'è, e la Pressione mostra quella dei provider, dichiarata.\n- La pagina Pressione, su una località lontana, diventa la previsione dei provider su due giorni.\n- Il radar segue il tema dell'app: con il tema chiaro la mappa è chiara, e con lei legenda, pin e\n  barra del tempo.\n- Lo swipe sulla pillola delle località funziona in entrambi i versi, sempre.\n- La home non si svuota più quando cambi posto.\n- Con Fahrenheit i gradi sono Fahrenheit anche nella testata compatta e sui pin della mappa.\n- L'ordine delle tessere resta quello che hai scelto anche dopo un trascinamento.\n- La freccia del vento e quello che legge TalkBack dicono la stessa cosa (\"Vento da NE\").\n- I pin del radar si aggiornano col passare delle ore e la mappa segue il cambio di località.\n- L'avviso \"l'app si è chiusa da sola\" si annuncia una volta e non a ogni riapertura.\n- Un bel po' di accenti italiani rimessi a posto.",
+      "releaseTag": "beta-fluidweather-v1.1.0",
+      "apkAsset": "fluidweather-1.1.0.apk",
+      "sizeBytes": 3998150
     }
   },
   "engine": {
