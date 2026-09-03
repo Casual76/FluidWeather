@@ -233,6 +233,7 @@ private fun FluidWeatherRoutes(
         onOpenReport = { reportOpen = true },
         assistant = HomeAssistantBar(
           enabled = assistantEnabled,
+          active = overlayState.mode != OverlayMode.HIDDEN,
           working = assistantState.isBusy,
           onTap = { overlayState.openVoice() },
           onLongPress = { overlayState.openText() },

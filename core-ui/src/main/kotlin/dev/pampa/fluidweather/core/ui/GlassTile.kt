@@ -49,9 +49,12 @@ fun GlassTile(
       // tessera riciclata dalla griglia come "questa tessera non ha il vetro".
       sampleOnce = false,
       // Ma non a ogni fotogramma: nove tessere vive costavano 17 ms in piu' per fotogramma
-      // (misurato sul telefono). Dieci volte al secondo il cielo si muove abbastanza da non
-      // vedere la differenza, e la differenza di costo e' di un fattore dodici.
-      resampleIntervalMillis = 100L,
+      // (misurato sul telefono). A 30 Hz — il passo con cui si muove anche il cielo — la
+      // rifrazione non e' mai piu' vecchia di un fotogramma di scena, quindi non si vedono
+      // scatti, e resta un quarto del costo di una cattura per fotogramma. Il risparmio grosso
+      // durante lo scorrimento lo fa la qualita' che scende col dito (`FluidGlassQuality`):
+      // lente, dispersione e bordi si assottigliano, la sfocatura resta.
+      resampleIntervalMillis = 33L,
     )
   } else {
     Modifier.background(

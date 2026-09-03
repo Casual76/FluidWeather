@@ -3,8 +3,14 @@ package dev.pampa.fluidweather.feature.home
 import android.content.Context
 import android.location.Geocoder
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
@@ -105,6 +111,8 @@ data class HomeUiState(
   val verdictHistory: List<NowcastVerdictRecord> = emptyList(),
   /** A che punto e' il barometro: la barra unica (raffica, poi storia) finche' non c'e' verdetto. */
   val readiness: BarometerReadiness? = null,
+  /** Vero mentre il gesto di aggiornamento rifa' il giro: lo legge la rotella in cima. */
+  val refreshing: Boolean = false,
   /** Il verdetto spiegato: grezzo, ricalibrato, analoghi (fase 16). */
   val nowcastExplanation: NowcastExplanation? = null,
   val dayLengthTodayMillis: Long? = null,
@@ -122,10 +130,28 @@ private const val SHOWABLE_AGE_MILLIS = 12 * 3_600_000L
  * Ogni passo aggiorna lo stato appena sa qualcosa: il cielo cambia colore prima dell'ultimo
  * dettaglio.
  */
+/** Lo stato della home e il gesto che lo rifa': quello che serve alla schermata. */
+class HomeStateHandle(
+  val state: State<HomeUiState>,
+  /** Rifa' tutto adesso, posizione compresa. Non si aspetta: lo stato racconta come va. */
+  val refresh: () -> Unit,
+)
+
 @Composable
-fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> {
+fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
   val context = LocalContext.current
-  return produceState(initialValue = HomeUiState(phase = phaseFromClock()), key1 = place.id) {
+  // Uno stato che **sopravvive** al cambio di localita'. Con `produceState` il valore iniziale
+  // veniva riapplicato a ogni cambio di chiave: la home si svuotava — testata "—", tessere in
+  // attesa — per tutto il caricamento, che col GPS puo' durare dieci secondi. Tenendo i dati di
+  // prima e dicendo solo "sto caricando", il cambio di posto e' immediato.
+  val holder = remember { mutableStateOf(HomeUiState(phase = phaseFromClock())) }
+  // Cresce a ogni pull to refresh, ed e' la chiave che fa ripartire il caricamento da capo.
+  var reloads by remember { mutableIntStateOf(0) }
+
+  LaunchedEffect(place.id, reloads) {
+    // Il corpo qui sotto scrive in `value` come prima: e' lo stesso caricamento, spostato.
+    var value by holder
+    value = value.copy(loading = true, refreshing = reloads > 0)
     val now = System.currentTimeMillis()
 
     // GPS o localita' scelta: da qui in poi il caricamento non sa la differenza.
@@ -135,8 +161,8 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
       Triple(place.latitude, place.longitude, place.name)
     }
     if (resolved == null) {
-      value = value.copy(loading = false, hasLocation = false)
-      return@produceState
+      value = value.copy(loading = false, refreshing = false, hasLocation = false)
+      return@LaunchedEffect
     }
     val (latitude, longitude, presetName) = resolved
     if (presetName != null) value = value.copy(locationName = presetName)
@@ -214,6 +240,10 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
       }
     }
 
+    // Il giro e' finito: la rotella dell'aggiornamento si spegne qui, non alla fine dell'effetto,
+    // che non finisce mai perche' resta in ascolto del ciclo.
+    value = value.copy(loading = false, refreshing = false)
+
     // 3) Il ciclo in background continua a scrivere: finche' la home e' aperta, lo segue.
     var applied = snapshot?.fetchedAtMillis ?: 0L
     deps.snapshotStore.updates.collect { updates ->
@@ -225,6 +255,8 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): State<HomeUiState> 
       value = value.applySnapshot(fresh, System.currentTimeMillis(), deps)
     }
   }
+
+  return remember(holder) { HomeStateHandle(state = holder, refresh = { reloads++ }) }
 }
 
 /** Le ore fuse dell'istantanea dentro lo stato: testata, cielo, dispensa dei widget, accento. */

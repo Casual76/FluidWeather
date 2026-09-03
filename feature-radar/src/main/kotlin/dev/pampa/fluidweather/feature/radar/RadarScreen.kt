@@ -95,6 +95,7 @@ import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.core.ui.WeatherAccent
+import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.weather.PointWeatherClient
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
 import dev.pampa.fluidweather.core.weather.RadarFrames
@@ -420,9 +421,12 @@ private fun PinLabel(pin: RadarPin) {
     Text(pin.name, style = MaterialTheme.typography.labelMedium, color = White)
     val temperature = pin.temperatureC
     if (temperature != null) {
+      // Le unita' dell'utente anche qui: l'etichetta scriveva i gradi a mano, quindi in
+      // Fahrenheit mostrava i Celsius.
+      val units = rememberUnitFormatter()
       Spacer(Modifier.width(6.dp))
       Text(
-        "${temperature.toInt()}°",
+        units.degrees(temperature),
         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
         color = Accent,
       )

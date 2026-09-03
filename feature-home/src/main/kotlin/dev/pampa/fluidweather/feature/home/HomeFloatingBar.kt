@@ -77,6 +77,8 @@ import androidx.compose.ui.res.stringResource
 class HomeAssistantBar(
   val enabled: Boolean,
   val working: Boolean,
+  /** L'assistente e' in scena (aureola, card o barra di scrittura): la home si fa da parte. */
+  val active: Boolean = false,
   val onTap: () -> Unit,
   val onLongPress: () -> Unit,
   /** Dove sta il tasto, in coordinate della radice: e' da qui che la card si trasforma. */

@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -60,6 +61,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -67,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.antigravity.fluidengine.foundation.ThemeMode
+import dev.antigravity.fluidengine.ui.fluid.FluidEdgeOverscrollState
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassButton
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollableDefaults
@@ -74,6 +77,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onSizeChanged
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassModalHost
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassQuality
+import dev.antigravity.fluidengine.ui.fluid.FluidScreenDefaults
+import dev.antigravity.fluidengine.ui.fluid.FluidSpinner
 import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassModalHostState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
@@ -150,7 +155,8 @@ fun HomeScreen(
   val selectedId by deps.selectedPlaceStore.selectedId.collectAsState(initial = Place.GPS_ID)
   val selectedPlace = places.firstOrNull { it.id == selectedId } ?: Place.gps()
 
-  val state by rememberHomeState(deps, selectedPlace)
+  val home = rememberHomeState(deps, selectedPlace)
+  val state by home.state
   val haptics = rememberFluidHaptics()
 
   // La taratura parte dall'onboarding e finisce qui, minuti dopo, con l'utente che guarda altro:
@@ -181,6 +187,7 @@ fun HomeScreen(
       onOpenSettings = onOpenSettings,
       onOpenReport = onOpenReport,
       assistant = assistant,
+      onRefresh = home.refresh,
       requestedWidget = requestedWidget,
       onWidgetConsumed = onWidgetConsumed,
       overlay = overlay,
@@ -200,6 +207,7 @@ private fun HomeShell(
   onOpenSettings: () -> Unit,
   onOpenReport: () -> Unit,
   assistant: HomeAssistantBar?,
+  onRefresh: () -> Unit,
   requestedWidget: HomeWidget?,
   onWidgetConsumed: () -> Unit,
   overlay: @Composable BoxScope.(GlassBackdropState) -> Unit,
@@ -213,10 +221,33 @@ private fun HomeShell(
 
   val gridState = rememberLazyGridState()
   val scope = rememberCoroutineScope()
+  val reducedMotion = LocalFluidMotionPolicy.current.reducedMotion
+
+  // Il pull to refresh e' lo stesso bordo elastico che l'engine usa nelle sue schermate
+  // (`FluidEdgeOverscrollState`): un solo spostamento, la soglia e' un punto lungo quello
+  // spostamento, e la rotella vive nello spazio che il gesto apre — cosi' arriva *con* il
+  // contenuto invece di scorrergli sopra. La home non usa `FluidScreen` (e' una griglia sua),
+  // quindi lo aggancia a mano, con gli stessi numeri.
+  val overscroll = remember(reducedMotion, gridState) {
+    FluidEdgeOverscrollState(
+      reducedMotion = reducedMotion,
+      canScroll = { gridState.canScrollForward || gridState.canScrollBackward },
+    )
+  }
+  val density = LocalDensity.current
+  val refreshTriggerPx = with(density) { FluidScreenDefaults.RefreshTrigger.toPx() }
+  val refreshHoldPx = with(density) { FluidScreenDefaults.RefreshHold.toPx() }
+  SideEffect {
+    overscroll.refreshTriggerPx = refreshTriggerPx
+    overscroll.refreshHoldPx = refreshHoldPx
+    overscroll.onRefresh = onRefresh
+  }
+  LaunchedEffect(overscroll, state.refreshing) {
+    if (!state.refreshing) overscroll.endRefresh()
+  }
 
   // La testata ha due case e nessun indirizzo in mezzo: il fling finisce sempre il viaggio.
   val collapse = remember { HeaderCollapseState() }
-  val reducedMotion = LocalFluidMotionPolicy.current.reducedMotion
   val platformFling = ScrollableDefaults.flingBehavior()
   val snapFling = remember(platformFling, reducedMotion, gridState, collapse) {
     HeaderSnapFlingBehavior(
@@ -278,6 +309,7 @@ private fun HomeShell(
       HomeGrid(
         state = state,
         gridState = gridState,
+        overscroll = overscroll,
         collapse = collapse,
         flingBehavior = snapFling,
         order = order,
@@ -303,6 +335,7 @@ private fun HomeShell(
         collapse = collapse,
         backdrop = chromeBackdrop,
         onTap = { scope.launch { gridState.animateScrollToItem(0) } },
+        hidden = assistant?.active == true,
         modifier = Modifier.align(Alignment.TopCenter),
       )
 
@@ -364,6 +397,21 @@ private fun HomeShell(
           }
         },
       )
+      // La rotella dell'aggiornamento: si rivela mentre il dito tira e resta finche' il giro
+      // non e' finito. Niente disco che galleggia: sta a meta' dello spazio aperto.
+      FluidSpinner(
+        modifier = Modifier
+          .align(Alignment.TopCenter)
+          .statusBarsPadding()
+          .graphicsLayer {
+            val opened = overscroll.offsetPx.coerceAtLeast(0f)
+            alpha = if (state.refreshing) 1f else smoothPull(overscroll.refreshPull)
+            translationY = opened * 0.5f - 12.dp.toPx()
+          },
+        size = 24.dp,
+        progress = if (state.refreshing) null else ({ overscroll.refreshPull }),
+      )
+
       // I suggerimenti della home: la griglia che si riordina, la pillola, il tasto dell'IA.
       TutorialSlot(
         screen = TutorialScreen.HOME,
@@ -394,6 +442,7 @@ private fun HomeGrid(
   flingBehavior: FlingBehavior,
   order: List<String>,
   quality: FluidGlassQuality,
+  overscroll: FluidEdgeOverscrollState,
   drag: GridDragController,
   onMove: (String, String) -> Unit,
   onDrop: () -> Unit,
@@ -410,6 +459,10 @@ private fun HomeGrid(
     flingBehavior = flingBehavior,
     modifier = modifier
       .nestedScroll(qualityScroll)
+      .nestedScroll(overscroll)
+      // Un solo spostamento per tutta la pagina: il bordo apre lo spazio, la griglia lo segue.
+      .graphicsLayer { translationY = overscroll.offsetPx }
+      .onSizeChanged { overscroll.updateViewport(it.height.toFloat()) }
       .pointerInput(haptics) {
       // Un tick a ogni aggancio, non a ogni fotogramma: il bersaglio resta lo stesso finche' il
       // dito non entra in un'altra cella, e ripetere la vibrazione la renderebbe un ronzio.
@@ -585,6 +638,8 @@ private fun CompactHeader(
   collapse: HeaderCollapseState,
   backdrop: GlassBackdropState,
   onTap: () -> Unit,
+  /** Con l'assistente in scena la riga compatta si ritira: e' proprio dove arriva l'aureola. */
+  hidden: Boolean,
   modifier: Modifier = Modifier,
 ) {
   val collapsed by remember(gridState, collapse) {
@@ -592,14 +647,17 @@ private fun CompactHeader(
   }
   Box(modifier = modifier.statusBarsPadding().padding(top = 6.dp)) {
     AnimatedVisibility(
-      visible = collapsed,
+      visible = collapsed && !hidden,
       enter = fadeIn() + slideInVertically { -it / 2 },
       exit = fadeOut() + slideOutVertically { -it / 2 },
     ) {
+      val units = rememberUnitFormatter()
       FluidGlassButton(
+        // `units.degrees` e non `toInt()`: la riga compatta scriveva i gradi a mano, quindi con
+        // Fahrenheit selezionato mostrava i Celsius e tagliava i decimali verso lo zero.
         text = buildString {
           append(state.locationName ?: stringResource(R.string.place_my_location))
-          state.temperatureC?.let { append("  ·  ${it.toInt()}°") }
+          state.temperatureC?.let { append("  ·  ${units.degrees(it)}") }
         },
         onClick = onTap,
         backdrop = backdrop,
@@ -685,4 +743,10 @@ private class GridDragController(private val gridState: LazyGridState) {
   fun end() {
     draggingKey = null
   }
+}
+
+/** La rivelazione della rotella: compare nell'ultima meta' del tiro, non da subito. */
+private fun smoothPull(pull: Float): Float {
+  val t = ((pull - 0.35f) / 0.65f).coerceIn(0f, 1f)
+  return t * t * (3f - 2f * t)
 }
