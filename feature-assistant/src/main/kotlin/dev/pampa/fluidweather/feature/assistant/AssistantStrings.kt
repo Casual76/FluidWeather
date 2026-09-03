@@ -40,6 +40,7 @@ object AssistantStrings {
     FailureKind.TIMEOUT -> R.string.ai_error_timeout
     FailureKind.BLOCKED -> R.string.ai_error_blocked
     FailureKind.PROVIDER -> R.string.ai_error_provider
+    FailureKind.MICROPHONE -> R.string.ai_error_microphone
     FailureKind.TRANSCRIPTION -> R.string.ai_error_transcription
     FailureKind.NO_LOCATION -> R.string.ai_error_no_location
     FailureKind.UNKNOWN -> R.string.ai_error_unknown

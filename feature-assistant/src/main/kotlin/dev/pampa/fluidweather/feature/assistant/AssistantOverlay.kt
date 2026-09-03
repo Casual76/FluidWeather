@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,16 +42,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
 import dev.antigravity.fluidengine.ui.fluid.GlassDefaults
 import dev.antigravity.fluidengine.ui.fluid.GlassRole
 import dev.antigravity.fluidengine.ui.fluid.fluidPressable
+import dev.antigravity.fluidengine.ui.fluid.glassControlSurface
 import dev.antigravity.fluidengine.ui.fluid.glassSurface
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
@@ -83,20 +89,64 @@ class AssistantOverlayState {
   var mode by mutableStateOf(OverlayMode.HIDDEN)
   var collapsed by mutableStateOf(false)
 
-  /** Cresce a ogni tocco del tasto: e' il segnale che fa partire l'ascolto, anche a card gia' aperta. */
+  /**
+   * Vero mentre la barra di scrittura e' aperta. Dopo l'invio si chiude e resta il pensiero
+   * dell'assistente: chi ha appena scritto la domanda non ha piu' niente da scrivere, e la
+   * tastiera aperta sopra la risposta era solo un ingombro.
+   */
+  var composing by mutableStateOf(false)
+    private set
+
+  /**
+   * Cresce a ogni tocco del tasto ed e' un **gettone**: chi lo consuma fa partire l'ascolto, e
+   * nessun altro lo rifa'. Prima era un contatore letto da un effetto, e bastava una ricomposizione
+   * per far partire un secondo `AudioRecord` sullo stesso microfono.
+   */
   var voiceRequest by mutableStateOf(0)
     private set
 
   fun openVoice() {
     mode = OverlayMode.VOICE
     collapsed = false
+    composing = false
     voiceRequest++
   }
+
+  /** Consuma il gettone: vero solo per il primo che chiama, e una volta sola per tocco. */
+  fun consumeVoiceRequest(): Boolean {
+    if (voiceRequest == 0 || voiceRequest == consumedRequest) return false
+    consumedRequest = voiceRequest
+    return true
+  }
+
+  private var consumedRequest by mutableStateOf(0)
 
   fun openText() {
     mode = OverlayMode.TEXT
     collapsed = false
+    composing = true
+    autoFocus = true
   }
+
+  /** La domanda e' partita: via la barra, resta la risposta che si sta formando. */
+  fun sent() {
+    composing = false
+  }
+
+  /**
+   * La risposta e' arrivata: la barra torna, per la domanda dopo. Senza tastiera in faccia, pero':
+   * la si apre solo se la si tocca. Riaprire con il fuoco significava coprire con la tastiera la
+   * risposta che si e' appena aspettata.
+   */
+  fun resumeComposing() {
+    if (mode != OverlayMode.TEXT) return
+    composing = true
+    autoFocus = false
+  }
+
+  /** Vero se aprendo la barra si vuole anche la tastiera: si' quando l'ha chiesta l'utente. */
+  var autoFocus by mutableStateOf(true)
+    private set
 
   fun hide() {
     mode = OverlayMode.HIDDEN
@@ -125,6 +175,9 @@ fun BoxScope.AssistantOverlay(
   val context = LocalContext.current
   val session = assistant.session
   val state by session.state.collectAsState()
+  // Il livello del microfono viaggia per conto suo (cinquanta volte al secondo): lo leggono
+  // l'aureola e il feedback tattile del primo parlato, e nessun altro.
+  val mic by session.micLevel.collectAsState()
   val pending by session.pendingAction.collectAsState()
   val settings by assistant.settings.settings.collectAsState(initial = null)
   val scope = rememberCoroutineScope()
@@ -138,6 +191,14 @@ fun BoxScope.AssistantOverlay(
   var spoke by remember { mutableStateOf(false) }
   var answered by remember { mutableStateOf(false) }
   var waitSecond by remember { mutableIntStateOf(-1) }
+  // Il primo parlato riconosciuto si sente sotto il dito, e viene dal flow del livello: nello
+  // stato non c'e' piu', perche' li' cambiava a ogni frame audio.
+  LaunchedEffect(mic.speaking) {
+    if (listening && mic.speaking && !spoke) {
+      spoke = true
+      haptics.play(FluidHapticEvent.SpeechDetected)
+    }
+  }
   LaunchedEffect(state) {
     val current = state
     if (current is AssistantState.Listening) {
@@ -145,10 +206,6 @@ fun BoxScope.AssistantOverlay(
         listening = true
         spoke = false
         haptics.play(FluidHapticEvent.ListenStart)
-      }
-      if (current.speaking && !spoke) {
-        spoke = true
-        haptics.play(FluidHapticEvent.SpeechDetected)
       }
     } else if (listening) {
       listening = false
@@ -185,15 +242,28 @@ fun BoxScope.AssistantOverlay(
   }
 
   // Lettura ad alta voce: solo in modalita' vocale, solo se l'utente l'ha accesa.
+  // La voce di sistema si azzera all'inizio di una domanda, non a ogni aggiornamento dello stato:
+  // con la chiave su `state` questo effetto ripartiva a ogni frame audio e chiamava `restart()`
+  // (cioe' `TextToSpeech.stop()`) cinquanta volte al secondo mentre il microfono registrava.
+  val speakerReset = state is AssistantState.Listening || state is AssistantState.Classifying ||
+    state == AssistantState.Transcribing
+  LaunchedEffect(speakerReset) {
+    if (speakerReset) speaker.restart()
+  }
   LaunchedEffect(state, settings?.speakReplies) {
     val speak = settings?.speakReplies == true && session.lastMode.value == AskMode.VOICE
     when (val s = state) {
       is AssistantState.Answering -> if (speak) speaker.speakNewSentences(s.partial, final = false)
       is AssistantState.Done -> if (speak) speaker.speakNewSentences(s.answer, final = true)
-      is AssistantState.Listening, is AssistantState.Classifying, AssistantState.Transcribing -> speaker.restart()
       is AssistantState.Cancelled, is AssistantState.Failed, AssistantState.Idle -> speaker.stop()
       else -> Unit
     }
+  }
+
+  // A risposta finita la barra torna: la conversazione continua, e chi ha scritto una volta
+  // scrivera' ancora. Non durante il lavoro, che e' il momento in cui doveva sparire.
+  LaunchedEffect(state is AssistantState.Done) {
+    if (state is AssistantState.Done && !overlay.collapsed) overlay.resumeComposing()
   }
 
   // Lo stato che la sessione produce da solo (una domanda lanciata dal tasto) apre l'overlay.
@@ -209,14 +279,23 @@ fun BoxScope.AssistantOverlay(
     }
   }
 
-  var micGranted by remember {
-    mutableStateOf(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+  // Il permesso si rilegge quando l'app torna davanti: concesso dalle impostazioni di sistema,
+  // prima restava "negato" finche' la schermata non veniva ricreata.
+  var permissionEpoch by remember { mutableIntStateOf(0) }
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  DisposableEffect(lifecycle) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) permissionEpoch++
+    }
+    lifecycle.addObserver(observer)
+    onDispose { lifecycle.removeObserver(observer) }
+  }
+  val micGranted = remember(permissionEpoch) {
+    context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
   }
   val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-    micGranted = granted
-    if (granted) {
-      overlay.openVoice()
-    }
+    permissionEpoch++
+    if (granted) overlay.openVoice()
   }
 
   val visible = overlay.mode != OverlayMode.HIDDEN
@@ -229,7 +308,7 @@ fun BoxScope.AssistantOverlay(
     state.isBusy -> HaloMood.WORKING
     else -> HaloMood.DONE
   }
-  val level = (state as? AssistantState.Listening)?.level ?: 0f
+  val level = if (state is AssistantState.Listening) mic.level else 0f
 
   AssistantHalo(
     mood = if (overlay.collapsed) HaloMood.HIDDEN else mood,
@@ -250,6 +329,9 @@ fun BoxScope.AssistantOverlay(
       .padding(horizontal = 12.dp, vertical = 8.dp),
   ) {
     val drag = remember { Animatable(0f) }
+    // In dp, non in pixel grezzi: su uno schermo denso 160 px erano mezzo centimetro, e la card
+    // si chiudeva quasi per sbaglio.
+    val dismissDragPx = with(LocalDensity.current) { DismissDrag.toPx() }
     Column(
       Modifier
         .fillMaxWidth()
@@ -261,7 +343,7 @@ fun BoxScope.AssistantOverlay(
               scope.launch { drag.snapTo((drag.value + delta).coerceAtMost(0f)) }
             },
             onDragEnd = {
-              if (drag.value < -DISMISS_DRAG_PX) {
+              if (drag.value < -dismissDragPx) {
                 if (state.isBusy) session.cancel()
                 session.dismiss()
                 overlay.hide()
@@ -272,16 +354,19 @@ fun BoxScope.AssistantOverlay(
           )
         },
     ) {
-      if (overlay.mode == OverlayMode.TEXT && !overlay.collapsed) {
+      if (overlay.mode == OverlayMode.TEXT && overlay.composing && !overlay.collapsed) {
         AssistantTextBar(
           backdrop = backdrop,
+          autoFocus = overlay.autoFocus,
           busy = state.isBusy,
           micAvailable = micGranted,
-          onSend = { session.askText(it) },
-          onVoice = {
-            overlay.openVoice()
-            session.askVoice()
+          onSend = {
+            session.askText(it)
+            overlay.sent()
           },
+          // Solo `openVoice`: a far partire l'ascolto e' l'effetto che consuma il gettone, e
+          // chiamarlo anche qui apriva due catture sullo stesso microfono.
+          onVoice = { overlay.openVoice() },
           onNewConversation = {
             session.reset()
           },
@@ -289,7 +374,11 @@ fun BoxScope.AssistantOverlay(
         Spacer(Modifier.padding(4.dp))
       }
       if (overlay.mode == OverlayMode.VOICE && !overlay.collapsed && state is AssistantState.Listening) {
-        ListeningHint(onStop = { session.stopListening() })
+        ListeningHint(
+          backdrop = backdrop,
+          elapsedMillis = (state as AssistantState.Listening).elapsedMillis,
+          onStop = { session.stopListening() },
+        )
       }
       val showCard = state != AssistantState.Idle && !(overlay.mode == OverlayMode.VOICE && state is AssistantState.Listening)
       if (showCard) {
@@ -321,11 +410,13 @@ fun BoxScope.AssistantOverlay(
     }
   }
 
-  // Ogni tocco del tasto (voiceRequest) fa partire un ascolto, se non c'e' gia' una domanda in corso;
-  // senza permesso si chiede il microfono e intanto si apre la barra di testo.
+  // Ogni tocco del tasto lascia un gettone, e questo effetto e' l'unico che lo consuma: cosi' una
+  // ricomposizione non fa ripartire un ascolto che nessuno ha chiesto, e due catture non si
+  // contendono il microfono.
   LaunchedEffect(overlay.voiceRequest) {
-    if (overlay.voiceRequest == 0 || overlay.mode != OverlayMode.VOICE) return@LaunchedEffect
+    if (overlay.mode != OverlayMode.VOICE) return@LaunchedEffect
     if (session.isBusy) return@LaunchedEffect
+    if (!overlay.consumeVoiceRequest()) return@LaunchedEffect
     if (micGranted) {
       session.askVoice()
     } else {
@@ -335,20 +426,47 @@ fun BoxScope.AssistantOverlay(
   }
 }
 
+/**
+ * Il tasto per fermare l'ascolto: una capsula di vetro sotto l'aureola, alta abbastanza da essere
+ * un bersaglio vero (48 dp). Prima era una riga di testo nuda spinta gia' di 88 dp con un numero
+ * scritto a mano, che finiva staccata in mezzo allo schermo e non sembrava un tasto.
+ */
 @Composable
-private fun ListeningHint(onStop: () -> Unit) {
+private fun ListeningHint(backdrop: GlassBackdropState, elapsedMillis: Long, onStop: () -> Unit) {
   Row(
     Modifier
       .fillMaxWidth()
-      .padding(top = 88.dp, bottom = 8.dp)
-      .fluidPressable(onClick = onStop, pressedScale = 1f, role = Role.Button),
+      .padding(top = 12.dp, bottom = 8.dp),
     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
   ) {
-    Text(
-      stringResource(R.string.ai_tap_to_stop),
-      style = MaterialTheme.typography.labelLarge,
-      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-    )
+    Row(
+      Modifier
+        .heightIn(min = 48.dp)
+        .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
+        .fluidPressable(onClick = onStop, pressedScale = 1f, role = Role.Button)
+        .padding(horizontal = 20.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(
+        Modifier
+          .size(10.dp)
+          .background(MaterialTheme.colorScheme.error, FluidCapsuleShape),
+      )
+      Spacer(Modifier.width(10.dp))
+      Text(
+        stringResource(R.string.ai_listening_stop),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+      )
+      if (elapsedMillis >= 1_000) {
+        Spacer(Modifier.width(8.dp))
+        Text(
+          "${elapsedMillis / 1000}s",
+          style = MaterialTheme.typography.labelMedium,
+          color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+        )
+      }
+    }
   }
 }
 
@@ -384,4 +502,5 @@ private fun CollapsedPill(state: AssistantState, backdrop: GlassBackdropState, o
   }
 }
 
-private const val DISMISS_DRAG_PX = 160f
+/** Quanto va trascinata in alto la card per chiuderla: una misura, non un numero di pixel. */
+private val DismissDrag = 56.dp

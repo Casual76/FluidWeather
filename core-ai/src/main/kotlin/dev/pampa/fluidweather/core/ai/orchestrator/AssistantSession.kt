@@ -74,8 +74,18 @@ class AssistantSession(
   val lastMode = MutableStateFlow(AskMode.TEXT)
 
   private var job: Job? = null
+
+  /** Scritto dal worker e letto dal thread della UI quando si tocca "ferma": deve attraversare. */
+  @Volatile
   private var speech: SpeechCapture? = null
   private val ids = AtomicLong(1)
+
+  /**
+   * Il livello del microfono, 0..1, e se in questo istante e' parlato. Fuori dallo stato apposta:
+   * lo legge solo l'aureola, cinquanta volte al secondo, senza ricomporre nient'altro.
+   */
+  private val micLevelFlow = MutableStateFlow(MicLevel())
+  val micLevel: StateFlow<MicLevel> = micLevelFlow
 
   class PendingAction(val id: Long, val action: AssistantAction, internal val answer: CompletableDeferred<Boolean>)
 
@@ -89,6 +99,9 @@ class AssistantSession(
   }
 
   fun askVoice() {
+    // Un ascolto per volta. Senza questa riga, due chiamate ravvicinate (il tasto e l'effetto che
+    // lo segue) aprivano due `AudioRecord` sullo stesso microfono: il secondo consegnava silenzio.
+    if (stateFlow.value is AssistantState.Listening) return
     lastMode.value = AskMode.VOICE
     start {
       val question = listen() ?: return@start
@@ -149,18 +162,31 @@ class AssistantSession(
   private suspend fun listen(): String? {
     val capture = speechFactory()
     speech = capture
-    val file = File(cacheDir, "ai/ask.wav")
+    // Un file per ascolto: col nome fisso, due catture sovrapposte si sovrascrivevano e la seconda
+    // cancellava il WAV della prima mentre lo si stava trascrivendo.
+    val file = File(cacheDir, "ai/ask-${ids.get()}-${clock()}.wav")
     var result: String? = null
     try {
-      stateFlow.value = AssistantState.Listening(0f, false, 0L)
+      stateFlow.value = AssistantState.Listening(0L)
+      micLevelFlow.value = MicLevel()
       capture.record(file).collect { event ->
         when (event) {
-          is SpeechCapture.Event.Level -> stateFlow.value = AssistantState.Listening(event.level, event.speaking, event.elapsedMillis)
+          is SpeechCapture.Event.Level -> {
+            micLevelFlow.value = MicLevel(event.level, event.speaking)
+            val elapsed = event.elapsedMillis / 1000 * 1000
+            val shown = stateFlow.value
+            // Lo stato cambia una volta al secondo, non cinquanta: il livello viaggia per conto suo.
+            if (shown !is AssistantState.Listening || shown.elapsedMillis != elapsed) {
+              stateFlow.value = AssistantState.Listening(elapsed)
+            }
+          }
           SpeechCapture.Event.SpeechStarted -> Unit
           is SpeechCapture.Event.Empty -> {
             stateFlow.value = AssistantState.HeardNothing
           }
-          is SpeechCapture.Event.Failed -> throw AssistantFailure(FailureKind.TRANSCRIPTION, null)
+          // Il microfono che non parte non e' una trascrizione fallita: e' un'altra cosa, con un
+          // altro rimedio (chiudere l'app che lo tiene), e va detta con parole sue.
+          is SpeechCapture.Event.Failed -> throw AssistantFailure(FailureKind.MICROPHONE, null)
           is SpeechCapture.Event.Finished -> {
             stateFlow.value = AssistantState.Transcribing
             val language = language()
@@ -181,6 +207,7 @@ class AssistantSession(
       }
     } finally {
       speech = null
+      micLevelFlow.value = MicLevel()
       runCatching { file.delete() }
     }
     return result

@@ -47,6 +47,7 @@ import dev.pampa.fluidweather.strings.R
 fun AssistantTextBar(
   backdrop: GlassBackdropState,
   busy: Boolean,
+  autoFocus: Boolean = true,
   micAvailable: Boolean,
   onSend: (String) -> Unit,
   onVoice: () -> Unit,
@@ -55,7 +56,7 @@ fun AssistantTextBar(
 ) {
   var text by rememberSaveable { mutableStateOf("") }
   val focus = remember { FocusRequester() }
-  LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+  LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
   fun submit() {
     val query = text.trim()
     if (query.isEmpty() || busy) return

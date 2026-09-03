@@ -35,6 +35,9 @@
   <string name="about_version">Version</string>
   <string name="accent_amethyst">Amethyst</string>
   <string name="accent_weather">Weather</string>
+  <string name="ai_error_microphone">The microphone is busy: close the app that is using it</string>
+  <string name="ai_listening_stop">Stop</string>
+  <string name="ai_write">Write</string>
   <string name="appear_color">Color</string>
   <string name="appear_from_weather">From the weather</string>
   <string name="appear_from_weather_desc">The accent follows the current conditions at your location (the default)</string>

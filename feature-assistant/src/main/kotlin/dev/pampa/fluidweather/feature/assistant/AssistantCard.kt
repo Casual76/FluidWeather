@@ -8,6 +8,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +54,7 @@ import dev.antigravity.fluidengine.ui.fluid.GlassDefaults
 import dev.antigravity.fluidengine.ui.fluid.GlassRole
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import dev.antigravity.fluidengine.ui.fluid.fluidPressable
+import dev.antigravity.fluidengine.ui.fluid.glassControlSurface
 import dev.antigravity.fluidengine.ui.fluid.glassSurface
 import dev.pampa.fluidweather.core.ai.orchestrator.AnswerChip
 import dev.pampa.fluidweather.core.ai.orchestrator.AssistantSession
@@ -105,7 +108,7 @@ fun AssistantCard(
       }
       if (state.isBusy && state !is AssistantState.AwaitingConfirmation) {
         Spacer(Modifier.width(8.dp))
-        StopPill(onStop)
+        StopPill(backdrop, onStop)
       }
     }
     val body = state.bodyText()
@@ -134,6 +137,7 @@ fun AssistantCard(
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         state.chips.forEach { chip ->
           ChipPill(
+            backdrop = backdrop,
             label = when (chip) {
               is AnswerChip.Open -> stringResource(AssistantStrings.targetRes(chip.target))
               is AnswerChip.Place -> chip.name
@@ -168,17 +172,32 @@ private fun StatusLine(state: AssistantState) {
   }
   if (text == null) return
   val error = state is AssistantState.Failed
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    if (state.isBusy) {
-      BreathingDot(color = MaterialTheme.colorScheme.primary)
-      Spacer(Modifier.width(8.dp))
+  // Da "trascrivo" a "leggo il nowcast" a "scrivo la risposta": una frase che sale e prende il
+  // posto della precedente, invece di cambiare di colpo come un cartello che si ribalta.
+  AnimatedContent(
+    targetState = text,
+    transitionSpec = {
+      (slideInVertically(FluidMotion.intOffset(FluidMotion.DampingStandard, FluidMotion.ResponseSnappy)) { it / 2 } +
+        fadeIn(FluidMotion.fadeIn(140)))
+        .togetherWith(
+          slideOutVertically(FluidMotion.intOffset(FluidMotion.DampingChrome, FluidMotion.ResponseSnappy)) { -it / 2 } +
+            fadeOut(FluidMotion.fadeOut(100)),
+        )
+    },
+    label = "assistantStatus",
+  ) { shown ->
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      if (state.isBusy) {
+        BreathingDot(color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(8.dp))
+      }
+      Text(
+        text = shown,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        fontWeight = FontWeight.Medium,
+      )
     }
-    Text(
-      text = text,
-      style = MaterialTheme.typography.bodyMedium,
-      color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-      fontWeight = FontWeight.Medium,
-    )
   }
 }
 
@@ -210,12 +229,16 @@ private fun BreathingDot(color: Color) {
   )
 }
 
+/**
+ * Il tasto per interrompere: il materiale dei controlli dell'engine, non un colore inventato, e un
+ * bersaglio da 40 dp invece di 28 (sotto il minimo tattile stava anche l'icona).
+ */
 @Composable
-private fun StopPill(onStop: () -> Unit) {
+private fun StopPill(backdrop: GlassBackdropState, onStop: () -> Unit) {
   Box(
     modifier = Modifier
-      .size(28.dp)
-      .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f), FluidCapsuleShape)
+      .size(40.dp)
+      .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
       // Niente tap: quando la richiesta si ferma arriva lo Stop dell'overlay, e due
       // vibrazioni per un tocco solo si sentono come un difetto.
       .fluidPressable(onClick = onStop, role = Role.Button, haptic = null),
@@ -225,18 +248,20 @@ private fun StopPill(onStop: () -> Unit) {
       imageVector = Icons.Rounded.Stop,
       contentDescription = stringResource(R.string.ai_stop),
       tint = MaterialTheme.colorScheme.onSurface,
-      modifier = Modifier.size(14.dp),
+      modifier = Modifier.size(16.dp),
     )
   }
 }
 
 @Composable
-private fun ChipPill(label: String, onClick: () -> Unit) {
+private fun ChipPill(backdrop: GlassBackdropState, label: String, onClick: () -> Unit) {
   Box(
     modifier = Modifier
-      .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), FluidCapsuleShape)
+      .heightIn(min = 40.dp)
+      .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
       .fluidPressable(onClick = onClick, role = Role.Button)
-      .padding(horizontal = 14.dp, vertical = 8.dp),
+      .padding(horizontal = 14.dp),
+    contentAlignment = Alignment.Center,
   ) {
     Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
   }

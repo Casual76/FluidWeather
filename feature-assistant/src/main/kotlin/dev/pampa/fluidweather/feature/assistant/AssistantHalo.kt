@@ -1,5 +1,7 @@
 package dev.pampa.fluidweather.feature.assistant
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -49,11 +51,25 @@ fun AssistantHalo(
     animationSpec = spring(dampingRatio = FluidMotion.DampingStandard, stiffness = FluidMotion.ResponseSmooth),
     label = "haloPresence",
   )
-  val amplitude by animateFloatAsState(
-    targetValue = if (mood == HaloMood.LISTENING) 0.35f + level * 0.65f else 0.55f,
-    animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
-    label = "haloAmplitude",
-  )
+  // Attacco veloce e rilascio lento, come un indicatore di livello vero: con una molla sola la
+  // voce arrivava smussata e l'aureola sembrava indifferente a quello che si stava dicendo.
+  val target = if (mood == HaloMood.LISTENING) 0.30f + level * 0.70f else 0.55f
+  val amplitude = remember { Animatable(0.55f) }
+  LaunchedEffect(target, mood, reducedMotion) {
+    if (reducedMotion) {
+      amplitude.snapTo(target)
+      return@LaunchedEffect
+    }
+    val rising = target > amplitude.value
+    amplitude.animateTo(
+      targetValue = target,
+      animationSpec = spring(
+        dampingRatio = FluidMotion.DampingStandard,
+        stiffness = if (rising) HaloAttackStiffness else HaloReleaseStiffness,
+      ),
+    )
+  }
+  val amplitudeValue = amplitude.value
   var time by remember { mutableFloatStateOf(0f) }
   LaunchedEffect(visible, reducedMotion, mood) {
     if (!visible || reducedMotion) return@LaunchedEffect
@@ -72,13 +88,22 @@ fun AssistantHalo(
     }
   }
   if (presence <= 0.001f) return
-  val colours = remember(accent, mood) { haloColours(accent, mood) }
+  // I colori dei tre caratteri (ascolto, lavoro, errore) si sciolgono l'uno nell'altro: prima
+  // cambiavano di scatto, ed e' quello che faceva sembrare bruschi i passaggi di stato.
+  val targetColours = remember(accent, mood) { haloColours(accent, mood) }
+  val colours = targetColours.mapIndexed { index, colour ->
+    animateColorAsState(
+      targetValue = colour,
+      animationSpec = FluidMotion.smooth(),
+      label = "haloColour$index",
+    ).value
+  }
   Canvas(
     modifier
       .fillMaxWidth()
       .height(height),
   ) {
-    drawHalo(time, amplitude, presence, colours)
+    drawHalo(time, amplitudeValue, presence, colours)
   }
 }
 
@@ -117,3 +142,9 @@ private fun DrawScope.drawHalo(time: Float, amplitude: Float, presence: Float, c
     ),
   )
 }
+
+/** L'attacco: la voce sale subito, come su un indicatore di livello. */
+private const val HaloAttackStiffness = 1_400f
+
+/** Il rilascio: scende piano, cosi' fra due sillabe l'aureola non si spegne. */
+private const val HaloReleaseStiffness = 180f

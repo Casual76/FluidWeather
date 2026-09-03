@@ -81,7 +81,7 @@ class AiAssistant(
     providers = providers,
     orchestrator = orchestrator,
     transcriber = transcriber,
-    speechFactory = { SpeechCapture(AndroidPcmSource()) },
+    speechFactory = { SpeechCapture(AndroidPcmSource(appContext)) },
     cacheDir = appContext.cacheDir,
     resources = { appContext.resources },
   )

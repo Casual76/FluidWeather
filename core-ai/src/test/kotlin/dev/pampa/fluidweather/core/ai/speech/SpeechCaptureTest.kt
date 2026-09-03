@@ -11,11 +11,32 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Un microfono finto che suona una partitura: tratti di silenzio e di "parlato" (seno a un dato RMS). */
+/**
+ * I livelli veri, in unita' int16 (quelle su cui lavora il rilevatore). Il test precedente faceva
+ * "parlare" a 3.000, cioe' -21 dBFS: un urlo col microfono in bocca. E' per quello che non si era
+ * accorto che sul telefono nessuno veniva mai sentito.
+ */
+private object Rms {
+  const val SILENZIO = 33.0 // -60 dBFS
+  const val FRUSCIO = 120.0 // -49 dBFS: ventola, respiro
+  const val VOCE_BASSA = 190.0 // -45 dBFS: parlare piano a mezzo metro
+  const val VOCE_NORMALE = 330.0 // -40 dBFS
+  const val VOCE_ALTA = 1_000.0 // -30 dBFS
+  const val STANZA_RUMOROSA = 400.0 // -38 dBFS di fondo (bar, auto)
+}
+
+/**
+ * Un microfono finto che suona una partitura: tratti di silenzio e di "parlato" (seno a un dato RMS).
+ * Porta con se' anche l'orologio, perche' la cattura misura il tempo vero e non i frame contati: qui
+ * il tempo avanza con i campioni consegnati.
+ */
 private class ScriptedPcm(private val segments: List<Pair<Long, Double>>, private val sampleRate: Int = 16_000) : PcmSource {
   private var position = 0L
   private val total = segments.sumOf { it.first } * sampleRate / 1000
   var stopped = false
+
+  /** L'orologio della cattura: millisecondi di audio gia' consegnati. */
+  val clock: () -> Long = { position * 1000 / sampleRate }
 
   override fun start(sampleRate: Int): Boolean = true
 
@@ -46,31 +67,61 @@ private class ScriptedPcm(private val segments: List<Pair<Long, Double>>, privat
   }
 }
 
+private fun capture(source: ScriptedPcm, config: SpeechCapture.VadConfig = SpeechCapture.VadConfig()) =
+  SpeechCapture(source, config, source.clock)
+
+/**
+ * Parlato, non un tono continuo: la voce e' fatta di sillabe e di pause, ed e' proprio la modulazione
+ * a distinguerla da un rumore di fondo dello stesso livello. Un seno costante non e' parlato per
+ * nessun rilevatore basato sull'energia, e chiedere di riconoscerlo sarebbe un test disonesto.
+ */
+private fun voce(millis: Long, rms: Double, fondo: Double = Rms.SILENZIO): List<Pair<Long, Double>> {
+  val battuta = 250L // 180 ms di sillaba, 70 di respiro
+  val segmenti = mutableListOf<Pair<Long, Double>>()
+  var resto = millis
+  while (resto > 0) {
+    val suono = minOf(180L, resto)
+    segmenti += suono to rms
+    resto -= suono
+    if (resto <= 0) break
+    val pausa = minOf(battuta - 180L, resto)
+    segmenti += pausa to fondo
+    resto -= pausa
+  }
+  return segmenti
+}
+
 class SpeechCaptureTest {
 
   private fun target() = File.createTempFile("ask", ".wav").apply { deleteOnExit() }
 
   @Test
   fun `silenzio e basta - non ho sentito nulla`() = runBlocking<Unit> {
-    val source = ScriptedPcm(listOf(5_000L to 60.0))
-    val events = SpeechCapture(source, SpeechCapture.VadConfig(maxDurationMillis = 4_000)).record(target()).toList()
-    assertTrue(events.last() is SpeechCapture.Event.Empty)
+    val source = ScriptedPcm(listOf(5_000L to Rms.SILENZIO))
+    val events = capture(source, SpeechCapture.VadConfig(maxDurationMillis = 4_000)).record(target()).toList()
     assertEquals(SpeechCapture.EmptyReason.NOTHING_HEARD, (events.last() as SpeechCapture.Event.Empty).reason)
     assertTrue(source.stopped)
   }
 
   @Test
-  fun `parlato di due secondi poi silenzio - finisce da solo e il WAV e' rifilato`() = runBlocking<Unit> {
+  fun `il fruscio della stanza non e' parlato`() = runBlocking<Unit> {
+    val source = ScriptedPcm(listOf(5_000L to Rms.FRUSCIO))
+    val events = capture(source, SpeechCapture.VadConfig(maxDurationMillis = 4_000)).record(target()).toList()
+    assertTrue("il fruscio non deve far partire l'ascolto", events.none { it is SpeechCapture.Event.SpeechStarted })
+  }
+
+  @Test
+  fun `una voce normale a mezzo metro viene sentita, e l'ascolto finisce da solo`() = runBlocking<Unit> {
     val file = target()
-    val source = ScriptedPcm(listOf(300L to 60.0, 2_000L to 3_000.0, 3_000L to 60.0))
-    val events = SpeechCapture(source).record(file).toList()
+    val source = ScriptedPcm(listOf(400L to Rms.SILENZIO) + voce(2_000L, Rms.VOCE_NORMALE) + listOf(3_000L to Rms.SILENZIO))
+    val events = capture(source).record(file).toList()
+
     val started = events.indexOfFirst { it is SpeechCapture.Event.SpeechStarted }
     assertTrue("parlato non rilevato", started > 0)
-    val levelBefore = events.subList(0, started).filterIsInstance<SpeechCapture.Event.Level>().last()
-    assertTrue("inizio atteso attorno a 360 ms, avuto ${levelBefore.elapsedMillis}", levelBefore.elapsedMillis in 300..500)
     val finished = events.last() as SpeechCapture.Event.Finished
-    assertEquals(SpeechCapture.EndReason.SILENCE, finished.reason)
-    assertTrue("durata ${finished.durationMillis}", finished.durationMillis in 2_400..2_800)
+    assertEquals("si deve fermare da solo col silenzio", SpeechCapture.EndReason.SILENCE, finished.reason)
+    assertTrue("durata ${finished.durationMillis}", finished.durationMillis in 2_200L..2_900L)
+
     val bytes = file.readBytes()
     val header = ByteBuffer.wrap(bytes, 0, 44).order(ByteOrder.LITTLE_ENDIAN)
     assertEquals("RIFF", String(bytes, 0, 4, Charsets.US_ASCII))
@@ -87,29 +138,73 @@ class SpeechCaptureTest {
   }
 
   @Test
-  fun `parlato troppo breve - troppo corto`() = runBlocking<Unit> {
-    val source = ScriptedPcm(listOf(300L to 60.0, 250L to 3_000.0, 3_000L to 60.0))
-    val events = SpeechCapture(source, SpeechCapture.VadConfig(maxDurationMillis = 4_000)).record(target()).toList()
-    val last = events.last()
-    assertTrue("atteso Empty, avuto $last", last is SpeechCapture.Event.Empty)
+  fun `anche chi parla piano viene sentito`() = runBlocking<Unit> {
+    // -45 dBFS: il confine dichiarato. Sotto questo livello si e' deciso di non chiamarlo parlato.
+    val source = ScriptedPcm(listOf(400L to Rms.SILENZIO) + voce(1_500L, Rms.VOCE_BASSA) + listOf(3_000L to Rms.SILENZIO))
+    val events = capture(source).record(target()).toList()
+    assertTrue("la voce bassa non e' stata sentita", events.any { it is SpeechCapture.Event.SpeechStarted })
+    assertTrue(events.last() is SpeechCapture.Event.Finished)
+  }
+
+  @Test
+  fun `in una stanza rumorosa serve alzare la voce`() = runBlocking<Unit> {
+    val coperta = ScriptedPcm(
+      listOf(400L to Rms.STANZA_RUMOROSA) + voce(2_000L, 700.0, Rms.STANZA_RUMOROSA) + listOf(2_000L to Rms.STANZA_RUMOROSA),
+    )
+    val persa = capture(coperta, SpeechCapture.VadConfig(maxDurationMillis = 4_500)).record(target()).toList()
+    assertTrue("sotto il fondo della stanza non e' parlato", persa.none { it is SpeechCapture.Event.SpeechStarted })
+
+    val alzata = ScriptedPcm(
+      listOf(400L to Rms.STANZA_RUMOROSA) + voce(2_000L, 1_400.0, Rms.STANZA_RUMOROSA) + listOf(2_000L to Rms.STANZA_RUMOROSA),
+    )
+    val sentita = capture(alzata, SpeechCapture.VadConfig(maxDurationMillis = 4_500)).record(target()).toList()
+    assertTrue(sentita.any { it is SpeechCapture.Event.SpeechStarted })
   }
 
   @Test
   fun `chi parla subito viene sentito lo stesso`() = runBlocking<Unit> {
-    val source = ScriptedPcm(listOf(1_500L to 3_000.0, 2_000L to 60.0))
-    val events = SpeechCapture(source).record(target()).toList()
+    // La taratura misura la voce invece del fondo: il tetto del pavimento tarato esiste per questo.
+    val source = ScriptedPcm(voce(1_500L, Rms.VOCE_ALTA) + listOf(2_000L to Rms.SILENZIO))
+    val events = capture(source).record(target()).toList()
     assertTrue(events.any { it is SpeechCapture.Event.SpeechStarted })
     assertTrue(events.last() is SpeechCapture.Event.Finished)
   }
 
   @Test
-  fun `il tetto dei trenta secondi e lo stop manuale`() = runBlocking<Unit> {
-    val long = ScriptedPcm(listOf(40_000L to 3_000.0))
-    val capped = SpeechCapture(long, SpeechCapture.VadConfig(maxDurationMillis = 3_000)).record(target()).toList().last() as SpeechCapture.Event.Finished
+  fun `fermando a mano si tiene quello che si e' detto`() = runBlocking<Unit> {
+    // Il caso visto sul telefono: la voce non supera la soglia, l'utente aspetta, poi tocca per
+    // fermare. La versione precedente buttava l'audio e rispondeva "non ho sentito nulla".
+    val source = ScriptedPcm(listOf(400L to Rms.SILENZIO, 4_000L to 150.0))
+    val capture = capture(source)
+    val events = mutableListOf<SpeechCapture.Event>()
+    capture.record(target()).collect { event ->
+      events += event
+      if (event is SpeechCapture.Event.Level && event.elapsedMillis >= 2_000) capture.stopNow()
+    }
+    val last = events.last()
+    assertTrue("atteso l'audio tenuto, avuto $last", last is SpeechCapture.Event.Finished)
+    assertEquals(SpeechCapture.EndReason.MANUAL, (last as SpeechCapture.Event.Finished).reason)
+  }
+
+  @Test
+  fun `una frase brevissima non diventa una domanda`() = runBlocking<Unit> {
+    val source = ScriptedPcm(listOf(400L to Rms.SILENZIO, 150L to Rms.VOCE_ALTA, 3_000L to Rms.SILENZIO))
+    val events = capture(source, SpeechCapture.VadConfig(maxDurationMillis = 4_000)).record(target()).toList()
+    val last = events.last()
+    assertTrue("atteso Empty, avuto $last", last is SpeechCapture.Event.Empty)
+    assertEquals(SpeechCapture.EmptyReason.TOO_SHORT, (last as SpeechCapture.Event.Empty).reason)
+  }
+
+  @Test
+  fun `il tetto della durata e lo stop manuale`() = runBlocking<Unit> {
+    val lungo = ScriptedPcm(voce(40_000L, Rms.VOCE_NORMALE))
+    val capped = capture(lungo, SpeechCapture.VadConfig(maxDurationMillis = 3_000))
+      .record(target()).toList().last() as SpeechCapture.Event.Finished
     assertEquals(SpeechCapture.EndReason.MAX_DURATION, capped.reason)
     assertTrue(capped.durationMillis <= 3_000)
 
-    val capture = SpeechCapture(ScriptedPcm(listOf(40_000L to 3_000.0)))
+    val source = ScriptedPcm(voce(40_000L, Rms.VOCE_NORMALE))
+    val capture = capture(source)
     val events = mutableListOf<SpeechCapture.Event>()
     capture.record(target()).collect { event ->
       events += event
@@ -119,12 +214,22 @@ class SpeechCaptureTest {
   }
 
   @Test
-  fun `rumore di fondo alto alza la soglia (regola del triplo)`() = runBlocking<Unit> {
-    val quietSpeech = ScriptedPcm(listOf(300L to 400.0, 2_000L to 1_000.0, 2_000L to 400.0))
-    val ignored = SpeechCapture(quietSpeech, SpeechCapture.VadConfig(maxDurationMillis = 4_500)).record(target()).toList()
-    assertTrue("parlato sotto il triplo del rumore non deve contare", ignored.none { it is SpeechCapture.Event.SpeechStarted })
-    val loudSpeech = ScriptedPcm(listOf(300L to 400.0, 2_000L to 2_500.0, 2_000L to 400.0))
-    val heard = SpeechCapture(loudSpeech, SpeechCapture.VadConfig(maxDurationMillis = 4_500)).record(target()).toList()
-    assertTrue(heard.any { it is SpeechCapture.Event.SpeechStarted })
+  fun `il microfono che non parte e quello che si perde hanno due motivi diversi`() = runBlocking<Unit> {
+    val muto = object : PcmSource {
+      override fun start(sampleRate: Int) = false
+      override fun read(frame: ShortArray) = -1
+      override fun stop() = Unit
+      override val failure = MicrophoneFailure.BUSY
+    }
+    val fallito = SpeechCapture(muto).record(target()).toList().last() as SpeechCapture.Event.Failed
+    assertEquals(MicrophoneFailure.BUSY, (fallito.cause as MicrophoneException).failure)
+
+    val perso = object : PcmSource {
+      override fun start(sampleRate: Int) = true
+      override fun read(frame: ShortArray) = 0
+      override fun stop() = Unit
+    }
+    val evento = SpeechCapture(perso).record(target()).toList().last() as SpeechCapture.Event.Failed
+    assertEquals(MicrophoneFailure.LOST, (evento.cause as MicrophoneException).failure)
   }
 }

@@ -35,6 +35,9 @@
   <string name="about_version">Versione</string>
   <string name="accent_amethyst">Ametista</string>
   <string name="accent_weather">Meteo</string>
+  <string name="ai_error_microphone">Il microfono e\' occupato: chiudi l\'app che lo sta usando</string>
+  <string name="ai_listening_stop">Ferma</string>
+  <string name="ai_write">Scrivi</string>
   <string name="appear_color">Colore</string>
   <string name="appear_from_weather">Dal meteo</string>
   <string name="appear_from_weather_desc">L\'accento segue le condizioni attuali della posizione (il default)</string>

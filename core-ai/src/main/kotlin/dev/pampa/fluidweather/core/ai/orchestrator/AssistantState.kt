@@ -6,6 +6,9 @@ import dev.pampa.fluidweather.core.ai.provider.Usage
 import dev.pampa.fluidweather.core.ai.tools.AssistantAction
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 
+/** Quanto forte si sta sentendo, e se in questo istante e' parlato: la materia dell'aureola. */
+data class MicLevel(val level: Float = 0f, val speaking: Boolean = false)
+
 /** Come e' arrivata la domanda: decide se la risposta va anche letta ad alta voce. */
 enum class AskMode { VOICE, TEXT }
 
@@ -16,7 +19,7 @@ sealed interface AnswerChip {
 }
 
 /** Perche' e' andata male, in termini che la UI sa tradurre in una frase. */
-enum class FailureKind { NO_KEYS, UNAUTHORIZED, RATE_LIMITED, NETWORK, TIMEOUT, BLOCKED, PROVIDER, TRANSCRIPTION, NO_LOCATION, UNKNOWN }
+enum class FailureKind { NO_KEYS, UNAUTHORIZED, RATE_LIMITED, NETWORK, TIMEOUT, BLOCKED, PROVIDER, MICROPHONE, TRANSCRIPTION, NO_LOCATION, UNKNOWN }
 
 /**
  * Lo stato dell'assistente, uno solo per volta: la UI lo osserva e disegna aureola, card e
@@ -25,7 +28,12 @@ enum class FailureKind { NO_KEYS, UNAUTHORIZED, RATE_LIMITED, NETWORK, TIMEOUT, 
 sealed interface AssistantState {
   data object Idle : AssistantState
 
-  data class Listening(val level: Float, val speaking: Boolean, val elapsedMillis: Long) : AssistantState
+  /**
+   * In ascolto. Il livello del microfono **non** sta qui: cambiava cinquanta volte al secondo e
+   * ricomponeva tutto l'overlay a ogni frame audio (facendo ripartire, fra l'altro, gli effetti che
+   * fermavano la voce di sistema). Sta in `AssistantSession.micLevel`, che lo legge solo l'aureola.
+   */
+  data class Listening(val elapsedMillis: Long) : AssistantState
 
   data object Transcribing : AssistantState
 

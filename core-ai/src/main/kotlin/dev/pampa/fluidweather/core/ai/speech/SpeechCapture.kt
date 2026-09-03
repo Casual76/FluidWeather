@@ -18,17 +18,32 @@ interface PcmSource {
   /** Vero se il microfono e' partito. */
   fun start(sampleRate: Int): Boolean
 
-  /** Bloccante: quanti campioni ha scritto in [frame]; < 0 = errore. */
+  /** Bloccante: quanti campioni ha scritto in [frame]; < 0 = errore, 0 = niente per ora. */
   fun read(frame: ShortArray): Int
 
   fun stop()
+
+  /** Perche' non si e' potuto registrare, quando [start] o [read] falliscono. */
+  val failure: MicrophoneFailure get() = MicrophoneFailure.UNKNOWN
 }
+
+/** Cosa dire all'utente quando il microfono non collabora: sono casi diversi con rimedi diversi. */
+enum class MicrophoneFailure { UNAVAILABLE, BUSY, LOST, UNKNOWN }
+
+/** Il microfono non ha registrato, e questo e' il motivo. */
+class MicrophoneException(val failure: MicrophoneFailure, message: String) : IllegalStateException(message)
 
 /**
  * La cattura vocale con rilevamento del silenzio, su `AudioRecord` (non `MediaRecorder`, che da'
  * solo un picco senza campioni e non si puo' rifilare). PCM 16 kHz mono in frame da 20 ms: dagli
  * stessi frame escono il livello per l'aureola e la decisione di fermarsi. Il WAV si scrive una
  * volta alla fine, gia' tagliato all'ultima parola piu' un margine.
+ *
+ * Le soglie sono state rifatte il 2026-09-03 dopo la prima prova su un telefono vero, dove la voce
+ * non veniva mai riconosciuta. La versione precedente chiedeva **-34 dBFS** (RMS 655) per dichiarare
+ * "parlato": e' il livello di una voce alzata a pochi centimetri dal microfono. Una persona che parla
+ * normalmente a mezzo metro sta fra 100 e 250 di RMS, cioe' non superava mai la soglia — e siccome
+ * la fine per silenzio si valutava solo *dopo* aver sentito parlare, l'ascolto non finiva neanche.
  */
 class SpeechCapture(
   private val source: PcmSource,
@@ -40,15 +55,34 @@ class SpeechCapture(
     val sampleRate: Int = 16_000,
     val frameMillis: Int = 20,
     val calibrationMillis: Int = 300,
-    val floorMultiplier: Double = 3.0,
-    /** ~ -34 dBFS in unita' int16: sotto, non e' parlato anche in una stanza silenziosa. */
-    val absoluteThreshold: Double = 655.0,
-    /** ~ -48 dBFS: un pavimento piu' basso scambierebbe il respiro per parlato. */
-    val minFloor: Double = 130.0,
+    /** Quanto sopra il rumore misurato deve stare un frame per contare come parlato. */
+    val floorMultiplier: Double = 2.5,
+    /**
+     * ~ -45 dBFS. Sotto questo nessun frame conta come parlato, per quanto silenziosa sia la stanza:
+     * e' il confine sotto cui restano respiro, ventole e fruscio del microfono.
+     */
+    val speechFloorRms: Double = 180.0,
+    /** Il rumore misurato vive fra questi due: sotto e' un microfono muto, sopra non si dialoga. */
+    val minFloor: Double = 60.0,
+    val maxFloor: Double = 2_000.0,
+    /**
+     * Tetto del pavimento **misurato in taratura**: -41 dBFS e' gia' un fondo rumoroso, oltre non e'
+     * piu' un fondo ma qualcuno che sta parlando. Senza questo tetto, chi comincia a parlare prima
+     * che il microfono si sia tarato si alzerebbe la soglia sopra la propria voce e non verrebbe mai
+     * sentito. Chi parla piano dentro la taratura viene recuperato dall'inseguitore, che scende in
+     * fretta alla prima pausa fra le parole.
+     */
+    val maxCalibratedFloor: Double = 300.0,
+    /**
+     * Isteresi. Chi ha gia' cominciato a parlare resta "parlato" fino a questa frazione della soglia
+     * d'ingresso: senza, le vocali deboli e le pause fra le parole spezzano il parlato in coriandoli.
+     */
+    val releaseRatio: Double = 0.6,
     val startFrames: Int = 3,
-    val minSpeechMillis: Long = 500,
     val endSilenceMillis: Long = 1_200,
     val maxDurationMillis: Long = 30_000,
+    /** Validita' dell'esito, **non** condizione per fermarsi: quella e' solo il silenzio. */
+    val minSpeechMillis: Long = 300,
     val minTotalMillis: Long = 600,
     val tailKeepMillis: Long = 300,
   ) {
@@ -81,72 +115,128 @@ class SpeechCapture(
     val pcm = ShortArray(capacity)
     var written = 0
     if (!source.start(config.sampleRate)) {
-      emit(Event.Failed(IllegalStateException("microfono non disponibile")))
+      emit(Event.Failed(MicrophoneException(source.failure, "il microfono non e' partito")))
       return@flow
     }
-    var floor = Double.MAX_VALUE
-    var calibrationMin = Double.MAX_VALUE
+
+    val calibration = ArrayList<Double>(config.calibrationMillis / config.frameMillis + 1)
+    var floor = config.speechFloorRms / config.floorMultiplier
+    var voiced = false
     var speechStarted = false
-    var speechStartMillis = 0L
-    var lastSpeechMillis = 0L
+    var speechStartSample = 0
+    var lastSpeechSample = 0
+    var lastSpeechAt = 0L
+    var peakRms = 0.0
     var run = 0
-    var frames = 0
+    var silentReads = 0
     var reason: EndReason? = null
+    val startedAt = clock()
+
     try {
       while (true) {
         val n = source.read(frame)
-        if (n <= 0) {
-          emit(Event.Failed(IllegalStateException("lettura del microfono fallita")))
+        if (n < 0) {
+          emit(Event.Failed(MicrophoneException(source.failure, "la lettura del microfono e' fallita")))
           return@flow
         }
+        if (n == 0) {
+          // Un frame vuoto ogni tanto capita; una raffica di frame vuoti vuol dire che il microfono
+          // non c'e' piu' (o che qualcun altro se l'e' preso), e restare in ascolto e' inutile.
+          if (++silentReads >= EMPTY_READS_LIMIT) {
+            emit(Event.Failed(MicrophoneException(MicrophoneFailure.LOST, "il microfono non manda piu' niente")))
+            return@flow
+          }
+          continue
+        }
+        silentReads = 0
+
         val copy = min(n, capacity - written)
         System.arraycopy(frame, 0, pcm, written, copy)
         written += copy
-        frames++
-        val elapsed = frames.toLong() * config.frameMillis
+
+        val now = clock()
+        val elapsed = now - startedAt
         val rms = rms(frame, n)
+        peakRms = max(peakRms, rms)
+
         if (elapsed <= config.calibrationMillis) {
-          calibrationMin = min(calibrationMin, rms)
-          floor = (calibrationMin * 1.5).coerceIn(config.minFloor, config.absoluteThreshold)
-        } else if (!speechStarted) {
-          floor = (0.95 * floor + 0.05 * rms).coerceIn(config.minFloor, config.absoluteThreshold)
+          // La MEDIANA, non il minimo: i primi frame dopo `startRecording` sono quasi vuoti, e col
+          // minimo il pavimento del rumore crollava sempre al valore piu' basso possibile.
+          calibration += rms
+          floor = median(calibration).coerceIn(config.minFloor, config.maxCalibratedFloor)
+        } else if (!speechStarted && rms < floor * config.floorMultiplier * config.releaseRatio) {
+          // Insegue il rumore, non la voce: scende in fretta verso il silenzio, sale piano. E si
+          // muove solo sui frame chiaramente quieti, altrimenti una voce bassa si alzerebbe la
+          // soglia da sola fino a non essere piu' sentita.
+          floor = (if (rms < floor) 0.7 * floor + 0.3 * rms else 0.98 * floor + 0.02 * rms)
+            .coerceIn(config.minFloor, config.maxFloor)
         }
-        val threshold = max(floor * config.floorMultiplier, config.absoluteThreshold)
-        val isSpeech = rms > threshold
-        emit(Event.Level(level(rms), isSpeech, elapsed))
+        val entry = max(floor.coerceIn(config.minFloor, config.maxFloor) * config.floorMultiplier, config.speechFloorRms)
+        voiced = if (voiced) rms > entry * config.releaseRatio else rms > entry
+
+        emit(Event.Level(level(rms), voiced, elapsed))
+
         if (!speechStarted) {
-          run = if (isSpeech) run + 1 else 0
+          run = if (voiced) run + 1 else 0
           if (run >= config.startFrames) {
             speechStarted = true
-            speechStartMillis = elapsed - config.startFrames * config.frameMillis
-            lastSpeechMillis = elapsed
+            speechStartSample = max(0, written - config.frameSamples * config.startFrames)
+            lastSpeechSample = written
+            lastSpeechAt = now
             emit(Event.SpeechStarted)
           }
-        } else {
-          if (isSpeech) lastSpeechMillis = elapsed
-          else if (elapsed - lastSpeechMillis >= config.endSilenceMillis && lastSpeechMillis - speechStartMillis >= config.minSpeechMillis) reason = EndReason.SILENCE
+        } else if (voiced) {
+          lastSpeechSample = written
+          lastSpeechAt = now
         }
-        if (reason == null && elapsed >= config.maxDurationMillis) reason = EndReason.MAX_DURATION
+
+        // Il silenzio ferma l'ascolto e basta: quanto e' durato il parlato lo si giudica dopo. Con la
+        // durata minima qui dentro, una frase breve non fermava mai la cattura.
+        if (speechStarted && now - lastSpeechAt >= config.endSilenceMillis) reason = EndReason.SILENCE
+        if (reason == null && (elapsed >= config.maxDurationMillis || written >= capacity)) reason = EndReason.MAX_DURATION
         if (reason == null && stopRequested.get()) reason = EndReason.MANUAL
         if (reason != null) break
       }
     } finally {
       source.stop()
     }
-    val elapsed = frames.toLong() * config.frameMillis
+
+    val elapsed = clock() - startedAt
     if (!speechStarted) {
-      emit(Event.Empty(EmptyReason.NOTHING_HEARD))
-      return@flow
+      // Fermato a mano dopo aver parlato: il rilevatore puo' non essersene accorto (voce bassa,
+      // stanza rumorosa), ma l'audio c'e'. Buttarlo e rispondere "non ho sentito nulla" e' il modo
+      // peggiore di sbagliare, ed e' esattamente quello che faceva la versione precedente.
+      val audible = max(floor * 1.5, config.speechFloorRms * 0.6)
+      val enough = written >= millisToSamples(config.minTotalMillis)
+      if (reason == EndReason.MANUAL && enough && peakRms >= audible) {
+        speechStartSample = 0
+        lastSpeechSample = written
+      } else {
+        emit(Event.Empty(EmptyReason.NOTHING_HEARD))
+        return@flow
+      }
     }
-    if (lastSpeechMillis - speechStartMillis < config.minSpeechMillis || elapsed < config.minTotalMillis) {
+
+    val speechMillis = samplesToMillis(lastSpeechSample - speechStartSample)
+    if (speechMillis < config.minSpeechMillis || elapsed < config.minTotalMillis) {
       emit(Event.Empty(EmptyReason.TOO_SHORT))
       return@flow
     }
-    val keepMillis = min(elapsed, lastSpeechMillis + config.tailKeepMillis)
-    val keepSamples = min(written, (keepMillis / 1000.0 * config.sampleRate).toInt())
+    val keepSamples = min(written, lastSpeechSample + millisToSamples(config.tailKeepMillis))
     WavWriter.write(target, pcm, keepSamples, config.sampleRate)
-    emit(Event.Finished(target, keepMillis, reason ?: EndReason.MANUAL))
+    emit(Event.Finished(target, samplesToMillis(keepSamples), reason ?: EndReason.MANUAL))
   }.flowOn(Dispatchers.IO)
+
+  private fun millisToSamples(millis: Long): Int = (millis * config.sampleRate / 1000).toInt()
+
+  private fun samplesToMillis(samples: Int): Long = samples.toLong() * 1000 / config.sampleRate
+
+  private fun median(values: List<Double>): Double {
+    if (values.isEmpty()) return config.minFloor
+    val sorted = values.sorted()
+    val middle = sorted.size / 2
+    return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2
+  }
 
   private fun rms(frame: ShortArray, n: Int): Double {
     if (n == 0) return 0.0
@@ -160,6 +250,11 @@ class SpeechCapture(
 
   /** -60 dBFS -> 0, 0 dBFS -> 1: la scala che l'aureola disegna. */
   private fun level(rms: Double): Float = ((20 * log10(max(rms, 1.0) / 32768.0) + 60.0) / 60.0).coerceIn(0.0, 1.0).toFloat()
+
+  private companion object {
+    /** Frame vuoti di fila prima di dichiarare perso il microfono: mezzo secondo a 20 ms. */
+    const val EMPTY_READS_LIMIT = 25
+  }
 }
 
 /** WAV PCM 16 bit mono, intestazione di 44 byte little-endian (mai `DataOutputStream`, che e' big-endian). */

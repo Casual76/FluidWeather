@@ -14,3 +14,7 @@ output-metadata.json
 # Dati e rapporti del banco di prova: si rigenerano con `gradlew :testbench:run --args=fetch`.
 testbench/data/
 testbench/reports/
+
+# Le tracce che la JVM lascia cadendo (crash del daemon di Gradle): non sono codice.
+hs_err_pid*.log
+replay_pid*.log
