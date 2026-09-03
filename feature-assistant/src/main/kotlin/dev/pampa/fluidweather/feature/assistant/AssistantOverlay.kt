@@ -39,8 +39,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -147,6 +150,13 @@ class AssistantOverlayState {
   /** Vero se aprendo la barra si vuole anche la tastiera: si' quando l'ha chiesta l'utente. */
   var autoFocus by mutableStateOf(true)
     private set
+
+  /**
+   * Il rettangolo del tasto dell'assistente nella barra in basso. E' l'origine della
+   * trasformazione: la card non compare, **cresce da li'** — e tornando indietro ci rientra.
+   * Nel linguaggio dell'app e' la stessa idea del tasto che diventa il proprio pop-up.
+   */
+  var originBounds by mutableStateOf<Rect?>(null)
 
   fun hide() {
     mode = OverlayMode.HIDDEN
@@ -318,24 +328,61 @@ fun BoxScope.AssistantOverlay(
     height = if (overlay.mode == OverlayMode.VOICE) 150.dp else 96.dp,
   )
 
-  AnimatedVisibility(
-    visible = visible,
-    enter = slideInVertically(FluidMotion.intOffset(FluidMotion.DampingStandard, FluidMotion.ResponseSnappy)) { -it / 2 } + fadeIn(FluidMotion.fadeIn(160)),
-    exit = slideOutVertically(FluidMotion.intOffset(FluidMotion.DampingChrome, FluidMotion.ResponseSnappy)) { -it / 2 } + fadeOut(FluidMotion.fadeOut(140)),
-    modifier = Modifier
-      .align(Alignment.TopCenter)
-      .statusBarsPadding()
-      .imePadding()
-      .padding(horizontal = 12.dp, vertical = 8.dp),
-  ) {
+  // La trasformazione, invece di una comparsa: il pannello **cresce dal tasto** dell'assistente
+  // e ci rientra chiudendosi. E' la stessa idea del tasto che diventa il proprio pop-up, che nel
+  // resto dell'app fa il menu di vetro; qui non passa dal modale dell'engine perche' l'assistente
+  // per scelta non e' modale (la home resta viva e toccabile sotto).
+  val morph = remember { Animatable(0f) }
+  LaunchedEffect(visible) {
+    morph.animateTo(
+      targetValue = if (visible) 1f else 0f,
+      animationSpec = spring(
+        dampingRatio = if (visible) FluidMotion.DampingFluid else FluidMotion.DampingChrome,
+        stiffness = if (visible) FluidMotion.ResponseStandard else FluidMotion.ResponseSnappy,
+      ),
+    )
+  }
+  var panelBounds by remember { mutableStateOf<Rect?>(null) }
+
+  if (visible || morph.value > 0.001f) {
     val drag = remember { Animatable(0f) }
     // In dp, non in pixel grezzi: su uno schermo denso 160 px erano mezzo centimetro, e la card
     // si chiudeva quasi per sbaglio.
     val dismissDragPx = with(LocalDensity.current) { DismissDrag.toPx() }
+    val origin = overlay.originBounds
+    val panel = panelBounds
     Column(
       Modifier
+        .align(Alignment.TopCenter)
+        .statusBarsPadding()
+        .imePadding()
+        .padding(horizontal = 12.dp, vertical = 8.dp)
         .fillMaxWidth()
-        .graphicsLayer { translationY = drag.value }
+        .onGloballyPositioned { panelBounds = it.boundsInRoot() }
+        .graphicsLayer {
+          translationY = drag.value
+          val progress = morph.value
+          if (origin == null || panel == null || panel.width <= 0f || panel.height <= 0f) {
+            // Senza la geometria del tasto (l'assistente aperto da una scorciatoia, il tasto non
+            // ancora misurato) resta una comparsa onesta, non un salto: sale e sfuma.
+            alpha = progress
+            translationY += (1f - progress) * -panel.heightOrZero() * 0.25f
+            return@graphicsLayer
+          }
+          // Il pannello si rimpicciolisce fino alla misura del tasto e si sposta fino al suo
+          // centro: al progresso zero i due sono la stessa cosa, e in mezzo c'e' una sola forma
+          // che viaggia. `TransformOrigin.Center` perche' la scala e la traslazione si compongono
+          // attorno al centro, ed e' quello che si vuole far coincidere.
+          val scaleTo = (origin.width / panel.width).coerceIn(0.05f, 1f)
+          val scaleToY = (origin.height / panel.height).coerceIn(0.05f, 1f)
+          scaleX = scaleTo + (1f - scaleTo) * progress
+          scaleY = scaleToY + (1f - scaleToY) * progress
+          translationX = (origin.center.x - panel.center.x) * (1f - progress)
+          translationY += (origin.center.y - panel.center.y) * (1f - progress)
+          // Il contenuto arriva dopo la forma: mentre il pannello e' ancora schiacciato, il testo
+          // dentro sarebbe illeggibile e si vedrebbe solo la sua deformazione.
+          alpha = ((progress - 0.25f) / 0.55f).coerceIn(0f, 1f)
+        }
         .pointerInput(overlay.mode, state.isBusy) {
           detectVerticalDragGestures(
             onVerticalDrag = { change, delta ->
@@ -504,3 +551,6 @@ private fun CollapsedPill(state: AssistantState, backdrop: GlassBackdropState, o
 
 /** Quanto va trascinata in alto la card per chiuderla: una misura, non un numero di pixel. */
 private val DismissDrag = 56.dp
+
+/** L'altezza del pannello quando c'e', zero quando non e' ancora stato misurato. */
+private fun Rect?.heightOrZero(): Float = this?.height ?: 0f

@@ -79,6 +79,8 @@ class HomeAssistantBar(
   val working: Boolean,
   val onTap: () -> Unit,
   val onLongPress: () -> Unit,
+  /** Dove sta il tasto, in coordinate della radice: e' da qui che la card si trasforma. */
+  val onBounds: (Rect) -> Unit = {},
 )
 
 /** L'altezza della barra e dei tasti tondi (decisione 2026-09-02: piu' grandi, a tutta larghezza). */
@@ -158,7 +160,9 @@ internal fun HomeFloatingBar(
         backdrop = backdrop,
         onTap = { assistant?.onTap?.invoke() },
         onLongPress = { assistant?.onLongPress?.invoke() },
-        modifier = Modifier.fluidTutorialAnchor("home_ai"),
+        modifier = Modifier
+          .fluidTutorialAnchor("home_ai")
+          .onGloballyPositioned { assistant?.onBounds?.invoke(it.boundsInRoot()) },
       )
     }
 

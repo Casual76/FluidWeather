@@ -236,6 +236,7 @@ private fun FluidWeatherRoutes(
           working = assistantState.isBusy,
           onTap = { overlayState.openVoice() },
           onLongPress = { overlayState.openText() },
+          onBounds = { overlayState.originBounds = it },
         ),
         requestedWidget = requestedWidget,
         onWidgetConsumed = { requestedWidget = null },
