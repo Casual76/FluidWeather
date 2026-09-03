@@ -5,6 +5,7 @@ import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NotificationSettings
+import dev.pampa.fluidweather.core.model.NotificationUrgency
 import dev.pampa.fluidweather.core.model.OfficialAlert
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
@@ -89,6 +90,7 @@ object AlertPolicy {
                 highPercent = (strongest.probabilityHigh * 100).toInt(),
                 factors = factors.takeIf { it.isNotBlank() },
               ),
+              urgency = NotificationUrgency.ALARM,
             )
             ledger = ledger.copy(
               nowcastAlertAtMillis = inputs.nowMillis,
@@ -120,12 +122,14 @@ object AlertPolicy {
               id = PRECIPITATION_ID,
               title = texts.onsetTitle(transition.weatherKind),
               text = texts.onsetText(time),
+              urgency = NotificationUrgency.WATCH,
             )
             TransitionKind.END -> AppNotification(
               channel = NotificationChannelKind.PRECIPITATION,
               id = PRECIPITATION_ID,
               title = texts.endTitle(transition.weatherKind),
               text = texts.endText(time),
+              urgency = NotificationUrgency.CLEAR,
             )
           }
           ledger = when (transition.kind) {
@@ -156,6 +160,7 @@ object AlertPolicy {
             alert.sender?.let { append(" · ").append(it) }
             append(texts.officialVerbatim())
           },
+          urgency = NotificationUrgency.ALARM,
         )
       }
       if (fresh.isNotEmpty()) {

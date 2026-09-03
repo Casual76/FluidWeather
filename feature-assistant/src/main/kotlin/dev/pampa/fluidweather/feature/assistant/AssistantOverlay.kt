@@ -31,6 +31,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,6 +52,8 @@ import dev.antigravity.fluidengine.ui.fluid.GlassDefaults
 import dev.antigravity.fluidengine.ui.fluid.GlassRole
 import dev.antigravity.fluidengine.ui.fluid.fluidPressable
 import dev.antigravity.fluidengine.ui.fluid.glassSurface
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.ai.orchestrator.AnswerChip
 import dev.pampa.fluidweather.core.ai.orchestrator.AskMode
@@ -127,6 +130,47 @@ fun BoxScope.AssistantOverlay(
   val scope = rememberCoroutineScope()
   val speaker = remember { TtsSpeaker(context) }
   DisposableEffect(speaker) { onDispose { speaker.release() } }
+
+  // L'assistente e' la parte dell'app che si usa senza guardarla: l'ascolto che parte, il
+  // parlato riconosciuto, l'ascolto che finisce e la risposta pronta si sentono sotto il dito.
+  val haptics = rememberFluidHaptics()
+  var listening by remember { mutableStateOf(false) }
+  var spoke by remember { mutableStateOf(false) }
+  var answered by remember { mutableStateOf(false) }
+  var waitSecond by remember { mutableIntStateOf(-1) }
+  LaunchedEffect(state) {
+    val current = state
+    if (current is AssistantState.Listening) {
+      if (!listening) {
+        listening = true
+        spoke = false
+        haptics.play(FluidHapticEvent.ListenStart)
+      }
+      if (current.speaking && !spoke) {
+        spoke = true
+        haptics.play(FluidHapticEvent.SpeechDetected)
+      }
+    } else if (listening) {
+      listening = false
+      haptics.play(FluidHapticEvent.ListenEnd)
+    }
+    when (current) {
+      is AssistantState.Done -> if (!answered) {
+        answered = true
+        haptics.play(FluidHapticEvent.ReplyReady)
+      }
+      is AssistantState.Failed -> haptics.play(FluidHapticEvent.Error)
+      is AssistantState.Cancelled -> haptics.play(FluidHapticEvent.Stop)
+      is AssistantState.SwitchingProvider -> haptics.play(FluidHapticEvent.ProviderSwitched)
+      // Un secondo di attesa in piu' e' un tick: si sente che il conto scende anche a schermo spento.
+      is AssistantState.WaitingRateLimit -> if (current.secondsLeft != waitSecond) {
+        waitSecond = current.secondsLeft
+        haptics.play(FluidHapticEvent.WaitTick)
+      }
+      else -> Unit
+    }
+    if (current !is AssistantState.Done) answered = false
+  }
 
   // Le azioni di navigazione decise dall'orchestratore.
   LaunchedEffect(session) {
@@ -266,7 +310,10 @@ fun BoxScope.AssistantOverlay(
                 is AnswerChip.Place -> navigator.selectPlace(chip.name)
               }
             },
-            onConfirm = { id, yes -> session.resolveAction(id, yes) },
+            onConfirm = { id, yes ->
+              haptics.play(if (yes) FluidHapticEvent.ActionConfirmed else FluidHapticEvent.Reject)
+              session.resolveAction(id, yes)
+            },
             onTapBody = { speaker.stop() },
           )
         }

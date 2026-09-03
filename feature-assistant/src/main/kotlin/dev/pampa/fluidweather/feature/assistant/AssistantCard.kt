@@ -216,7 +216,9 @@ private fun StopPill(onStop: () -> Unit) {
     modifier = Modifier
       .size(28.dp)
       .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f), FluidCapsuleShape)
-      .fluidPressable(onClick = onStop, role = Role.Button),
+      // Niente tap: quando la richiesta si ferma arriva lo Stop dell'overlay, e due
+      // vibrazioni per un tocco solo si sentono come un difetto.
+      .fluidPressable(onClick = onStop, role = Role.Button, haptic = null),
     contentAlignment = Alignment.Center,
   ) {
     Icon(

@@ -45,11 +45,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +62,8 @@ import dev.antigravity.fluidengine.ui.fluid.fluidPressable
 import dev.antigravity.fluidengine.ui.fluid.glassControlSurface
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuButton
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuState
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
@@ -189,13 +189,15 @@ private fun BarIconButton(
   onClick: () -> Unit,
   onLongClick: (() -> Unit)? = null,
   modifier: Modifier = Modifier,
+  /** Cosa si sente al rilascio; null per un tasto la cui azione parla gia' da sola. */
+  haptic: FluidHapticEvent? = FluidHapticEvent.Tap,
   content: (@Composable () -> Unit)? = null,
 ) {
   Box(
     modifier = modifier
       .size(HomeBarHeight)
       .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
-      .fluidPressable(onClick = onClick, onLongClick = onLongClick, pressedScale = 1f, role = Role.Button),
+      .fluidPressable(onClick = onClick, onLongClick = onLongClick, pressedScale = 1f, role = Role.Button, haptic = haptic),
     contentAlignment = Alignment.Center,
   ) {
     if (content != null) {
@@ -234,6 +236,9 @@ private fun AssistantButton(
     backdrop = backdrop,
     onClick = onTap,
     onLongClick = onLongPress,
+    // Il tocco apre il microfono e l'assistente risponde subito con la sua salita: un tap in
+    // piu', a un decimo di secondo di distanza, si sentirebbe come una sbavatura sola.
+    haptic = null,
   ) {
     Icon(
       imageVector = Icons.Rounded.AutoAwesome,
@@ -274,7 +279,7 @@ private fun LocationPill(
   onSwipe: (forward: Boolean) -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  val haptics = LocalHapticFeedback.current
+  val haptics = rememberFluidHaptics()
   val scope = rememberCoroutineScope()
   val drag = remember { Animatable(0f) }
   // La direzione dell'ultimo swipe: il nome nuovo entra dal lato da cui il dito e' partito.
@@ -294,12 +299,12 @@ private fun LocationPill(
             when {
               total < -SWIPE_THRESHOLD_PX -> {
                 forward = true
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptics.play(FluidHapticEvent.Threshold)
                 onSwipe(true)
               }
               total > SWIPE_THRESHOLD_PX -> {
                 forward = false
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptics.play(FluidHapticEvent.Threshold)
                 onSwipe(false)
               }
             }
@@ -314,7 +319,9 @@ private fun LocationPill(
         )
       }
       .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
-      .fluidPressable(onClick = onTap, pressedScale = 1f, role = Role.Button)
+      // Niente feedback qui: il pannello di vetro che si apre dice Open da solo, e due
+      // aperture per un tocco solo si sentono come un difetto.
+      .fluidPressable(onClick = onTap, pressedScale = 1f, role = Role.Button, haptic = null)
       .height(HomeBarHeight)
       .padding(horizontal = 18.dp),
     contentAlignment = Alignment.Center,

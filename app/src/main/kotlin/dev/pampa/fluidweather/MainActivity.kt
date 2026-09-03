@@ -25,7 +25,10 @@ import dev.antigravity.fluidengine.ui.fluid.FluidNotificationHostState
 import dev.antigravity.fluidengine.ui.fluid.FluidNotificationTone
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidNotificationHostState
 import dev.antigravity.fluidengine.ui.fluid.rememberFluidNotificationHostState
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
+import dev.pampa.fluidweather.core.model.NotificationUrgency
 import dev.pampa.fluidweather.navigation.FluidWeatherNavHost
 import dev.pampa.fluidweather.theme.FluidWeatherTheme
 import androidx.compose.runtime.remember
@@ -106,8 +109,17 @@ private fun ContinuousSamplingEffect(graph: AppGraph) {
 /** Le notifiche decise dal ciclo mentre l'app e' aperta, come banner dell'engine. */
 @Composable
 private fun InAppAlertsEffect(graph: AppGraph, host: FluidNotificationHostState) {
+  // Il banner e' l'unico a vibrare: con l'app davanti la notifica di sistema non parte, quindi
+  // questo e' il solo momento in cui l'allerta si sente sotto le dita (fase 20).
+  val haptics = rememberFluidHaptics()
   LaunchedEffect(graph, host) {
     graph.inAppAlerts.events.collect { alert ->
+      when (alert.urgency) {
+        NotificationUrgency.WATCH -> haptics.play(FluidHapticEvent.AlertWatch)
+        NotificationUrgency.ALARM -> haptics.play(FluidHapticEvent.AlertAlarm)
+        NotificationUrgency.CLEAR -> haptics.play(FluidHapticEvent.AlertClear)
+        NotificationUrgency.INFO -> Unit
+      }
       host.show(
         FluidNotification(
           id = "${alert.channel.id}-${alert.id}-${System.currentTimeMillis()}",

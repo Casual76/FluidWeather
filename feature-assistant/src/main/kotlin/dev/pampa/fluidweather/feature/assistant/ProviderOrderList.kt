@@ -18,15 +18,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import dev.antigravity.fluidengine.ui.fluid.fluidPressable
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
@@ -45,7 +45,7 @@ fun ProviderOrderList(
   onReorder: (List<ProviderId>) -> Unit,
 ) {
   val visible = order.filter { it in available }
-  val haptics = LocalHapticFeedback.current
+  val haptics = rememberFluidHaptics()
   val rowHeightPx = with(LocalDensity.current) { 64.dp.toPx() }
   var dragging by remember { mutableIntStateOf(-1) }
   var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -73,7 +73,7 @@ fun ProviderOrderList(
               onDragStart = {
                 dragging = index
                 dragOffset = 0f
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptics.play(FluidHapticEvent.GestureStart)
               },
               onDrag = { change, delta ->
                 change.consume()
@@ -83,12 +83,17 @@ fun ProviderOrderList(
                   val target = (index + shift).coerceIn(visible.indices)
                   if (target != index) {
                     move(index, target)
+                    haptics.play(FluidHapticEvent.Tick)
                     dragging = -1
                     dragOffset = 0f
                   }
                 }
               },
-              onDragEnd = { dragging = -1; dragOffset = 0f },
+              onDragEnd = {
+                if (dragging == index) haptics.play(FluidHapticEvent.GestureEnd)
+                dragging = -1
+                dragOffset = 0f
+              },
               onDragCancel = { dragging = -1; dragOffset = 0f },
             )
           },

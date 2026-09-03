@@ -13,8 +13,10 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -25,6 +27,8 @@ import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
@@ -88,7 +92,7 @@ class DiagnosticsDependencies(
  * per ora deve dimostrare una cosa sola: il telefono registra pressione e la si vede.
  */
 @Composable
-fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
+fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenHaptics: () -> Unit) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
 
@@ -97,6 +101,18 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
   val sampleCount by remember { deps.repository.count() }.collectAsState(initial = 0L)
   val live by remember { deps.barometer.readings() }.collectAsState(initial = null)
   val burst by deps.burstController.progress.collectAsState()
+
+  // La raffica che arriva in fondo si sente: e' l'unico modo di accorgersene senza guardare.
+  val haptics = rememberFluidHaptics()
+  var burstWasRunning by remember { mutableStateOf(false) }
+  LaunchedEffect(burst) {
+    if (burst != null) {
+      burstWasRunning = true
+    } else if (burstWasRunning) {
+      burstWasRunning = false
+      haptics.play(FluidHapticEvent.Success)
+    }
+  }
 
   // Il segnale pulito si ricalcola quando l'archivio cresce: 12 ore di storia negli stadi 1-2.
   val cleaning by produceState<CleaningResult?>(initialValue = null, sampleCount) {
@@ -311,6 +327,12 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
             },
           )
         }
+        FluidListDivider()
+        FluidListRow(
+          title = stringResource(R.string.hapt_title),
+          subtitle = stringResource(R.string.hapt_subtitle),
+          onClick = onOpenHaptics,
+        )
       }
     }
 

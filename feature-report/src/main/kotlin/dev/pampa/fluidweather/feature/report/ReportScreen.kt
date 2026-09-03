@@ -54,6 +54,8 @@ import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.data.ObservationRepository
 import dev.pampa.fluidweather.core.model.ObservedCondition
 import dev.pampa.fluidweather.core.model.Observation
@@ -111,6 +113,7 @@ private fun ReportContent(deps: ReportDependencies) {
   }
   var selected by remember { mutableStateOf<ObservedCondition?>(null) }
   var sent by remember { mutableStateOf<Observation?>(null) }
+  val haptics = rememberFluidHaptics()
 
   // L'apertura curata: le tessere si materializzano in sequenza, non tutte in un colpo.
   var revealed by remember { mutableStateOf(0) }
@@ -207,6 +210,7 @@ private fun ReportContent(deps: ReportDependencies) {
             longitude = here?.longitude,
             placeName = here?.name,
           )
+          haptics.play(if (sent != null) FluidHapticEvent.Confirm else FluidHapticEvent.Error)
         }
       },
       modifier = Modifier.fillMaxWidth(),

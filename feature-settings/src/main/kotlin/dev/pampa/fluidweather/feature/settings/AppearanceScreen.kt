@@ -14,9 +14,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.foundation.AccentMode
@@ -28,6 +32,8 @@ import dev.antigravity.fluidengine.ui.fluid.FluidChip
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
@@ -55,6 +61,7 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
   val scope = rememberCoroutineScope()
   val engine by deps.engineSettings.settings.collectAsState(initial = EngineSettings())
   val appearance by deps.appearanceStore.settings.collectAsState(initial = AppearanceSettings())
+  HapticsPreviewEffect(engine.hapticsEnabled)
 
   FluidScreen(title = stringResource(R.string.appear_title), onBack = onBack) {
     item { FluidSectionHeader(title = stringResource(R.string.appear_color)) }
@@ -189,6 +196,38 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
         )
       }
     }
+
+    item { FluidSectionHeader(title = stringResource(R.string.appear_touch)) }
+    item {
+      FluidListGroup {
+        FluidListRow(
+          title = stringResource(R.string.appear_haptics),
+          subtitle = stringResource(R.string.appear_haptics_desc),
+          badge = {
+            FluidSwitch(
+              checked = engine.hapticsEnabled,
+              onCheckedChange = { on -> scope.launch { deps.engineSettings.setHapticsEnabled(on) } },
+            )
+          },
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Accendendo l'aptica lo switch resta muto: ha gia' vibrato (per niente) prima che
+ * l'impostazione arrivasse fin qui. Il primo feedback lo diamo appena l'interruttore e' vero,
+ * cosi' chi lo accende sente subito com'e' fatto.
+ */
+@Composable
+private fun HapticsPreviewEffect(enabled: Boolean) {
+  val haptics = rememberFluidHaptics()
+  var previous by remember { mutableStateOf<Boolean?>(null) }
+  LaunchedEffect(enabled) {
+    val was = previous
+    previous = enabled
+    if (was == false && enabled) haptics.play(FluidHapticEvent.Confirm)
   }
 }
 

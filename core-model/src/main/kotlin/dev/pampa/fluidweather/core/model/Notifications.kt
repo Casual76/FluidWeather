@@ -85,7 +85,16 @@ data class AppNotification(
   val title: String,
   val text: String,
   val bigText: String? = null,
+  /** Quanto stringe: il banner in-app la traduce in un feedback tattile, il resto la ignora. */
+  val urgency: NotificationUrgency = NotificationUrgency.INFO,
 )
+
+/**
+ * Il peso di una notifica per chi la fa sentire, non per chi la legge (fase 20): una
+ * precipitazione in arrivo e' una [WATCH], l'allerta del barometro un [ALARM], la fine della
+ * pioggia un [CLEAR]. [INFO] non vibra: il riassunto del giorno non deve svegliare nessuno.
+ */
+enum class NotificationUrgency { INFO, WATCH, ALARM, CLEAR }
 
 enum class OfficialAlertSource(val label: String) {
   NWS("National Weather Service (NOAA)"),

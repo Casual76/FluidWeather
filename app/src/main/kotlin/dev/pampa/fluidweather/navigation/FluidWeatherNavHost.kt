@@ -44,6 +44,8 @@ import dev.pampa.fluidweather.feature.settings.DataPrivacyScreen
 import dev.pampa.fluidweather.feature.settings.DiagnosticsDependencies
 import dev.pampa.fluidweather.feature.settings.DiagnosticsScreen
 import dev.pampa.fluidweather.feature.settings.EngineAccuracyDependencies
+import dev.pampa.fluidweather.feature.settings.HapticsLabDependencies
+import dev.pampa.fluidweather.feature.settings.HapticsLabScreen
 import dev.pampa.fluidweather.feature.settings.EngineAccuracyScreen
 import dev.pampa.fluidweather.feature.settings.NotificationsDependencies
 import dev.pampa.fluidweather.feature.settings.NotificationsSettingsScreen
@@ -77,6 +79,7 @@ private object Routes {
   const val Appearance = "settings/appearance"
   const val Units = "settings/units"
   const val Diagnostics = "settings/diagnostics"
+  const val Haptics = "settings/diagnostics/haptics"
   const val Data = "settings/data"
   const val About = "settings/about"
 }
@@ -349,7 +352,16 @@ private fun FluidWeatherRoutes(
           assistant = graph.aiAssistant,
         )
       }
-      DiagnosticsScreen(deps = deps, onBack = { navController.popBackStack() })
+      DiagnosticsScreen(
+        deps = deps,
+        onBack = { navController.popBackStack() },
+        onOpenHaptics = { navController.navigate(Routes.Haptics) },
+      )
+    }
+
+    composable(Routes.Haptics) {
+      val deps = remember(graph) { HapticsLabDependencies(engineSettings = graph.engineSettingsStore) }
+      HapticsLabScreen(deps = deps, onBack = { navController.popBackStack() })
     }
     composable(Routes.Data) {
       val deps = remember(graph) {

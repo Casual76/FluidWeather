@@ -23,6 +23,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidGrabber
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -56,8 +59,16 @@ fun BlackSheet(
   content: @Composable ColumnScope.() -> Unit,
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+  // Il foglio prende tutta la pagina: la sua apertura e la sua chiusura si sentono come quelle
+  // di un pannello dell'engine, altrimenti l'unica cosa muta dell'app sarebbe la piu' grande.
+  val haptics = rememberFluidHaptics()
+  LaunchedEffect(Unit) { haptics.play(FluidHapticEvent.Open) }
+  val dismiss = {
+    haptics.play(FluidHapticEvent.Close)
+    onDismiss()
+  }
   ModalBottomSheet(
-    onDismissRequest = onDismiss,
+    onDismissRequest = dismiss,
     sheetState = sheetState,
     modifier = Modifier.fillMaxHeight(),
     containerColor = BlackSheetColor,
@@ -85,7 +96,7 @@ fun BlackSheet(
           color = Color.White,
           modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onDismiss) {
+        IconButton(onClick = dismiss) {
           Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_close), tint = Color.White)
         }
       }

@@ -62,6 +62,8 @@ fun GlassTile(
           // Un solo nodo per TalkBack: la tessera si legge intera, poi il suo gesto.
           Modifier
             .semantics(mergeDescendants = true) {}
+            // Muta di proposito: la tessera apre il foglio nero del dato, ed e' il foglio a
+            // dire Open quando arriva. Qui si sentirebbe la stessa apertura due volte.
             .clickable(interactionSource = interaction, indication = null, onClickLabel = onClickLabel, onClick = onClick)
         } else {
           Modifier

@@ -76,6 +76,8 @@ import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassModalHostState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import dev.antigravity.fluidengine.ui.fluid.rememberFluidGlassModalHostState
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.ui.HeaderCollapse
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidCanvasBackdrop
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassQuality
@@ -143,6 +145,20 @@ fun HomeScreen(
   val selectedPlace = places.firstOrNull { it.id == selectedId } ?: Place.gps()
 
   val state by rememberHomeState(deps, selectedPlace)
+  val haptics = rememberFluidHaptics()
+
+  // La taratura parte dall'onboarding e finisce qui, minuti dopo, con l'utente che guarda altro:
+  // il momento in cui il barometro diventa tarato e' l'unico che vale la pena far sentire.
+  val calibrating = state.readiness?.calibrationRunning == true
+  var wasCalibrating by remember { mutableStateOf(false) }
+  LaunchedEffect(calibrating) {
+    if (calibrating) {
+      wasCalibrating = true
+    } else if (wasCalibrating) {
+      wasCalibrating = false
+      haptics.play(FluidHapticEvent.Success)
+    }
+  }
 
   FluidTheme(
     settings = remember { EngineSettings(themeMode = ThemeMode.DARK, dynamicColorEnabled = false) },
@@ -182,6 +198,7 @@ private fun HomeShell(
   onWidgetConsumed: () -> Unit,
   overlay: @Composable BoxScope.(GlassBackdropState) -> Unit,
 ) {
+  val haptics = rememberFluidHaptics()
   val canvasBackdrop = rememberGlassBackdrop()
   val contentBackdrop = rememberGlassBackdrop()
   val chromeBackdrop = rememberCombinedGlassBackdrop(canvasBackdrop, contentBackdrop)
@@ -315,12 +332,14 @@ private fun HomeShell(
           scope.launch {
             deps.savedLocations.save(place)
             deps.selectedPlaceStore.select(place.id)
+            haptics.play(FluidHapticEvent.Confirm)
           }
         },
         onRemove = { place ->
           scope.launch {
             deps.savedLocations.remove(place.id)
             if (place.id == selectedPlace.id) deps.selectedPlaceStore.select(Place.GPS_ID)
+            haptics.play(FluidHapticEvent.Reject)
           }
         },
       )
@@ -350,21 +369,37 @@ private fun HomeGrid(
   onOpenWidget: (HomeWidget) -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val haptics = rememberFluidHaptics()
   LazyVerticalGrid(
     columns = GridCells.Fixed(2),
     state = gridState,
     flingBehavior = flingBehavior,
-    modifier = modifier.pointerInput(Unit) {
+    modifier = modifier.pointerInput(haptics) {
+      // Un tick a ogni aggancio, non a ogni fotogramma: il bersaglio resta lo stesso finche' il
+      // dito non entra in un'altra cella, e ripetere la vibrazione la renderebbe un ronzio.
+      var lastTarget: String? = null
       detectDragGesturesAfterLongPress(
-        onDragStart = { offset -> drag.start(offset) },
+        onDragStart = { offset ->
+          drag.start(offset)
+          lastTarget = null
+          if (drag.draggingKey != null) haptics.play(FluidHapticEvent.GestureStart)
+        },
         onDrag = { change, delta ->
           change.consume()
           val dragged = drag.draggingKey ?: return@detectDragGesturesAfterLongPress
-          drag.move(delta)?.let { target -> onMove(dragged, target) }
+          drag.move(delta)?.let { target ->
+            onMove(dragged, target)
+            if (target != lastTarget) {
+              lastTarget = target
+              haptics.play(FluidHapticEvent.Tick)
+            }
+          }
         },
         onDragEnd = {
+          val wasDragging = drag.draggingKey != null
           drag.end()
           onDrop()
+          if (wasDragging) haptics.play(FluidHapticEvent.GestureEnd)
         },
         onDragCancel = {
           drag.end()

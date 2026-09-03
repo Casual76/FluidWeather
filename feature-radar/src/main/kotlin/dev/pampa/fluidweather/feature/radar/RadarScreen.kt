@@ -81,6 +81,8 @@ import dev.antigravity.fluidengine.ui.fluid.rememberGlassBackdrop
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuButton
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuHost
 import dev.antigravity.fluidengine.ui.fluidphysics.rememberFluidMorphMenuState
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.antigravity.fluidengine.ui.theme.FluidTheme
@@ -453,6 +455,7 @@ private fun RadarTimelineBar(
   onScrub: (Int) -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val haptics = rememberFluidHaptics()
   Column(modifier.fillMaxWidth()) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
@@ -461,7 +464,13 @@ private fun RadarTimelineBar(
         .background(Panel, ContinuousCornerShape(FluidRadius.Group))
         .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-      IconButton(onClick = onTogglePlay, enabled = frames != null) {
+      IconButton(
+        onClick = {
+          haptics.play(FluidHapticEvent.Tap)
+          onTogglePlay()
+        },
+        enabled = frames != null,
+      ) {
         Icon(
           imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
           contentDescription = if (playing) stringResource(R.string.radar_pause) else stringResource(R.string.radar_play),
@@ -474,17 +483,31 @@ private fun RadarTimelineBar(
         Modifier
           .weight(1f)
           .height(36.dp)
-          .pointerInput(count) {
+          .pointerInput(count, haptics) {
             detectTapGestures { offset ->
+              haptics.play(FluidHapticEvent.Tap)
               onScrub(RadarTimeline.indexForFraction(offset.x / size.width, count))
             }
           }
-          .pointerInput(count) {
+          .pointerInput(count, haptics) {
+            // Un fotogramma per tacca: trascinando in fretta ne passano tanti, e la tacca
+            // fitta e' quella leggera (il motore le dirada comunque a 40 ms l'una).
+            var last = -1
             detectHorizontalDragGestures(
-              onDragStart = { offset -> onScrub(RadarTimeline.indexForFraction(offset.x / size.width, count)) },
+              onDragStart = { offset ->
+                val chosen = RadarTimeline.indexForFraction(offset.x / size.width, count)
+                last = chosen
+                haptics.play(FluidHapticEvent.Tick)
+                onScrub(chosen)
+              },
             ) { change, _ ->
               change.consume()
-              onScrub(RadarTimeline.indexForFraction(change.position.x / size.width, count))
+              val chosen = RadarTimeline.indexForFraction(change.position.x / size.width, count)
+              if (chosen != last) {
+                last = chosen
+                haptics.play(FluidHapticEvent.FrequentTick)
+              }
+              onScrub(chosen)
             }
           },
       ) {

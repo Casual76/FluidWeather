@@ -5,6 +5,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,8 @@ import dev.antigravity.fluidengine.foundation.AvailableAppUpdate
 import dev.antigravity.fluidengine.foundation.UpdateChannel
 import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.pampa.fluidweather.strings.R
@@ -60,6 +63,16 @@ fun AppUpdateRows(deps: UpdateDependencies) {
   val ignored by deps.releaseSettings.ignoredVersion.collectAsState(initial = "")
   var status by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
   var busy by remember { mutableStateOf(false) }
+
+  // Un aggiornamento finisce mentre l'utente guarda altrove: l'esito si sente.
+  val haptics = rememberFluidHaptics()
+  LaunchedEffect(status) {
+    when (status) {
+      UpdateStatus.Installed -> haptics.play(FluidHapticEvent.Success)
+      UpdateStatus.CheckFailed, is UpdateStatus.Failed -> haptics.play(FluidHapticEvent.Error)
+      else -> Unit
+    }
+  }
 
   // Le frasi si leggono nel composable: il click e la raccolta del flow non lo sono.
   val installedText = stringResource(R.string.update_installed)

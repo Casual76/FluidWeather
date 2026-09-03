@@ -29,6 +29,8 @@ import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonSize
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidTextField
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.ai.keys.KeyState
 import dev.pampa.fluidweather.core.ai.keys.VerifyResult
@@ -82,6 +84,7 @@ fun AiKeySetup(
   var expanded by remember { mutableStateOf(initiallyExpanded) }
   var input by remember { mutableStateOf("") }
   var verifying by remember { mutableStateOf(false) }
+  val haptics = rememberFluidHaptics()
   var outcome by remember { mutableStateOf<String?>(null) }
   var outcomeError by remember { mutableStateOf(false) }
   val verifiedText = stringResource(R.string.ai_key_verified, 0, 0)
@@ -171,15 +174,18 @@ fun AiKeySetup(
                   }
                   outcomeError = false
                   input = ""
+                  haptics.play(FluidHapticEvent.Confirm)
                   onVerified(result)
                 }
                 VerifyResult.Invalid -> {
                   outcome = invalidText
                   outcomeError = true
+                  haptics.play(FluidHapticEvent.Error)
                 }
                 is VerifyResult.Failed -> {
                   outcome = failedPrefix.trim().trimEnd(':') + ": " + (result.error?.message ?: "?")
                   outcomeError = true
+                  haptics.play(FluidHapticEvent.Error)
                 }
               }
               verifying = false

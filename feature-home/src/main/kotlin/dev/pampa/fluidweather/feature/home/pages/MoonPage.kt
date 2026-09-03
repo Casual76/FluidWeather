@@ -28,6 +28,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
+import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.model.Moon
 import dev.pampa.fluidweather.core.model.MoonEphemeris
 import dev.pampa.fluidweather.core.ui.Charts
@@ -137,6 +139,8 @@ private fun DayScrubber(offsetDays: Int, onOffsetChange: (Int) -> Unit) {
   val current = rememberUpdatedState(offsetDays)
   val stepPx = with(LocalDensity.current) { 22.dp.toPx() }
   var accumulated by remember { mutableFloatStateOf(0f) }
+  // Un giorno per tacca, e una tacca si sente: e' il modo di sapere dove si e' senza guardare.
+  val haptics = rememberFluidHaptics()
   val tick = White.copy(alpha = 0.35f)
   val strong = White
   Canvas(
@@ -153,6 +157,7 @@ private fun DayScrubber(offsetDays: Int, onOffsetChange: (Int) -> Unit) {
             if (steps != 0) {
               onOffsetChange((current.value - steps).coerceIn(-30, 30))
               accumulated -= steps * stepPx
+              haptics.play(FluidHapticEvent.Tick)
             }
           },
         )
