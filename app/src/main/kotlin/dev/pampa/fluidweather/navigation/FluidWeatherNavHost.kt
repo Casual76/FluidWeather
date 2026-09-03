@@ -4,6 +4,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -96,14 +97,19 @@ private const val CoveredParallax = 0.25f
  * gerarchia. I tempi sono i budget di [FluidMotion], cosi' "aprire qualcosa" dura uguale ovunque.
  */
 @Composable
-fun FluidWeatherNavHost(graph: AppGraph, startAtOnboarding: Boolean) {
+fun FluidWeatherNavHost(
+  graph: AppGraph,
+  startAtOnboarding: Boolean,
+  /** La pagina chiesta da fuori: oggi il widget di sistema, domani chiunque altro. */
+  openWidget: HomeWidget? = null,
+) {
   val navController = rememberNavController()
   // Le unita' dell'utente (fase 17), lette una volta qui e disponibili a ogni schermata.
   val units by graph.unitsStore.preferences.collectAsState(
     initial = UnitPreferences.forCountry(Locale.getDefault().country),
   )
   CompositionLocalProvider(LocalUnits provides units) {
-    FluidWeatherRoutes(graph, navController, startAtOnboarding)
+    FluidWeatherRoutes(graph, navController, startAtOnboarding, openWidget)
   }
 }
 
@@ -112,6 +118,7 @@ private fun FluidWeatherRoutes(
   graph: AppGraph,
   navController: androidx.navigation.NavHostController,
   startAtOnboarding: Boolean,
+  openWidget: HomeWidget?,
 ) {
   NavHost(
     navController = navController,
@@ -188,7 +195,10 @@ private fun FluidWeatherRoutes(
       }
       var benchmarkOpen by remember { mutableStateOf(false) }
       var reportOpen by remember { mutableStateOf(false) }
-      var requestedWidget by remember { mutableStateOf<HomeWidget?>(null) }
+      var requestedWidget by remember { mutableStateOf(openWidget) }
+      // Un tocco sul widget di sistema mentre l'app e' gia' aperta arriva come intent nuovo, non
+      // come avvio: `openWidget` cambia valore e la pagina si apre lo stesso.
+      LaunchedEffect(openWidget) { if (openWidget != null) requestedWidget = openWidget }
       // L'assistente (fase 19): il tasto nella barra, l'overlay sopra la home, i deep link.
       val assistant = graph.aiAssistant
       val assistantEnabled by assistant.enabled.collectAsState(initial = false)

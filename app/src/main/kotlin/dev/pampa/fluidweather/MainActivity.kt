@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,6 +13,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,6 +32,7 @@ import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationUrgency
+import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.core.ui.LocalTutorialController
 import dev.pampa.fluidweather.core.ui.TutorialSurface
 import dev.pampa.fluidweather.feature.settings.AppUpdatePrompt
@@ -43,9 +46,38 @@ class MainActivity : ComponentActivity() {
 
   private val graph: AppGraph get() = (application as FluidWeatherApp).graph
 
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    widgetOf(intent)?.let { openWidget.value = it }
+  }
+
+  /**
+   * Quale pagina chiede questo intent.
+   *
+   * I bersagli del widget si distinguono per **Uri**, non per extra: l'uguaglianza dei
+   * `PendingIntent` ignora gli extra, quindi due destinazioni che differissero solo per quelli
+   * collasserebbero in una e si aprirebbe sempre la prima registrata.
+   */
+  private fun widgetOf(intent: Intent?): HomeWidget? = when (intent?.data?.lastPathSegment) {
+    "nowcast" -> HomeWidget.NOWCAST
+    "hourly" -> HomeWidget.HOURLY
+    else -> null
+  }
+
+  /**
+   * La pagina chiesta dall'ultimo intent.
+   *
+   * E' uno stato e non una lettura secca di `intent` perche' un tocco sul widget mentre l'app e'
+   * gia' viva arriva a [onNewIntent], non a [onCreate]: leggendo solo qui, il secondo tocco non
+   * farebbe niente e sembrerebbe un widget rotto.
+   */
+  private val openWidget = mutableStateOf<HomeWidget?>(null)
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    openWidget.value = widgetOf(intent)
     val graph = graph
     setContent {
       val accent by graph.weatherAccent.collectAsState()
@@ -78,7 +110,7 @@ class MainActivity : ComponentActivity() {
             // I suggerimenti stanno sopra la navigazione ma sotto i banner: un'allerta ha sempre
             // la precedenza su una spiegazione.
             TutorialSurface {
-              FluidWeatherNavHost(graph, startAtOnboarding = !done)
+              FluidWeatherNavHost(graph, startAtOnboarding = !done, openWidget = openWidget.value)
               FluidNotificationHost(
                 state = notificationHost,
                 modifier = Modifier.align(Alignment.TopCenter),

@@ -107,6 +107,8 @@ android {
 dependencies {
   implementation project(':feature-home')
   implementation project(':feature-radar')
+  // Solo perche' il manifest col ricevitore si fonda: il widget non si chiama da nessuna parte.
+  implementation project(':feature-appwidget')
   implementation project(':feature-benchmark')
   implementation project(':feature-settings')
   implementation project(':feature-report')

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Le due serie di misure servono entrambe: minWidth/minHeight/minResize* sono quelle che usano
+  davvero API 26-30, targetCell*/maxResize* arrivano con API 31 e sotto vengono ignorate.
+
+  updatePeriodMillis = 30 minuti (il minimo del framework, sotto viene comunque alzato) e non e' da
+  dove arrivano i dati: quelli li spinge l'app quando il ciclo scrive. Serve solo perche' un widget
+  il cui processo e' stato ucciso aggiorni almeno la riga dell'eta' invece di restare fermo a ieri.
+
+  Niente android:configure: la localita' e' sempre dove sei, come deciso.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="260dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/appwidget_initial"
+    android:previewLayout="@layout/appwidget_initial"
+    android:description="@string/appwidget_description" />

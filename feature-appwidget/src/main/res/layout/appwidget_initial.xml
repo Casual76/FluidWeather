@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Quello che si vede nel mezzo secondo fra "appoggiato sulla schermata" e la prima composizione di
+  Glance.
+
+  E' RemoteViews puro, non Compose: qui dentro `<View>` e' ILLEGALE e il launcher rifiuta il widget
+  senza dire niente (fallisce all'inflazione, quindi solo sul telefono). Un `<FrameLayout>` con
+  dentro un `<TextView>` sta nell'insieme permesso.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="14dp">
+
+  <TextView
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center"
+      android:text="@string/appwidget_label"
+      android:textColor="#FFFFFFFF"
+      android:textSize="13sp" />
+</FrameLayout>

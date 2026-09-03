@@ -19,6 +19,9 @@ rootProject.name = "FluidWeather"
 include ':app'
 include ':feature-home'
 include ':feature-radar'
+// Il widget sulla schermata Home di Android. Si chiama appwidget e non widget di proposito: in
+// questo progetto "widget" e' sempre stata la tessera della home dell'app.
+include ':feature-appwidget'
 include ':feature-benchmark'
 include ':feature-settings'
 include ':feature-report'
@@ -49,7 +52,8 @@ if (engineDir.exists()) {
    'engine-storage',
    'engine-net',
    'engine-config',
-   'engine-update'
+   'engine-update',
+   'engine-widget'
   ].each { name ->
     include ":$name"
     project(":$name").projectDir = new File(engineDir, name)

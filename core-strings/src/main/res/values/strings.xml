@@ -9,6 +9,9 @@
   <string name="a11y_location_pill">Location: %1$s. Tap to change, swipe for the next one.</string>
   <string name="a11y_moon">Moon: %1$s</string>
   <string name="a11y_wind_from">Wind from %1$s</string>
+  <string name="appwidget_label">FluidWeather</string>
+  <string name="appwidget_description">Temperature, barometer verdict and the next hours, on the sky of the moment.</string>
+  <string name="appwidget_empty">Open FluidWeather once to fill this in</string>
   <string name="a11y_open_widget">Open %1$s</string>
   <string name="a11y_progress">Progress %1$s%%</string>
   <string name="a11y_radar_frame">Radar frame: %1$s</string>

@@ -1,6 +1,7 @@
 package dev.pampa.fluidweather
 
 import android.app.Application
+import android.content.ComponentName
 import dev.pampa.fluidweather.core.cycle.BackgroundCycle
 import dev.pampa.fluidweather.core.cycle.CycleRuntime
 import dev.pampa.fluidweather.core.cycle.NotificationChannels
@@ -10,7 +11,10 @@ import dev.pampa.fluidweather.core.sensor.SamplingEngine
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.sensor.SensorRuntime
 import dev.pampa.fluidweather.core.ui.TutorialCatalog
+import dev.pampa.fluidweather.feature.appwidget.AppWidgetRuntime
+import dev.pampa.fluidweather.feature.appwidget.installAppWidgetUpdates
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -18,7 +22,7 @@ import kotlinx.coroutines.launch
  * modalita' corrente si riapplica a ogni avvio del processo (worker e allarmi arrivano anche a
  * processo appena nato, e trovano tutto pronto attraverso [SensorRuntime]).
  */
-class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
+class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRuntime {
 
   lateinit var graph: AppGraph
     private set
@@ -37,6 +41,15 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
     dev.pampa.fluidweather.strings.TimeFormats.invalidate()
   }
 
+  // --- AppWidgetRuntime: quel poco del grafo che serve a disegnare il widget di sistema. ---
+
+  override val snapshotStore get() = graph.weatherSnapshotStore
+  override val savedLocations get() = graph.savedLocationsRepository
+  override val nowcastHistory get() = graph.nowcastHistoryStore
+  override val unitPreferences get() = graph.notificationUnits
+  override val engineSettings get() = graph.engineSettingsStore.settings
+  override val mainActivity get() = ComponentName(this, MainActivity::class.java)
+
   override fun onCreate() {
     super.onCreate()
     graph = AppGraph(this)
@@ -53,6 +66,17 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
     // mai davanti al primo fotogramma; un download fallito lascia l'ultima risposta valida.
     graph.applicationScope.launch { runCatching { graph.remoteConfig.refreshIfStale() } }
     graph.applicationScope.launch { runCatching { markKnownTutorialsSeen() } }
+    // Il widget di sistema si ridisegna quando cambiano i dati, il tema o le unita'. Senza questo
+    // collettore cambiare accento non arriverebbe mai alla schermata Home.
+    installAppWidgetUpdates(
+      context = this,
+      scope = graph.applicationScope,
+      snapshotUpdates = graph.weatherSnapshotStore.updates,
+      engineSettings = graph.engineSettingsStore.settings.map {
+        listOf(it.themeMode, it.accentMode, it.customAccentName, it.dynamicColorEnabled, it.amoledEnabled)
+      },
+      unitPreferences = graph.notificationUnits,
+    )
   }
 
   /**

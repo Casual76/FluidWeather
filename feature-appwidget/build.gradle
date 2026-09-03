@@ -1,0 +1,43 @@
+plugins {
+  id 'com.android.library'
+  id 'org.jetbrains.kotlin.android'
+  // Glance gira sul compilatore Compose anche se non disegna un pixel di Compose: le sue
+  // composable diventano RemoteViews, ma restano composable.
+  id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+apply from: "${rootDir}/versions-app.gradle"
+
+android {
+  namespace 'dev.pampa.fluidweather.feature.appwidget'
+  compileSdk engine.compileSdk
+
+  defaultConfig {
+    minSdk engine.minSdk
+  }
+
+  buildFeatures {
+    compose true
+  }
+
+  compileOptions {
+    sourceCompatibility engine.javaVersion
+    targetCompatibility engine.javaVersion
+  }
+
+  kotlinOptions {
+    jvmTarget = engine.jvmTarget
+  }
+}
+
+dependencies {
+  // Il kit Glance dell'engine: struttura, tipografia e toni. Lo sfondo invece e' il cielo
+  // dell'app (SkyPalette da :core-ui), perche' il widget deve somigliare all'app e non al tema.
+  implementation project(':engine-widget')
+  // Porta con se' core-weather (l'istantanea) e core-data (lo storico dei verdetti) come api.
+  implementation project(':core-cycle')
+  implementation project(':core-ui')
+
+  testImplementation "junit:junit:${engine.junit}"
+}
