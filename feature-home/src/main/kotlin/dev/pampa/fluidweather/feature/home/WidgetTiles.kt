@@ -42,6 +42,7 @@ import dev.pampa.fluidweather.core.model.AqiBand
 import dev.pampa.fluidweather.core.model.Moon
 import dev.pampa.fluidweather.core.model.MoonPhase
 import dev.pampa.fluidweather.core.model.WeatherKind
+import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.core.ui.Charts
 import dev.antigravity.fluidengine.ui.fluid.FluidProgressBar
 import dev.pampa.fluidweather.core.ui.HomeWidget
@@ -643,7 +644,7 @@ private fun MoonTile(state: HomeUiState) {
 @Composable
 private fun DetailsTile(state: HomeUiState) {
   val now = System.currentTimeMillis()
-  val hour = state.fusedHours.minByOrNull { abs(it.timestampMillis - now) }
+  val hour = state.fusedHours.nearestHour(now)?.first
   if (hour == null) {
     EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return

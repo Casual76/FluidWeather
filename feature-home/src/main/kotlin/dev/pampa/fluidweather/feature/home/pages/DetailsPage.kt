@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.pampa.fluidweather.core.model.ApparentTemperature
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.core.ui.PageCharts
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import kotlin.math.abs
@@ -34,7 +35,7 @@ internal fun DetailsPage(state: HomeUiState) {
   val now = System.currentTimeMillis()
   val units = rememberUnitFormatter()
   val context = LocalContext.current
-  val current = state.fusedHours.minByOrNull { abs(it.timestampMillis - now) }
+  val current = state.fusedHours.nearestHour(now)?.first
   if (current == null) {
     PageNote(stringResource(R.string.common_waiting_providers))
     return

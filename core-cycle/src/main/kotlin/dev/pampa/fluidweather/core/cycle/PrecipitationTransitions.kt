@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.core.cycle
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.WeatherKind
+import dev.pampa.fluidweather.core.model.hourAround
 import kotlin.math.abs
 
 enum class TransitionKind { ONSET, END }
@@ -41,7 +42,7 @@ object PrecipitationTransitions {
   fun next(hours: List<FusedHour>, nowMillis: Long): PrecipitationTransition? {
     val sorted = hours.sortedBy { it.timestampMillis }
     val current = sorted.firstOrNull { it.timestampMillis <= nowMillis && nowMillis - it.timestampMillis < HOUR_MILLIS }
-      ?: sorted.minByOrNull { abs(it.timestampMillis - nowMillis) }?.takeIf { abs(it.timestampMillis - nowMillis) <= 90 * 60_000L }
+      ?: sorted.hourAround(nowMillis)
       ?: return null
     val currentlyWet = isWet(current)
     val upcoming = sorted.filter { it.timestampMillis > current.timestampMillis && it.timestampMillis - nowMillis <= LEAD_MILLIS }

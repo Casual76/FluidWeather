@@ -25,6 +25,23 @@ class PressureRepository(private val dao: PressureDao) {
   /** Dati e privacy: l'archivio intero. */
   suspend fun clear() = dao.deleteOlderThan(Long.MAX_VALUE)
 
+  /** Butta i campioni piu' vecchi di [KEEP_MILLIS]. */
+  suspend fun prune(nowMillis: Long) = dao.deleteOlderThan(nowMillis - KEEP_MILLIS)
+
+  companion object {
+    /**
+     * Trenta giorni di campioni grezzi.
+     *
+     * La finestra piu' lunga che qualcuno chiede davvero e' sette giorni (la pagina Pressione); il
+     * nowcast ne usa ventiquattro ore. Trenta e' quattro volte la piu' lunga, e sopra c'e' un
+     * tetto da dichiarare invece che da scoprire: in modalita' massima sono 288 passaggi al giorno
+     * per 30 letture a raffica, cioe' ~8.600 righe al giorno, ~260.000 righe e qualche decina di
+     * megabyte. La memoria lunga dell'app non sta qui: sta nell'archivio dell'apprendimento, che
+     * tiene due anni di vettori gia' ridotti.
+     */
+    const val KEEP_MILLIS: Long = 30L * 24 * 3_600_000L
+  }
+
   private fun PressureSample.toEntity() = PressureSampleEntity(
     timestampMillis = timestampMillis,
     pressureHpa = pressureHpa,

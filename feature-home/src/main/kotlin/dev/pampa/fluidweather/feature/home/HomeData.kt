@@ -35,6 +35,7 @@ import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
 import dev.pampa.fluidweather.core.model.SolarEphemeris
 import dev.pampa.fluidweather.core.model.SunTimes
 import dev.pampa.fluidweather.core.model.WeatherKind
+import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.WeatherAccent
@@ -123,6 +124,15 @@ data class HomeUiState(
    * che non doveva succedere. Fuori casa il nowcast non c'e' e la pressione la danno i provider.
    */
   val barometerApplies: Boolean = true,
+  /**
+   * Quando risale il giro dei provider che sta in scena; null = non c'e' nessun giro in scena.
+   *
+   * Un campo solo, non uno stato: la soglia oltre cui diventa una frase e' una decisione di
+   * presentazione ([dev.pampa.fluidweather.core.model.DataAge]), non un fatto dei dati. E niente
+   * flag "l'ultimo giro e' fallito": l'unico caso in cui differirebbe dall'eta' e' "fallito ma il
+   * dato e' ancora fresco", e li' la cosa giusta da dire e' niente.
+   */
+  val dataAtMillis: Long? = null,
   /** Il verdetto spiegato: grezzo, ricalibrato, analoghi (fase 16). */
   val nowcastExplanation: NowcastExplanation? = null,
   val dayLengthTodayMillis: Long? = null,
@@ -292,11 +302,16 @@ private fun HomeUiState.applySnapshot(
   deps: HomeDependencies,
 ): HomeUiState {
   val fused = snapshot.fused
+  // Un'istantanea senza ore non ha niente da dire, e "niente da dire" non vuol dire "cancella
+  // quello che c'era": prima azzerava temperatura, tipo, min/max e nuvole, e la home si svuotava
+  // sotto gli occhi. Si aggiorna solo l'eta', che e' l'unica cosa che quel giro ha davvero detto.
+  if (fused.hours.isEmpty()) return copy(dataAtMillis = snapshot.fetchedAtMillis)
   val nowValues = fused.at(nowMillis)
   val kind = fused.kindAt(nowMillis)
   val (minToday, maxToday) = fused.todayRange(nowMillis)
   deps.onWeatherAccent(WeatherAccent.presetFor(kind, phase))
   return copy(
+    dataAtMillis = snapshot.fetchedAtMillis,
     temperatureC = nowValues?.get(FusionVariables.TEMPERATURE),
     kind = kind,
     minC = minToday,
@@ -317,13 +332,16 @@ private fun SunTimes.Times.lengthMillis(): Long? {
   return (set - rise).takeIf { it > 0 }
 }
 
+// Niente piu' tetto di 90 minuti, e la stessa ora per il valore e per il tipo.
+//
+// Il tetto c'era solo sui valori, non sul tipo: con un'istantanea di due ore fa la testata scriveva
+// "—" e sotto continuava a dire "Sereno". Ed era anche il vero motivo per cui la home sembrava
+// vuota senza rete. Ora si mostra l'ultimo dato che c'e' e a dire quanto e' vecchio ci pensa la
+// riga della testata: e' la decisione presa — nessun tetto, ma sempre datato.
 private fun FusedForecast.at(nowMillis: Long): Map<String, Double>? =
-  hours.minByOrNull { abs(it.timestampMillis - nowMillis) }
-    ?.takeIf { abs(it.timestampMillis - nowMillis) <= 90 * 60_000L }
-    ?.values?.mapValues { it.value.value }
+  nearestHour(nowMillis)?.first?.values?.mapValues { it.value.value }
 
-private fun FusedForecast.kindAt(nowMillis: Long): WeatherKind? =
-  hours.minByOrNull { abs(it.timestampMillis - nowMillis) }?.kind
+private fun FusedForecast.kindAt(nowMillis: Long): WeatherKind? = nearestHour(nowMillis)?.first?.kind
 
 /** Min e max del giorno locale, dal fuso: il "Max/Min" della testata. */
 private fun FusedForecast.todayRange(nowMillis: Long): Pair<Double?, Double?> {

@@ -9,7 +9,17 @@ import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 data class WeatherRound(
   val fetches: List<ProviderFetch>,
   val fused: FusedForecast,
-)
+) {
+
+  /**
+   * Almeno un provider ha risposto.
+   *
+   * Il segnale c'era gia' dentro [fetches] e nessuno lo guardava: quando falliscono tutti, la
+   * fusione restituisce una previsione VUOTA invece di un errore, e quella finiva salvata sopra
+   * l'ultima buona. Un giro che non ha prodotto niente non ha niente da salvare.
+   */
+  val producedAnything: Boolean get() = fetches.any { it.bundle != null }
+}
 
 /**
  * Il giro completo del livello meteo, nell'ordine che conta:

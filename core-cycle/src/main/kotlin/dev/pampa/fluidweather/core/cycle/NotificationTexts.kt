@@ -30,6 +30,9 @@ interface NotificationTexts {
   fun officialSource(): String
   fun officialVerbatim(): String
   fun summaryTitle(locationName: String?): String
+
+  /** "Dati delle 21:40": il riepilogo esce anche su dati vecchi, ma lo dice. */
+  fun summaryDataAge(atMillis: Long, zone: ZoneId): String
   fun kindLabel(kind: WeatherKind?): String?
   fun summaryTemperatures(maxCelsius: Double, minCelsius: Double): String
   fun summaryRain(probabilityPercent: Int, hour: String): String
@@ -39,7 +42,6 @@ interface NotificationTexts {
   fun summaryRainWindow(probabilityPercent: Int, window: String): String
   fun time(millis: Long, zone: ZoneId): String
   fun hour(millis: Long, zone: ZoneId): String
-  fun cycleSkipped(): String
   fun cycleNoPosition(): String
   fun cycleNote(
     nowMillis: Long,
@@ -86,6 +88,9 @@ class ResourceNotificationTexts(
 
   override fun officialVerbatim() = s(R.string.notif_official_verbatim)
 
+  override fun summaryDataAge(atMillis: Long, zone: ZoneId): String =
+    s(R.string.summary_data_age, TimeFormats.time(atMillis, zone))
+
   override fun summaryTitle(locationName: String?) =
     if (locationName != null) s(R.string.summary_title_at, locationName) else s(R.string.summary_title)
 
@@ -117,8 +122,6 @@ class ResourceNotificationTexts(
   override fun time(millis: Long, zone: ZoneId) = TimeFormats.time(millis, zone)
 
   override fun hour(millis: Long, zone: ZoneId) = TimeFormats.hour(millis, zone)
-
-  override fun cycleSkipped() = s(R.string.cycle_skipped)
 
   override fun cycleNoPosition() = s(R.string.cycle_no_position)
 

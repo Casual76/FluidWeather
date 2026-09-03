@@ -181,7 +181,6 @@
   <string name="cycle_no_weather"> · weather not available</string>
   <string name="cycle_notifications"> · %1$s notifications</string>
   <string name="cycle_providers"> · %1$s/%2$s providers</string>
-  <string name="cycle_skipped">tick skipped (too close to the previous one)</string>
   <string name="cycle_snapshot"> (snapshot)</string>
   <string name="cycle_verdict"> · verdict %1$s</string>
   <string name="cycle_verdict_absent">absent</string>
@@ -425,6 +424,10 @@
   <string name="hapt_system">System haptics</string>
   <string name="hapt_system_desc">Turned off in the Android settings, nothing vibrates here either</string>
   <string name="hapt_title">Feedback test</string>
+  <string name="home_age_minutes">Updated %1$d min ago</string>
+  <string name="home_age_hours">Updated %1$d h ago</string>
+  <string name="home_age_at">Last data: %1$s</string>
+  <string name="home_age_none">No forecast available</string>
   <string name="home_banner_rain">Rain %1$s: %2$s%%</string>
   <string name="home_max_min">High %1$s  Low %2$s</string>
   <string name="hourly_col_hour">hour</string>
@@ -743,6 +746,7 @@
   <string name="summary_rain">rain %1$s%% around %2$s</string>
   <string name="summary_rain_window">: rain %1$s%% %2$s</string>
   <string name="summary_temps">high %1$s low %2$s</string>
+  <string name="summary_data_age">Data from %1$s.</string>
   <string name="summary_title">Today\'s weather</string>
   <string name="summary_title_at">Today in %1$s</string>
   <string name="summary_watch">watch</string>

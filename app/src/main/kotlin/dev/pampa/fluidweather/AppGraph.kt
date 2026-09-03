@@ -3,6 +3,7 @@ package dev.pampa.fluidweather
 import android.content.Context
 import dev.antigravity.fluidengine.net.EngineHttp
 import dev.antigravity.fluidengine.storage.EngineSettingsStore
+import dev.pampa.fluidweather.core.cycle.networkLikelyAvailable
 import dev.pampa.fluidweather.core.data.CrashLog
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.cycle.AppVisibility
@@ -38,6 +39,8 @@ import dev.pampa.fluidweather.core.data.RoomVerificationStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.data.SelectedPlaceStore
+import dev.pampa.fluidweather.core.model.SampleSource
+import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.core.ui.TutorialController
 import dev.pampa.fluidweather.core.weather.AirQualityClient
 import dev.pampa.fluidweather.core.weather.ForecastFusion
@@ -209,7 +212,11 @@ class AppGraph(context: Context) {
     surveillance = surveillanceController,
     cleaningPipeline = cleaningPipeline,
     // Il meteo al ritmo del barometro: dopo ogni passata, il ciclo (costruito qui sotto).
-    afterPass = { backgroundCycle.run(CycleTrigger.SAMPLING_PASS) },
+    afterPass = { source ->
+      backgroundCycle.run(
+        if (source == SampleSource.SURVEILLANCE) CycleTrigger.SURVEILLANCE_TICK else CycleTrigger.SAMPLING_PASS,
+      )
+    },
   )
   val samplingScheduler = SamplingScheduler(context, samplingSettingsStore)
   val manualBurstController = ManualBurstController(samplingEngine, applicationScope)
@@ -258,6 +265,7 @@ class AppGraph(context: Context) {
     notificationSettings = notificationSettingsStore,
     ledgerStore = notificationLedgerStore,
     nowcastHistory = nowcastHistoryStore,
+    verificationStore = verificationStore,
     nowcastUseCase = nowcastUseCase,
     barometerRegistrar = BarometerRegistrar { verdict, at -> fusionCoordinator.registerBarometer(verdict, at) },
     officialAlerts = officialAlertsClient,
@@ -266,6 +274,8 @@ class AppGraph(context: Context) {
     inAppAlerts = inAppAlerts,
     appVisibility = appVisibility,
     texts = notificationTexts,
+    // Solo un risparmio: con tutto spento non si sveglia un giro che aspetterebbe dieci timeout.
+    networkLikelyAvailable = { networkLikelyAvailable(appContext) },
   )
 
   // Taratura iniziale (fase 15): dieci minuti in un foreground service, riferimento dai provider.
@@ -287,7 +297,7 @@ class AppGraph(context: Context) {
     } else {
       weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY)
     } ?: return null
-    val hour = snapshot.fused.hours.minByOrNull { abs(it.timestampMillis - now) } ?: return null
+    val hour = snapshot.fused.nearestHour(now)?.first ?: return null
     if (abs(hour.timestampMillis - now) > 90 * 60_000L) return null
     val msl = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return null
     return CalibrationReference(msl, hour.values[FusionVariables.TEMPERATURE]?.value)

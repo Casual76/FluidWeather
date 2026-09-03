@@ -38,6 +38,8 @@ object ItalianTexts : NotificationTexts {
   override fun officialArea() = "Area: "
   override fun officialSource() = "Fonte: "
   override fun officialVerbatim() = "\nTesto riportato com'e' stato emesso, senza reinterpretazione."
+  override fun summaryDataAge(atMillis: Long, zone: ZoneId) = "dati delle $atMillis"
+
   override fun summaryTitle(locationName: String?) = if (locationName != null) "Oggi a $locationName" else "Il tempo di oggi"
   override fun kindLabel(kind: WeatherKind?): String? = when (kind) {
     WeatherKind.PARTLY_CLOUDY -> "Parzialmente nuvoloso"
@@ -61,7 +63,6 @@ object ItalianTexts : NotificationTexts {
   override fun summaryRainWindow(probabilityPercent: Int, window: String) = ": pioggia $probabilityPercent% ${windowPhrase(window)}"
   override fun time(millis: Long, zone: ZoneId): String = DateTimeFormatter.ofPattern("HH:mm").withZone(zone).format(Instant.ofEpochMilli(millis))
   override fun hour(millis: Long, zone: ZoneId): String = DateTimeFormatter.ofPattern("HH").withZone(zone).format(Instant.ofEpochMilli(millis))
-  override fun cycleSkipped() = "tick saltato"
   override fun cycleNoPosition() = "nessuna posizione"
   override fun cycleNote(
     nowMillis: Long,

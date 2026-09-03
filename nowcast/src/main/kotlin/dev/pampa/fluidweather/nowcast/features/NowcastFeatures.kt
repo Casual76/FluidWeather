@@ -56,6 +56,25 @@ object FeatureExtractor {
   const val MIN_HISTORY_HOURS = 13.0
 
   /**
+   * Questo vettore ha avuto il contesto meteo dei provider, o e' un verdetto del solo barometro?
+   *
+   * Serve a non mescolare due popolazioni nella taratura. Senza contesto sette feature su sedici
+   * sono NaN e il modello le imputa alla media: e' una modalita' di funzionamento vera e voluta
+   * (un telefono senza rete un verdetto lo da' lo stesso), ma la probabilita' grezza che ne esce
+   * ha una distribuzione diversa. Tararci sopra una mappa sola vuol dire tararla su un ingresso
+   * bimodale.
+   *
+   * **La marcatura esisteva gia' e nessuno la leggeva**: l'archivio scrive letteralmente "NaN"
+   * dove la feature mancava, e la rilegge come tale. Questo e' solo il lettore che mancava.
+   *
+   * Si guardano gli indici 7, 9 e 10 (umidita', copertura, vento) e non tutti quelli del contesto:
+   * l'11 (rotazione del vento) e' NaN anche col contesto quando manca il punto di tre ore fa, e il
+   * 5 (anomalia di livello) e' SEMPRE NaN perche' nessuno passa ancora la normale climatica.
+   */
+  fun hasContext(features: DoubleArray): Boolean =
+    intArrayOf(7, 9, 10).any { it < features.size && !features[it].isNaN() }
+
+  /**
    * Null quando la storia filtrata non copre nemmeno le 13 ore che servono alla tendenza piu'
    * lunga: meglio nessun verdetto che un verdetto costruito sul vuoto.
    */

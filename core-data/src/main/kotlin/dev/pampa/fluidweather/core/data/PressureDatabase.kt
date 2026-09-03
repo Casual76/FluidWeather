@@ -82,10 +82,13 @@ abstract class FluidWeatherDatabase : RoomDatabase() {
 
   companion object {
     fun build(context: Context): FluidWeatherDatabase =
+      // Niente `fallbackToDestructiveMigration()`: c'era, contro il suo stesso commento, e
+      // rendeva "gratis" ogni cambio di schema perche' cancellava in silenzio l'archivio
+      // barometrico di chiunque. Ora un cambio di versione senza migrazione fa fallire l'apertura
+      // in sviluppo, che e' il momento giusto per accorgersene. Toglierla lasciando la versione
+      // dov'e' non tocca nessuna installazione esistente: Room chiede una migrazione solo quando
+      // il numero cambia.
       Room.databaseBuilder(context, FluidWeatherDatabase::class.java, "fluidweather.db")
-        // Fino alla prima release le migrazioni sono distruttive per dichiarazione: nessun
-        // utente ha ancora un archivio da proteggere. Questa riga SPARISCE con la fase 18.
-        .fallbackToDestructiveMigration()
         .build()
   }
 }

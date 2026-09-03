@@ -35,7 +35,9 @@ class WeatherRepository(
           runCatching { client.fetch(lat, lon, keys[descriptor.id]) }
             .fold(
               onSuccess = { ProviderFetch(descriptor, it, null) },
-              onFailure = { ProviderFetch(descriptor, null, it.message ?: it.javaClass.simpleName) },
+              // Non piu' `error.message` grezzo: "rete: Unable to resolve host" e un HTTP 500 sono
+              // due situazioni opposte, e la Diagnostica le mostrava identiche.
+              onFailure = { ProviderFetch(descriptor, null, failureTextOf(it)) },
             )
         }
       }

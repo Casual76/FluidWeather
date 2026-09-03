@@ -128,6 +128,16 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
   override suspend fun allVerifications(sinceMillis: Long): List<ForecastVerification> =
     dao.allSince(sinceMillis).map { it.toModel() }
 
+  /**
+   * Butta le verifiche piu' vecchie di [KEEP_MILLIS].
+   *
+   * Centottanta giorni, e il numero non e' arbitrario: il punteggio dei provider pesa ogni
+   * verifica con un decadimento a emivita quattordici giorni, quindi a centottanta giorni una
+   * verifica conta `0,5^12,9`, cioe' lo 0,013% di una di oggi. Potare li' e' aritmeticamente
+   * invisibile alla classifica, e la tabella smette di crescere per sempre.
+   */
+  suspend fun prune(nowMillis: Long) = dao.pruneOlderThan(nowMillis - KEEP_MILLIS)
+
   /** Dati e privacy: via tutto, pendenti comprese. */
   suspend fun clear() {
     dao.clearPending()
@@ -141,4 +151,9 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
     absoluteError = absoluteError,
     verifiedAtMillis = verifiedAtMillis,
   )
+
+  companion object {
+    /** Sei mesi: oltre, il decadimento a emivita 14 giorni ha gia' azzerato il peso. */
+    const val KEEP_MILLIS: Long = 180L * 24 * 3_600_000L
+  }
 }

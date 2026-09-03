@@ -95,10 +95,12 @@ class SnapshotAndAlertsTest {
     val registered = mutableListOf<Boolean>()
     val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
     var clock = now
+    // Un provider che risponde davvero: un giro a vuoto ora lancia (e non scrive), quindi un
+    // finto vuoto qui misurerebbe il fallimento invece della semina.
     val coordinator = object : RoundSource {
       override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
         registered += registerPredictions
-        return WeatherRound(emptyList(), FusedForecast(emptyList(), emptyMap()))
+        return WeatherRound(listOf(fetchOf(latitude, longitude, clock)), FusedForecast(emptyList(), emptyMap()))
       }
     }
     val refresher = WeatherSnapshotRefresher(coordinator, store) { clock }
@@ -114,6 +116,152 @@ class SnapshotAndAlertsTest {
     assertNull(refresher.fresh("gps", 43.9, 11.2, maxAgeMillis = 60_000L))
     clock += 2 * 60_000L
     assertNull(refresher.fresh("gps", 43.8, 11.2, maxAgeMillis = 60_000L))
+  }
+
+  /** Un provider che ha risposto: quel che basta perche' il giro non sia a vuoto. */
+  private fun fetchOf(
+    latitude: Double,
+    longitude: Double,
+    fetchedAtMillis: Long,
+    providerId: String = ProviderRegistry.OPEN_METEO,
+    hourly: List<HourlyPoint> = listOf(HourlyPoint(fetchedAtMillis, temperatureC = 20.0)),
+  ) = ProviderFetch(
+    descriptor = ProviderRegistry.all.first { it.id == providerId },
+    bundle = ForecastBundle(providerId, fetchedAtMillis, latitude, longitude, hourly),
+    error = null,
+  )
+
+  /** Un provider che non ha risposto. */
+  private fun failureOf(providerId: String) =
+    ProviderFetch(ProviderRegistry.all.first { it.id == providerId }, bundle = null, error = "niente rete")
+
+  /** Un finto coordinatore che restituisce sempre lo stesso giro. */
+  private fun roundSourceOf(round: (Long) -> WeatherRound, clock: () -> Long) = object : RoundSource {
+    override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean) = round(clock())
+  }
+
+  @Test
+  fun `un giro senza risposte lascia l'istantanea dov'era`() = runTest {
+    // Il difetto della 1.1.0: la fusione senza bundle restituisce una previsione VUOTA, non un
+    // errore, e quella finiva salvata sopra l'ultima buona. Una volta sola, e la cache era persa.
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    var clock = now
+    val buono = roundSourceOf({ at -> WeatherRound(listOf(fetchOf(43.8, 11.2, at)), FusedForecast(emptyList(), emptyMap())) }) { clock }
+    WeatherSnapshotRefresher(buono, store) { clock }.refresh("gps", 43.8, 11.2)
+    val salvata = store.read("gps")
+    assertNotNull(salvata)
+
+    clock += 60_000L
+    val aVuoto = roundSourceOf({ WeatherRound(listOf(failureOf(ProviderRegistry.OPEN_METEO)), FusedForecast(emptyList(), emptyMap())) }) { clock }
+    val refresher = WeatherSnapshotRefresher(aVuoto, store) { clock }
+
+    val esito = runCatching { refresher.refresh("gps", 43.8, 11.2) }
+
+    assertTrue("un giro a vuoto deve fallire, non restituire il vuoto", esito.exceptionOrNull() is EmptyRoundException)
+    assertEquals("l'istantanea salvata e' cambiata", salvata!!.fetchedAtMillis, store.read("gps")?.fetchedAtMillis)
+  }
+
+  @Test
+  fun `un giro senza risposte non consuma la semina delle verifiche`() = runTest {
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    var clock = now
+    val aVuoto = roundSourceOf({ WeatherRound(listOf(failureOf(ProviderRegistry.OPEN_METEO)), FusedForecast(emptyList(), emptyMap())) }) { clock }
+    runCatching { WeatherSnapshotRefresher(aVuoto, store) { clock }.refresh("gps", 43.8, 11.2) }
+
+    // Se il fallimento avesse scritto, `predictionsRegisteredAtMillis` sarebbe avanzato e il giro
+    // buono successivo non avrebbe seminato: un'ora di verifiche persa per una mancanza di rete.
+    val seminato = mutableListOf<Boolean>()
+    val buono = object : RoundSource {
+      override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
+        seminato += registerPredictions
+        return WeatherRound(listOf(fetchOf(latitude, longitude, clock)), FusedForecast(emptyList(), emptyMap()))
+      }
+    }
+    WeatherSnapshotRefresher(buono, store) { clock }.refresh("gps", 43.8, 11.2)
+
+    assertEquals(listOf(true), seminato)
+  }
+
+  @Test
+  fun `il contesto si riporta avanti quando Open-Meteo non risponde`() = runTest {
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    var clock = now
+    val conContesto = roundSourceOf({ at ->
+      WeatherRound(
+        listOf(fetchOf(43.8, 11.2, at, hourly = listOf(HourlyPoint(at, temperatureC = 20.0)))),
+        FusedForecast(emptyList(), emptyMap()),
+      )
+    }) { clock }
+    WeatherSnapshotRefresher(conContesto, store) { clock }.refresh("gps", 43.8, 11.2)
+
+    // Un'ora dopo Open-Meteo tace, MET Norway no: le ore fuse sono di adesso, il contesto e' quello
+    // di prima — dichiarato, non spacciato.
+    clock += 3_600_000L
+    val senzaOpenMeteo = roundSourceOf({ at ->
+      WeatherRound(
+        listOf(failureOf(ProviderRegistry.OPEN_METEO), fetchOf(43.8, 11.2, at, providerId = "met-norway")),
+        FusedForecast(emptyList(), emptyMap()),
+      )
+    }) { clock }
+    val dopo = WeatherSnapshotRefresher(senzaOpenMeteo, store) { clock }.refresh("gps", 43.8, 11.2)
+
+    assertNotNull("il contesto non doveva sparire", dopo.context)
+    assertEquals(now, dopo.contextCarriedFromMillis)
+    assertEquals(clock, dopo.fetchedAtMillis)
+  }
+
+  @Test
+  fun `un contesto troppo vecchio non si riporta`() = runTest {
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    var clock = now
+    val conContesto = roundSourceOf({ at -> WeatherRound(listOf(fetchOf(43.8, 11.2, at)), FusedForecast(emptyList(), emptyMap())) }) { clock }
+    WeatherSnapshotRefresher(conContesto, store) { clock }.refresh("gps", 43.8, 11.2)
+
+    clock += WeatherSnapshotRefresher.CONTEXT_CARRY_MAX_AGE_MILLIS + 60_000L
+    val senzaOpenMeteo = roundSourceOf({ at ->
+      WeatherRound(
+        listOf(failureOf(ProviderRegistry.OPEN_METEO), fetchOf(43.8, 11.2, at, providerId = "met-norway")),
+        FusedForecast(emptyList(), emptyMap()),
+      )
+    }) { clock }
+    val dopo = WeatherSnapshotRefresher(senzaOpenMeteo, store) { clock }.refresh("gps", 43.8, 11.2)
+
+    assertNull("un'analisi di quattro ore fa non e' piu' un'analisi", dopo.context)
+    assertNull(dopo.contextCarriedFromMillis)
+  }
+
+  @Test
+  fun `un giro completo non riporta avanti niente`() = runTest {
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    var clock = now
+    val sorgente = roundSourceOf({ at -> WeatherRound(listOf(fetchOf(43.8, 11.2, at)), FusedForecast(emptyList(), emptyMap())) }) { clock }
+    WeatherSnapshotRefresher(sorgente, store) { clock }.refresh("gps", 43.8, 11.2)
+    clock += 3_600_000L
+    val dopo = WeatherSnapshotRefresher(sorgente, store) { clock }.refresh("gps", 43.8, 11.2)
+
+    assertNotNull(dopo.context)
+    assertNull("il contesto e' di questo giro: non c'e' niente da dichiarare", dopo.contextCarriedFromMillis)
+  }
+
+  @Test
+  fun `un JSON senza i campi nuovi si legge ancora`() {
+    // La compatibilita' all'indietro non e' teoria: chi aggiorna ha su disco file scritti dalla
+    // 1.1.0, e buttarli sarebbe proprio il danno che questa fase ripara.
+    val vecchio = WeatherSnapshotCodec.encode(snapshot().copy(contextCarriedFromMillis = null))
+    assertFalse(vecchio.contains("contextCarriedFromMillis"))
+    val riletto = WeatherSnapshotCodec.decode(vecchio)
+
+    assertNotNull(riletto)
+    assertNull(riletto!!.contextCarriedFromMillis)
+    assertEquals(snapshot().fetchedAtMillis, riletto.fetchedAtMillis)
+  }
+
+  @Test
+  fun `il contesto riportato sopravvive al giro per il JSON`() {
+    val con = snapshot().copy(contextCarriedFromMillis = now - 3_600_000L)
+    val riletto = WeatherSnapshotCodec.decode(WeatherSnapshotCodec.encode(con))
+
+    assertEquals(now - 3_600_000L, riletto?.contextCarriedFromMillis)
   }
 
   // ------------------------------------------------------------------- allerte ufficiali

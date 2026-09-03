@@ -118,3 +118,34 @@ data class FusedForecast(
   /** providerId -> peso normalizzato usato (mediato sulle variabili): per la diagnostica. */
   val providerWeights: Map<String, Double>,
 )
+
+/**
+ * Un'ora e mezza: la distanza oltre la quale un'ora prevista non e' piu' "adesso" per chi deve
+ * decidere qualcosa da solo — una notifica di pioggia, una transizione. Chi invece mostra e
+ * dichiara l'eta' del dato (la testata della home) non ha bisogno di questo tetto.
+ */
+const val NOW_WINDOW_MILLIS: Long = 90 * 60_000L
+
+/**
+ * L'ora piu' vicina a [nowMillis], e **quanto dista**. Null se non c'e' nessuna ora.
+ *
+ * Era scritta a mano in otto punti, e in tre di quegli otto c'era un tetto di 90 minuti e negli
+ * altri cinque no: la stessa schermata poteva scrivere "—" al posto della temperatura (tagliata dal
+ * tetto) e "Sereno" appena sotto (non tagliato), leggendo la stessa istantanea.
+ *
+ * La distanza torna insieme al valore proprio perche' la decisione "e' ancora attuale?" e' di chi
+ * guarda, non di chi cerca: una notifica di pioggia non puo' nascere da un'ora di ieri, ma una
+ * testata che dichiara l'eta' dei dati puo' benissimo mostrarla.
+ */
+fun List<FusedHour>.nearestHour(nowMillis: Long): Pair<FusedHour, Long>? =
+  minByOrNull { kotlin.math.abs(it.timestampMillis - nowMillis) }
+    ?.let { it to kotlin.math.abs(it.timestampMillis - nowMillis) }
+
+/** L'ora piu' vicina, solo se dista meno di [withinMillis]: per chi non puo' sbagliare ora. */
+fun List<FusedHour>.hourAround(nowMillis: Long, withinMillis: Long = NOW_WINDOW_MILLIS): FusedHour? =
+  nearestHour(nowMillis)?.takeIf { it.second <= withinMillis }?.first
+
+fun FusedForecast.nearestHour(nowMillis: Long): Pair<FusedHour, Long>? = hours.nearestHour(nowMillis)
+
+fun FusedForecast.hourAround(nowMillis: Long, withinMillis: Long = NOW_WINDOW_MILLIS): FusedHour? =
+  hours.hourAround(nowMillis, withinMillis)

@@ -11,6 +11,7 @@ import dev.pampa.fluidweather.core.model.DeviceCalibration
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NowcastReadiness
 import dev.pampa.fluidweather.core.model.PressureSample
+import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
@@ -86,7 +87,7 @@ class NowcastUseCase(
     record: Boolean = false,
   ): NowcastSnapshot {
     val temperature = snapshot?.fused?.hours
-      ?.minByOrNull { abs(it.timestampMillis - nowMillis) }
+      ?.nearestHour(nowMillis)?.first
       ?.values?.get(FusionVariables.TEMPERATURE)?.value
     val samples = runCatching { pressureRepository.samplesSince(nowMillis - HISTORY_WINDOW_MILLIS) }.getOrDefault(emptyList())
     val calibration = runCatching { calibrationStore.current() }.getOrNull()

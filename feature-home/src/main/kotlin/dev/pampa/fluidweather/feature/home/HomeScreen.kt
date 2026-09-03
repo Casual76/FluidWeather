@@ -47,6 +47,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -117,6 +118,8 @@ import dev.pampa.fluidweather.core.ui.toGlassCeiling
 import dev.pampa.fluidweather.core.ui.toSceneQuality
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
+import dev.pampa.fluidweather.strings.dataAgeLabel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
@@ -624,6 +627,25 @@ private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: H
         style = MaterialTheme.typography.titleSmall.copy(shadow = shadow),
         color = Color.White.copy(alpha = 0.9f),
         modifier = Modifier.padding(top = 2.dp),
+      )
+    }
+    // L'eta' dei dati, una riga sola e solo qui: le tessere non si marcano (decisione dell'utente).
+    // `dataAtMillis` e' fisso ma "adesso" no, quindi senza un orologio la riga si congelerebbe su
+    // "aggiornato 2 h fa" per sempre. Il battito e' della testata: esce di composizione con lei.
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+      while (true) {
+        delay(60_000L)
+        nowMillis = System.currentTimeMillis()
+      }
+    }
+    val age = dataAgeLabel(LocalContext.current.resources, state.dataAtMillis, nowMillis, state.loading)
+    if (age != null) {
+      Text(
+        text = age,
+        style = MaterialTheme.typography.titleSmall.copy(shadow = shadow),
+        color = Color.White.copy(alpha = 0.75f),
+        modifier = Modifier.padding(top = 6.dp),
       )
     }
   }

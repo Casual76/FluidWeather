@@ -31,7 +31,7 @@ class SamplingEngine(
    * si aggancia qui, cosi' il meteo si aggiorna al ritmo del barometro. Un errore li' dentro
    * non tocca il campionamento, che e' gia' in archivio.
    */
-  private val afterPass: suspend () -> Unit = {},
+  private val afterPass: suspend (SampleSource) -> Unit = {},
 ) {
 
   /** Senza sensore niente raffiche: chi vuole tarare lo sa prima di partire. */
@@ -44,12 +44,19 @@ class SamplingEngine(
     if (mode.surveillanceCapable && PressureTrend.callsForSurveillance(currentTrend())) {
       surveillance.start()
     }
-    notifyPassCompleted()
+    notifyPassCompleted(SampleSource.PERIODIC)
   }
 
-  /** Il gancio, anche per chi campiona per conto suo (la sorveglianza): mai un'eccezione fuori. */
-  suspend fun notifyPassCompleted() {
-    runCatching { afterPass() }
+  /**
+   * Il gancio, anche per chi campiona per conto suo: mai un'eccezione fuori.
+   *
+   * [source] dice **chi** ha campionato. Serve perche' il ciclo lo racconti per quello che e':
+   * la sorveglianza passava di qui ogni minuto e arrivava travestita da passata periodica, quindi
+   * la nota della Diagnostica diceva la cosa sbagliata. (La difesa dai giri troppo frequenti non
+   * dipende piu' da questa etichetta — vedi `RefreshBudget` — ma raccontare il falso resta falso.)
+   */
+  suspend fun notifyPassCompleted(source: SampleSource = SampleSource.PERIODIC) {
+    runCatching { afterPass(source) }
   }
 
   /**

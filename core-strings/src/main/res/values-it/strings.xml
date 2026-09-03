@@ -181,7 +181,6 @@
   <string name="cycle_no_weather"> · meteo non disponibile</string>
   <string name="cycle_notifications"> · %1$s notifiche</string>
   <string name="cycle_providers"> · %1$s/%2$s provider</string>
-  <string name="cycle_skipped">tick saltato (troppo vicino al precedente)</string>
   <string name="cycle_snapshot"> (istantanea)</string>
   <string name="cycle_verdict"> · verdetto %1$s</string>
   <string name="cycle_verdict_absent">assente</string>
@@ -425,6 +424,10 @@
   <string name="hapt_system">Aptica di sistema</string>
   <string name="hapt_system_desc">Spenta nelle impostazioni di Android, qui non vibra niente lo stesso</string>
   <string name="hapt_title">Prova i feedback</string>
+  <string name="home_age_minutes">Aggiornato %1$d min fa</string>
+  <string name="home_age_hours">Aggiornato %1$d h fa</string>
+  <string name="home_age_at">Ultimi dati: %1$s</string>
+  <string name="home_age_none">Nessuna previsione disponibile</string>
   <string name="home_banner_rain">Pioggia %1$s: %2$s%%</string>
   <string name="home_max_min">Max %1$s  Min %2$s</string>
   <string name="hourly_col_hour">ora</string>
@@ -743,6 +746,7 @@
   <string name="summary_rain">pioggia %1$s%% verso le %2$s</string>
   <string name="summary_rain_window">: pioggia %1$s%% %2$s</string>
   <string name="summary_temps">max %1$s min %2$s</string>
+  <string name="summary_data_age">Dati delle %1$s.</string>
   <string name="summary_title">Il tempo di oggi</string>
   <string name="summary_title_at">Oggi a %1$s</string>
   <string name="summary_watch">sorveglianza</string>

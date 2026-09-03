@@ -9,13 +9,17 @@ import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.RoomVerificationStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.model.AppNotification
+import dev.pampa.fluidweather.core.model.DataAge
+import dev.pampa.fluidweather.core.model.DataFreshness
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NowcastIssueRecord
 import dev.pampa.fluidweather.core.model.PlattParamsRecord
 import dev.pampa.fluidweather.core.model.OfficialAlert
+import dev.pampa.fluidweather.core.model.hourAround
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
 import dev.pampa.fluidweather.core.weather.NowcastUseCase
@@ -23,6 +27,7 @@ import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.nowcast.cleaning.CalibrationMath
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
+import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.learning.LearningStateBuilder
 import dev.pampa.fluidweather.nowcast.learning.PlattCalibration
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
@@ -129,6 +134,8 @@ class BackgroundCycle(
   private val notificationSettings: NotificationSettingsStore,
   private val ledgerStore: NotificationLedgerStore,
   private val nowcastHistory: NowcastHistoryStore,
+  /** Serve solo alla potatura: la tabella delle verifiche non ha nessun altro che la sfoltisca. */
+  private val verificationStore: RoomVerificationStore,
   private val nowcastUseCase: NowcastUseCase,
   private val barometerRegistrar: BarometerRegistrar,
   private val officialAlerts: OfficialAlertsClient,
@@ -139,18 +146,25 @@ class BackgroundCycle(
   private val texts: NotificationTexts,
   private val clock: () -> Long = System::currentTimeMillis,
   private val zone: () -> ZoneId = { ZoneId.systemDefault() },
+  /**
+   * C'e' almeno un trasporto di rete acceso.
+   *
+   * Solo un risparmio, mai una dichiarazione: la UI non dira' mai "sei offline" per colpa di
+   * questo. "C'e' un trasporto" non e' "i provider hanno risposto" — possono essere raggiungibili
+   * e rispondere tutti 500, o limitare la frequenza, o essere bloccati da un firewall. Qui il
+   * predicato e' volutamente il piu' stupido possibile (proprio niente acceso: modalita' aereo),
+   * perche' cosi' un falso negativo e' impossibile e un falso positivo lo gestisce comunque il
+   * giro che fallisce.
+   *
+   * Il default e' `true`: nessun test esistente cambia comportamento.
+   */
+  private val networkLikelyAvailable: () -> Boolean = { true },
 ) {
 
   private val mutex = Mutex()
-  private var lastTickMillis = 0L
 
   suspend fun run(trigger: CycleTrigger): CycleOutcome = mutex.withLock {
     val now = clock()
-    if (trigger == CycleTrigger.SURVEILLANCE_TICK && now - lastTickMillis < TICK_INTERVAL_MILLIS) {
-      return CycleOutcome(texts.cycleSkipped(), null, null, emptyList())
-    }
-    lastTickMillis = now
-
     val point = resolvePoint()
     if (point == null) {
       val outcome = CycleOutcome(texts.cycleNoPosition(), null, null, emptyList())
@@ -159,10 +173,16 @@ class BackgroundCycle(
     }
     val (key, latitude, longitude) = point
 
-    // 1) Il giro meteo, al ritmo del barometro; la sorveglianza si accontenta di mezz'ora.
+    // 1) Il giro meteo, ma solo se serve davvero: un'istantanea abbastanza giovane vale quanto
+    // un giro nuovo, e costa zero. La soglia e' un fatto dei dati, non di chi ha chiamato
+    // (vedi RefreshBudget), cosi' vale anche per i chiamanti che non esistono ancora.
+    val cadenceMillis = samplingSettings.current().mode.cadenceMinutes * 60_000L
+    val enough = RefreshBudget.enoughMillis(trigger, cadenceMillis)
     val cached = refresher.fresh(key, latitude, longitude, maxAgeMillis = SHOWABLE_AGE_MILLIS)
     val snapshot = when {
-      trigger == CycleTrigger.SURVEILLANCE_TICK && cached != null && cached.ageMillis(now) <= TICK_WEATHER_AGE_MILLIS -> cached
+      cached != null && cached.ageMillis(now) <= enough -> cached
+      // Senza nemmeno un trasporto acceso il giro fallirebbe dopo dieci timeout in parallelo.
+      !networkLikelyAvailable() -> cached
       else -> runCatching { refresher.refresh(key, latitude, longitude) }.getOrNull() ?: cached
     }
 
@@ -217,6 +237,8 @@ class BackgroundCycle(
     }
 
     // 4) La politica decide, il registro ricorda, la consegna sceglie il mezzo.
+    // Stessa soglia della riga in testata: l'app e il centro notifiche devono essere d'accordo su
+    // cosa vuol dire "fresco", e un numero solo e' l'unico modo perche' lo restino.
     val ledger = ledgerStore.current()
     val decision = AlertPolicy.decide(
       texts = texts,
@@ -226,7 +248,12 @@ class BackgroundCycle(
         settings = settings,
         ledger = ledger,
         verdict = verdict,
-        fusedHours = snapshot?.fused?.hours ?: emptyList(),
+        // Le ore fuse servono a decidere l'inizio e la fine della pioggia. Dopo la correzione
+        // del giro a vuoto qui puo' arrivare la previsione IN CACHE, e annunciare "pioggia alle
+        // 16" leggendo un bundle di cinque ore fa sarebbe una bugia con l'orologio sbagliato.
+        // Il barometro invece continua: quello e' il sensore di questo telefono e non aspetta
+        // nessuno — ed e' proprio quando manca la rete che serve di piu'.
+        fusedHours = DataAge.hoursForDecisions(snapshot?.fused?.hours.orEmpty(), snapshot?.fetchedAtMillis, now),
         officialAlerts = alerts,
       ),
     )
@@ -234,7 +261,15 @@ class BackgroundCycle(
     if (decision.cancelNowcastAlert) notifier.cancel(AlertPolicy.NOWCAST_ID)
     var nextLedger = decision.ledger
 
-    // 5) Il riepilogo, quando e' la sua ora e non e' gia' uscito oggi.
+    // 5) La potatura degli archivi, una volta al giorno.
+    //
+    // Qui e non in un lavoro suo: il ramo del riepilogo gira gia' esattamente una volta al giorno
+    // e tiene gia' il mutex, quindi non serve ne' un altro schedulatore ne' un'altra sveglia. Le
+    // quattro funzioni erano tutte scritte e nessuna aveva un chiamante: `pressure_samples`
+    // cresceva per sempre, ed e' proprio l'archivio su cui vive l'offline.
+    if (trigger == CycleTrigger.DAILY_SUMMARY) pruneArchives(now)
+
+    // 6) Il riepilogo, quando e' la sua ora e non e' gia' uscito oggi.
     if (trigger == CycleTrigger.DAILY_SUMMARY && settings.dailySummary) {
       val today = Instant.ofEpochMilli(now).atZone(zone()).toLocalDate().toEpochDay()
       if (nextLedger.summaryEpochDay != today) {
@@ -246,6 +281,7 @@ class BackgroundCycle(
           pressureTrendHpaPerHour = cleaning?.latest?.trendHpaPerHour,
           locationName = context?.locality,
           texts = texts,
+          dataAtMillis = snapshot?.fetchedAtMillis,
         )
         if (summary != null && deliver(summary)) {
           delivered += summary
@@ -270,13 +306,35 @@ class BackgroundCycle(
   }
 
   /** Ogni sei ore la ricalibrazione si ristima sulle coppie (grezza, esito) raccolte. */
+  /**
+   * Le quattro potature, ognuna col suo motivo scritto dove vive la costante.
+   *
+   * `runCatching` una per una: un archivio che non si lascia potare (file bloccato, disco pieno)
+   * non deve impedire agli altri tre di farlo, e soprattutto non deve far fallire il ciclo, che
+   * qui e' arrivato per mandare il riepilogo.
+   */
+  private suspend fun pruneArchives(now: Long) {
+    runCatching { pressureRepository.prune(now) }
+    runCatching { nowcastHistory.prune(now) }
+    runCatching { learningRepository.prune(now) }
+    runCatching { verificationStore.prune(now) }
+  }
+
   private suspend fun maybeRefitPlatt(now: Long) {
     if (now - runCatching { learningStore.lastFitMillis() }.getOrDefault(0L) < REFIT_INTERVAL_MILLIS) return
     runCatching {
       val issues = learningRepository.issuesSince(now - LearningRepository.KEEP_MILLIS)
       val outcomes = learningRepository.outcomesSince(now - LearningRepository.KEEP_MILLIS)
+      // I verdetti nati senza contesto dei provider si registrano comunque — escluderli
+      // introdurrebbe un errore sistematico legato al meteo (si resta senza campo fuori, in
+      // montagna, col brutto tempo, cioe' proprio dove il modello deve essere piu' giusto) e
+      // lascerebbe orfani i loro esiti, che si scrivono dopo e sono chiavati sull'ora d'emissione.
+      // Ma se ce ne sono abbastanza dei completi, la mappa si tara su quelli: due popolazioni con
+      // distribuzioni diverse dentro una regressione sola sono una media di due cose.
+      val withContext = issues.filter { FeatureExtractor.hasContext(it.features.toDoubleArray()) }
+      val corpus = if (withContext.size >= PlattCalibration.MIN_SAMPLES * 2) withContext else issues
       val fitted = listOf("0-1h", "1-3h", "3-6h").mapNotNull { window ->
-        val samples = LearningStateBuilder.samples(window, issues, outcomes)
+        val samples = LearningStateBuilder.samples(window, corpus, outcomes)
         PlattCalibration.fit(samples)?.let { PlattParamsRecord(window, it.a, it.b, samples.size, now) }
       }
       learningStore.save(fitted, fittedAtMillis = now)
@@ -288,7 +346,7 @@ class BackgroundCycle(
   private suspend fun refineCalibration(cleaning: dev.pampa.fluidweather.nowcast.cleaning.CleaningResult?, snapshot: WeatherSnapshot?, now: Long) {
     val record = runCatching { calibrationStore.current() }.getOrNull() ?: return
     val local = cleaning?.cleaned?.lastOrNull()?.takeIf { abs(it.timestampMillis - now) <= 30 * 60_000L } ?: return
-    val hour = snapshot?.fused?.hours?.minByOrNull { abs(it.timestampMillis - now) }?.takeIf { abs(it.timestampMillis - now) <= 90 * 60_000L } ?: return
+    val hour = snapshot?.fused?.hourAround(now) ?: return
     val reference = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return
     runCatching { calibrationStore.save(CalibrationMath.refine(record, local.seaLevelPressureHpa, reference, now)) }
   }
@@ -313,12 +371,6 @@ class BackgroundCycle(
   }
 
   private companion object {
-    /** In sorveglianza il sensore legge ogni minuto; il ciclo ragiona ogni cinque. */
-    const val TICK_INTERVAL_MILLIS = 5 * 60_000L
-
-    /** In sorveglianza il meteo di mezz'ora fa basta: e' il barometro che sta parlando. */
-    const val TICK_WEATHER_AGE_MILLIS = 30 * 60_000L
-
     /** Un'istantanea piu' vecchia di cosi' non si mostra nemmeno come ripiego. */
     const val SHOWABLE_AGE_MILLIS = 12 * 3_600_000L
 

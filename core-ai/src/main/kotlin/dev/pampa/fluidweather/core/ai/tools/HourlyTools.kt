@@ -7,6 +7,7 @@ import dev.pampa.fluidweather.core.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.ApparentTemperature
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.compassPoint
@@ -47,7 +48,7 @@ class NowTool(private val resolver: PlaceResolver) : AiTool {
   override suspend fun run(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
-    val hour = snapshot.fused.hours.minByOrNull { abs(it.timestampMillis - ctx.nowMillis) }
+    val hour = snapshot.fused.nearestHour(ctx.nowMillis)?.first
       ?.takeIf { abs(it.timestampMillis - ctx.nowMillis) <= 90 * 60_000L } ?: return ToolPhrases.NO_DATA
     val u = ctx.units
     val t = hour.value(FusionVariables.TEMPERATURE)

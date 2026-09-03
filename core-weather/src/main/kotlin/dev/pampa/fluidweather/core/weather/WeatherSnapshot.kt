@@ -50,6 +50,13 @@ data class WeatherSnapshot(
   val fetches: List<ProviderFetchSummary>,
   val fused: FusedForecast,
   val context: ForecastBundle?,
+  /**
+   * Da quando viene il [context], se e' stato riportato avanti da un giro precedente.
+   *
+   * Null quando il contesto e' di questo giro (il caso normale). Serve a non far finta che
+   * un'analisi di due ore fa sia di adesso: chi la legge puo' dirlo, e la Diagnostica lo mostra.
+   */
+  val contextCarriedFromMillis: Long? = null,
   /** L'ultima volta che questo giro ha seminato previsioni da verificare (vedi il refresher). */
   val predictionsRegisteredAtMillis: Long? = null,
 ) {
@@ -76,7 +83,13 @@ data class WeatherSnapshot(
           ProviderFetchSummary(it.descriptor.id, it.bundle?.hourly?.size ?: 0, it.error)
         },
         fused = round.fused,
-        context = round.fetches.firstOrNull { it.descriptor.id == ProviderRegistry.OPEN_METEO }?.bundle,
+        // Il contesto e' il bundle GREZZO con le ore passate (analisi), da cui il nowcast prende
+        // 7 delle 16 feature. Prima veniva solo da `open-meteo`: se falliva quello, il contesto
+        // spariva anche con altre cinque varianti Open-Meteo che avevano risposto. Passano tutte
+        // dallo stesso client, con lo stesso `past_hours=6` e le stesse variabili — cambia solo
+        // il modello — quindi una vale l'altra.
+        context = round.fetches.firstOrNull { it.descriptor.id == ProviderRegistry.OPEN_METEO }?.bundle
+          ?: round.fetches.firstOrNull { it.descriptor.id.startsWith(ProviderRegistry.OPEN_METEO) }?.bundle,
       )
   }
 }
@@ -126,6 +139,10 @@ object WeatherSnapshotCodec {
     )
     put("hours", buildJsonArray { snapshot.fused.hours.forEach { add(encodeHour(it)) } })
     snapshot.context?.let { put("context", encodeBundle(it)) }
+    // Chiave opzionale, scritta solo quando c'e': un file vecchio si legge nelle build nuove e
+    // uno nuovo nelle vecchie. Alzare VERSION butterebbe la cache di tutti all'aggiornamento,
+    // che e' esattamente il difetto che questa fase chiude.
+    snapshot.contextCarriedFromMillis?.let { put("contextCarriedFromMillis", it) }
   }.toString()
 
   fun decode(text: String): WeatherSnapshot? {
@@ -154,6 +171,7 @@ object WeatherSnapshotCodec {
       fetches = fetches,
       fused = FusedForecast(hours = hours, providerWeights = weights),
       context = root["context"]?.let { decodeBundle(it) },
+      contextCarriedFromMillis = root["contextCarriedFromMillis"].double()?.toLong(),
       predictionsRegisteredAtMillis = root["predictionsRegisteredAtMillis"].double()?.toLong(),
     )
   }
@@ -340,6 +358,16 @@ class WeatherSnapshotStore(private val directory: File) {
  * sulla semina delle verifiche vive in un posto solo: una passata ogni quarto d'ora seminerebbe
  * quattro volte le stesse previsioni, e le tabelle crescerebbero senza dire niente di nuovo.
  */
+/**
+ * Nessun provider ha risposto.
+ *
+ * E' l'eccezione che quattro `runCatching { refresh(...) }.getOrNull() ?: cached` aspettavano da
+ * sempre: finche' [WeatherSnapshotRefresher.refresh] restituiva un'istantanea VUOTA invece di
+ * fallire, quei ripieghi erano codice morto e il giro a vuoto cancellava la cache.
+ */
+class EmptyRoundException(val attempts: List<ProviderFetchSummary>) :
+  Exception("nessun provider ha risposto (${attempts.size} tentativi)")
+
 class WeatherSnapshotRefresher(
   private val coordinator: RoundSource,
   private val store: WeatherSnapshotStore,
@@ -371,11 +399,34 @@ class WeatherSnapshotRefresher(
     val lastRegistration = previous?.predictionsRegisteredAtMillis
     val register = registerPredictions ?: (lastRegistration == null || now - lastRegistration >= REGISTRATION_INTERVAL_MILLIS)
     val round = coordinator.refresh(latitude, longitude, registerPredictions = register)
-    val snapshot = WeatherSnapshot.from(placeKey, latitude, longitude, round, now).copy(
+    val fresh = WeatherSnapshot.from(placeKey, latitude, longitude, round, now).copy(
       predictionsRegisteredAtMillis = if (register) now else lastRegistration,
     )
+    // Niente risposte, niente scrittura: l'istantanea salvata resta quella buona. Si lancia invece
+    // di restituire null perche' i chiamanti sono gia' scritti per il fallimento, e perche' cosi'
+    // nemmeno `predictionsRegisteredAtMillis` avanza — su zero fetch non si e' seminato niente.
+    if (!round.producedAnything) throw EmptyRoundException(fresh.fetches)
+    val snapshot = fresh.carryingContextFrom(previous, now)
     store.write(snapshot)
     return snapshot
+  }
+
+  /**
+   * Il contesto del giro precedente, quando questo giro non ne ha uno.
+   *
+   * E' l'unico campo che si riporta avanti, e non e' un compromesso: il contesto non e' fuso con
+   * niente, e' un bundle grezzo coi suoi timestamp letto per conto suo dal nowcast e dalle
+   * precipitazioni osservate. Le ore FUSE invece si sostituiscono sempre per intero — innestarci
+   * l'ora di un altro giro darebbe un valore i cui contributori non hanno risposto adesso, pesati
+   * da una classifica che nel frattempo si e' mossa, e la provenienza diventerebbe una finzione.
+   */
+  private fun WeatherSnapshot.carryingContextFrom(previous: WeatherSnapshot?, now: Long): WeatherSnapshot {
+    if (context != null || previous?.context == null) return this
+    val carried = previous.context
+    if (now - carried.fetchedAtMillis > CONTEXT_CARRY_MAX_AGE_MILLIS) return this
+    // Se non copre piu' "adesso" non serve a nessuno: `at()` restituirebbe null comunque.
+    if (carried.at(now) == null) return this
+    return copy(context = carried, contextCarriedFromMillis = carried.fetchedAtMillis)
   }
 
   companion object {
@@ -384,5 +435,15 @@ class WeatherSnapshotRefresher(
 
     /** Oltre tre km l'istantanea e' di un altro posto: la scala di un modello e' ~2 km. */
     const val MAX_DISTANCE_KM: Double = 3.0
+
+    /**
+     * Fin dove si riporta avanti il contesto: tre ore.
+     *
+     * Open-Meteo si chiede con `past_hours=6` proprio perche' porta l'ANALISI recente — pioggia
+     * dell'ultima ora, rotazione del vento. Oltre le tre ore quelle feature si leggerebbero da una
+     * previsione invece che da un'analisi, e smetterebbero di significare cio' su cui il modello
+     * e' stato addestrato.
+     */
+    const val CONTEXT_CARRY_MAX_AGE_MILLIS: Long = 3 * 3_600_000L
   }
 }

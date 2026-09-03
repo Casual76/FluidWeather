@@ -1,6 +1,8 @@
 package dev.pampa.fluidweather.core.cycle
 
 import dev.pampa.fluidweather.core.model.AppNotification
+import dev.pampa.fluidweather.core.model.DataAge
+import dev.pampa.fluidweather.core.model.DataFreshness
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
@@ -23,6 +25,14 @@ object DailySummary {
     pressureTrendHpaPerHour: Double?,
     locationName: String?,
     texts: NotificationTexts,
+    /**
+     * Quando risale il giro dei provider da cui viene questo riepilogo.
+     *
+     * Ha un default perche' i test lo omettono: il riepilogo dichiara l'eta' solo quando c'e'
+     * qualcosa da dichiarare. Senza rete da stanotte il riepilogo esce lo stesso — le temperature
+     * di ieri sera per oggi valgono ancora qualcosa — ma non finge che siano di stamattina.
+     */
+    dataAtMillis: Long? = null,
   ): AppNotification? {
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     val todayHours = hours.filter { Instant.ofEpochMilli(it.timestampMillis).atZone(zone).toLocalDate() == today }
@@ -58,12 +68,16 @@ object DailySummary {
     }
 
     val text = parts.joinToString(" · ")
+    val age = dataAtMillis
+      ?.takeIf { DataAge.of(it, nowMillis) != DataFreshness.FRESH }
+      ?.let { texts.summaryDataAge(it, zone) }
+    val tail = listOfNotNull(barometer.takeIf { it.isNotBlank() }, age).joinToString("\n")
     return AppNotification(
       channel = NotificationChannelKind.DAILY_SUMMARY,
       id = AlertPolicy.SUMMARY_ID,
       title = texts.summaryTitle(locationName),
       text = text,
-      bigText = if (barometer.isNotBlank()) "$text\n$barometer" else text,
+      bigText = if (tail.isNotBlank()) "$text\n$tail" else text,
     )
   }
 }
