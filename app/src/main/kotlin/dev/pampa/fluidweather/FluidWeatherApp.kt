@@ -57,7 +57,10 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
     val store = graph.tutorialStore
     if (store.currentBaseline() != null) return
     if (graph.onboardingStore.done.first()) {
-      store.markSeen(TutorialCatalog.introducedBefore(BuildConfig.VERSION_CODE).map { it.id })
+      // Non `VERSION_CODE`: chi arriva da una versione senza suggerimenti non ha una baseline, e
+      // col versionCode di oggi si segnerebbero visti anche quelli usciti nel frattempo. Il
+      // confine giusto e' fisso: tutto quello che c'era prima che i suggerimenti esistessero.
+      store.markSeen(TutorialCatalog.introducedBefore(TutorialCatalog.WITH_ASSISTANT).map { it.id })
     }
     store.setBaselineVersionCode(BuildConfig.VERSION_CODE)
   }

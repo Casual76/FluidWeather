@@ -31,6 +31,7 @@ import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationUrgency
 import dev.pampa.fluidweather.core.ui.LocalTutorialController
 import dev.pampa.fluidweather.core.ui.TutorialSurface
+import dev.pampa.fluidweather.feature.settings.AppUpdatePrompt
 import dev.pampa.fluidweather.navigation.FluidWeatherNavHost
 import dev.pampa.fluidweather.theme.FluidWeatherTheme
 import androidx.compose.runtime.remember
@@ -79,6 +80,11 @@ class MainActivity : ComponentActivity() {
                 state = notificationHost,
                 modifier = Modifier.align(Alignment.TopCenter),
               )
+              // Il controllo degli aggiornamenti all'apertura: una versione nuova sul canale
+              // scelto si fa avanti da sola, invece di aspettare che qualcuno la vada a cercare.
+              // Non all'onboarding: chi installa adesso ha gia' l'ultima.
+              val updates = remember(graph) { graph.updateDependencies() }
+              AppUpdatePrompt(deps = updates, enabled = done)
             }
           }
         }

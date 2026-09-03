@@ -38,8 +38,8 @@ android {
     applicationId 'dev.pampa.fluidweather'
     minSdk engine.minSdk
     targetSdk engine.compileSdk
-    versionCode 2
-    versionName '1.0.1'
+    versionCode 3
+    versionName '1.0.2'
     manifestPlaceholders = [mapsApiKey: localProperties.getProperty('maps.apiKey', '')]
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
     // La prima release esce su beta (decisione 2026-09-02): chi la installa segue beta finche'

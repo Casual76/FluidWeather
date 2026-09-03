@@ -20,6 +20,7 @@ import dev.antigravity.fluidengine.ui.tutorial.FluidGestureHint
 import dev.antigravity.fluidengine.ui.tutorial.FluidTutorial
 import dev.antigravity.fluidengine.ui.tutorial.FluidTutorialHost
 import dev.antigravity.fluidengine.ui.tutorial.FluidTutorialLabels
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialTouches
 import dev.antigravity.fluidengine.ui.tutorial.LocalFluidTutorialHostState
 import dev.antigravity.fluidengine.ui.tutorial.rememberFluidTutorialHostState
 import dev.pampa.fluidweather.strings.R
@@ -308,7 +309,13 @@ fun TutorialSurface(
   )
   val modalHost = LocalFluidGlassModalHostState.current
   CompositionLocalProvider(LocalFluidTutorialHostState provides host) {
-    Box(Modifier.fillMaxSize()) {
+    // L'osservatore dei tocchi sta QUI, sul contenitore: e' il genitore del contenuto, quindi
+    // vede il tocco per primo senza rubarlo. Sopra il contenuto, invece, se lo prenderebbe tutto.
+    Box(
+      Modifier
+        .fillMaxSize()
+        .fluidTutorialTouches(host),
+    ) {
       content()
       FluidTutorialHost(
         state = host,

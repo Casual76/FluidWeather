@@ -869,9 +869,13 @@
   <string name="update_checking">Controllo…</string>
   <string name="update_downloading">Scarico… %1$s%%</string>
   <string name="update_error">Errore: %1$s</string>
+  <string name="update_failed_title">Aggiornamento non riuscito</string>
   <string name="update_ignore">Salta</string>
   <string name="update_installed">Installata: riapri l\'app</string>
+  <string name="update_later">Piu\' tardi</string>
   <string name="update_latest">Sei all\'ultima versione</string>
+  <string name="update_now">Aggiorna</string>
+  <string name="update_prompt_title">E\' uscita FluidWeather %1$s</string>
   <string name="update_tap_to_check">Tocca per controllare</string>
   <string name="uv_extreme">estremo</string>
   <string name="uv_high">alto</string>
