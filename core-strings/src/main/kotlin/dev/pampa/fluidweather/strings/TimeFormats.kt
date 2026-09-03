@@ -6,6 +6,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Ore e date nel formato del locale: chi vive con le 12 ore vede "3:05 PM", chi vive con le 24
@@ -51,13 +52,39 @@ object TimeFormats {
 
   fun is24Hour(locale: Locale = Locale.getDefault()): Boolean = !pattern("jm", locale).contains('a')
 
-  private fun formatter(skeleton: String, fallback: String, locale: Locale): DateTimeFormatter {
-    val pattern = pattern(skeleton, locale)
-    return runCatching { DateTimeFormatter.ofPattern(pattern, locale) }
-      .getOrElse { DateTimeFormatter.ofPattern(fallback, locale) }
+  /**
+   * I formattatori vivono in una cache, e non e' un'ottimizzazione prematura: una pagina oraria
+   * chiama `fmtHour` una volta per riga — fino a 246 — e ogni chiamata costruiva un
+   * `DateTimeFormatter` nuovo **piu'** un giro in ICU per `getBestDateTimePattern`. Misurato sul
+   * telefono, era una delle due voci che facevano aprire le pagine lunghe a scatti.
+   *
+   * `DateTimeFormatter` e' immutabile e thread-safe per contratto, quindi condividerlo e' corretto.
+   * La chiave include il `Locale` perche' e' un parametro di ogni funzione (l'assistente passa il
+   * suo, che puo' non essere quello di sistema); il cambio di lingua produce chiavi nuove da solo.
+   * Resta un caso che la chiave non vede — l'utente che passa da 12 a 24 ore a lingua invariata —
+   * e per quello c'e' [invalidate], che l'app chiama quando la configurazione cambia.
+   */
+  private val formatters = ConcurrentHashMap<String, DateTimeFormatter>()
+
+  /** Svuota la cache: da chiamare quando la configurazione di sistema cambia. */
+  fun invalidate() {
+    formatters.clear()
+    patterns.clear()
   }
 
+  private fun formatter(skeleton: String, fallback: String, locale: Locale): DateTimeFormatter =
+    formatters.getOrPut("$skeleton|$locale") {
+      val pattern = pattern(skeleton, locale)
+      runCatching { DateTimeFormatter.ofPattern(pattern, locale) }
+        .getOrElse { DateTimeFormatter.ofPattern(fallback, locale) }
+    }
+
+  private val patterns = ConcurrentHashMap<String, String>()
+
   private fun pattern(skeleton: String, locale: Locale): String =
+    patterns.getOrPut("$skeleton|$locale") { bestPattern(skeleton, locale) }
+
+  private fun bestPattern(skeleton: String, locale: Locale): String =
     runCatching { DateFormat.getBestDateTimePattern(locale, skeleton) }
       // 'B' (periodi flessibili del giorno) e 'b' non esistono in java.time: si torna ad AM/PM.
       .getOrDefault("")

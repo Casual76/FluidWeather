@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -286,37 +287,58 @@ private fun HourlyTile(state: HomeUiState) {
 
 // --------------------------------------------------------------------------------- giornaliero
 
+/** Il giornaliero della home, precalcolato: raggruppare 246 ore non e' lavoro da composizione. */
+private class DailyTileModel(
+  val days: List<Triple<java.time.LocalDate, List<Double>, dev.pampa.fluidweather.core.model.WeatherKind?>>,
+  val periodMin: Double,
+  val periodMax: Double,
+  val today: java.time.LocalDate,
+) {
+  companion object {
+    fun of(hours: List<dev.pampa.fluidweather.core.model.FusedHour>, zone: ZoneId, nowMillis: Long): DailyTileModel? {
+      val byDay = hours
+        .groupBy { Instant.ofEpochMilli(it.timestampMillis).atZone(zone).toLocalDate() }
+        .toSortedMap()
+        .entries
+        .take(10)
+      if (byDay.isEmpty()) return null
+      val days = byDay.mapNotNull { (date, list) ->
+        val temps = list.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
+        if (temps.isEmpty()) {
+          null
+        } else {
+          val kind = list.mapNotNull { it.kind }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+          Triple(date, temps, kind)
+        }
+      }
+      val all = days.flatMap { it.second }
+      if (all.isEmpty()) return null
+      return DailyTileModel(days, all.min(), all.max(), Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate())
+    }
+  }
+}
+
 @Composable
 private fun DailyTile(state: HomeUiState) {
-  val zone = ZoneId.systemDefault()
-  val byDay = state.fusedHours
-    .groupBy { Instant.ofEpochMilli(it.timestampMillis).atZone(zone).toLocalDate() }
-    .toSortedMap()
-    .entries
-    .take(10)
-  if (byDay.isEmpty()) {
+  val zone = remember { ZoneId.systemDefault() }
+  // L'ora al passo dell'ora, non del fotogramma: `System.currentTimeMillis()` in composizione
+  // rendeva la chiave sempre diversa, e con lei si rifacevano raggruppamento e ordinamento.
+  val hourStamp = remember(state.fusedHours) { System.currentTimeMillis() / 3_600_000L }
+  val model = remember(state.fusedHours, zone, hourStamp) {
+    DailyTileModel.of(state.fusedHours, zone, hourStamp * 3_600_000L)
+  }
+  if (model == null) {
     EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return
   }
-
-  val allTemps = byDay.flatMap { (_, hours) ->
-    hours.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
-  }
-  if (allTemps.isEmpty()) {
-    EmptyTileBody(stringResource(R.string.tile_no_fused_temperature))
-    return
-  }
-  val periodMin = allTemps.min()
-  val periodMax = allTemps.max()
+  val periodMin = model.periodMin
+  val periodMax = model.periodMax
   val units = rememberUnitFormatter()
-  val today = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(zone).toLocalDate()
-  val dayFormatter = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
+  val today = model.today
+  val dayFormatter = remember { DateTimeFormatter.ofPattern("EEE", Locale.getDefault()) }
 
   Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-    byDay.forEach { (date, hours) ->
-      val temps = hours.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
-      if (temps.isEmpty()) return@forEach
-      val kind = hours.mapNotNull { it.kind }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+    model.days.forEach { (date, temps, kind) ->
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
           text = if (date == today) stringResource(R.string.common_today) else dayFormatter.format(date).replaceFirstChar { it.uppercase() },

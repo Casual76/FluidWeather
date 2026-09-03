@@ -31,6 +31,12 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
 
   override suspend fun rescheduleDailySummary() = graph.rescheduleDailySummary()
 
+  override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+    super.onConfigurationChanged(newConfig)
+    // Lingua o formato dell'ora cambiati: i formattatori in cache sono di ieri.
+    dev.pampa.fluidweather.strings.TimeFormats.invalidate()
+  }
+
   override fun onCreate() {
     super.onCreate()
     graph = AppGraph(this)

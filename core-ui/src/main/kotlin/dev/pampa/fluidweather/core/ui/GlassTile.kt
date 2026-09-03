@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
@@ -35,19 +36,27 @@ fun GlassTile(
   content: @Composable ColumnScope.() -> Unit,
 ) {
   val canvas = LocalFluidCanvasBackdrop.current
-  val shape = ContinuousCornerShape(FluidRadius.Group)
 
   val surface = if (canvas != null) {
     Modifier.glassSurface(
       state = canvas,
       tint = GlassDefaults.contentTint(),
-      shape = shape,
+      shape = TileShape,
       role = GlassRole.Content,
+      // Il ruolo `Content` presume uno sfondo statico e cattura una volta sola per tutta la vita
+      // del nodo. Qui lo sfondo e' un cielo che si muove: quella cattura era il primo fotogramma
+      // di cielo, tenuto per sempre. Da fuori si vedeva come "il vetro si e' fermato", e su una
+      // tessera riciclata dalla griglia come "questa tessera non ha il vetro".
+      sampleOnce = false,
+      // Ma non a ogni fotogramma: nove tessere vive costavano 17 ms in piu' per fotogramma
+      // (misurato sul telefono). Dieci volte al secondo il cielo si muove abbastanza da non
+      // vedere la differenza, e la differenza di costo e' di un fattore dodici.
+      resampleIntervalMillis = 100L,
     )
   } else {
     Modifier.background(
       MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.92f),
-      shape,
+      TileShape,
     )
   }
 
@@ -55,7 +64,7 @@ fun GlassTile(
   Column(
     modifier = modifier
       .fillMaxWidth()
-      .clip(shape)
+      .clip(TileShape)
       .then(surface)
       .then(
         if (onClick != null) {
@@ -73,3 +82,9 @@ fun GlassTile(
     content = content,
   )
 }
+
+/**
+ * La forma delle tessere, allocata una volta sola. Dentro la composizione era un oggetto nuovo a
+ * ogni ricomposizione, e bastava quello a far ricostruire la catena di `RenderEffect` del vetro.
+ */
+private val TileShape: Shape = ContinuousCornerShape(FluidRadius.Group)

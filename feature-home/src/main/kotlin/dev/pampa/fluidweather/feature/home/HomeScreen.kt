@@ -57,6 +57,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -72,9 +73,11 @@ import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onSizeChanged
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassModalHost
+import dev.antigravity.fluidengine.ui.fluid.FluidGlassQuality
 import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassModalHostState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
+import dev.antigravity.fluidengine.ui.fluid.fluidGlassQualityScrollConnection
 import dev.antigravity.fluidengine.ui.fluid.rememberFluidGlassModalHostState
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
@@ -248,13 +251,23 @@ private fun HomeShell(
   var pillBounds by remember { mutableStateOf<Rect?>(null) }
   val modalHost = rememberFluidGlassModalHostState()
 
+  // Quando un foglio nero o il pannello dei posti copre la home, sotto non c'e' niente da
+   // guardare: la scena si ferma, e con lei le registrazioni del vetro che ne dipendono. E'
+   // esattamente il fotogramma in cui la pagina di un widget sta componendo migliaia di nodi.
+  val covered = selectedWidget != null || locationOpen
+  // Durante lo scorrimento le sorgenti si congelano: il riflesso nella barra non insegue piu' il
+  // contenuto per la durata del fling, e in cambio non si ri-registra due volte per fotogramma
+  // tutto quello che c'e' sullo schermo.
+  val scrolling = remember(gridState) { { gridState.isScrollInProgress } }
+
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
       state = SkyState(state.phase, state.kind, state.cloudCover),
       quality = glassLevel.toSceneQuality(),
+      running = !covered,
       modifier = Modifier
         .fillMaxSize()
-        .glassBackdropSource(canvasBackdrop),
+        .glassBackdropSource(canvasBackdrop, frozen = scrolling),
     )
 
     CompositionLocalProvider(
@@ -268,15 +281,20 @@ private fun HomeShell(
         collapse = collapse,
         flingBehavior = snapFling,
         order = order,
+        quality = glassQuality,
         drag = drag,
         onMove = { dragged, target -> liveOrder = GridReorder.moved(order, dragged, target) },
         onDrop = {
-          liveOrder?.let { finalOrder -> scope.launch { deps.layoutStore.setOrder(finalOrder) } }
+          val finalOrder = liveOrder
+          // L'ordine torna a essere quello salvato: tenendo `liveOrder` per sempre, la griglia
+          // ignorava ogni aggiornamento successivo dell'ordine (per esempio dalle impostazioni).
+          liveOrder = null
+          if (finalOrder != null) scope.launch { deps.layoutStore.setOrder(finalOrder) }
         },
         onOpenWidget = { selectedWidget = it },
         modifier = Modifier
           .fillMaxSize()
-          .glassBackdropSource(contentBackdrop),
+          .glassBackdropSource(contentBackdrop, frozen = scrolling),
       )
 
       CompactHeader(
@@ -375,6 +393,7 @@ private fun HomeGrid(
   collapse: HeaderCollapseState,
   flingBehavior: FlingBehavior,
   order: List<String>,
+  quality: FluidGlassQuality,
   drag: GridDragController,
   onMove: (String, String) -> Unit,
   onDrop: () -> Unit,
@@ -382,11 +401,16 @@ private fun HomeGrid(
   modifier: Modifier = Modifier,
 ) {
   val haptics = rememberFluidHaptics()
+  // La leva che l'engine ha e che nessuno tirava: mentre si scorre, lente, dispersione, ombre e
+  // soprattutto la risoluzione della cattura scendono, e risalgono appena il dito si ferma.
+  val qualityScroll = remember(quality) { fluidGlassQualityScrollConnection(quality) }
   LazyVerticalGrid(
     columns = GridCells.Fixed(2),
     state = gridState,
     flingBehavior = flingBehavior,
-    modifier = modifier.pointerInput(haptics) {
+    modifier = modifier
+      .nestedScroll(qualityScroll)
+      .pointerInput(haptics) {
       // Un tick a ogni aggancio, non a ogni fotogramma: il bersaglio resta lo stesso finche' il
       // dito non entra in un'altra cella, e ripetere la vibrazione la renderebbe un ronzio.
       var lastTarget: String? = null

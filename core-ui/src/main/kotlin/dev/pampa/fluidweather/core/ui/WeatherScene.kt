@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.util.lerp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import dev.pampa.fluidweather.core.model.DayPhase
@@ -35,14 +38,28 @@ data class SkyState(
 /**
  * Il cielo animato a tutto schermo: gradiente atmosferico per fase del giorno, nuvole vaporose
  * che scorrono con parallasse, stelle che tremolano nelle notti pulite, pioggia e neve come
- * particelle vere. Tutta la geometria e' allocata una volta (semi fissi) e ogni fotogramma
- * costa solo aritmetica: la scena regge il 120 Hz o si dichiara STATIC, mai a meta'.
+ * particelle vere.
+ *
+ * **Ogni fotogramma di questa scena non costa solo questa scena.** Il cielo e' la sorgente del
+ * vetro: quando si ridisegna, il suo sottoalbero viene registrato di nuovo in un GraphicsLayer e
+ * ogni pannello che lo campiona (nove tessere, la barra, la pillola, i pannelli aperti) rifa' la
+ * propria catena di effetti. Misurato sul telefono il 2026-09-03, a schermo fermo: 213 fotogrammi
+ * in 5 secondi, **tutti** oltre il budget, 69 ms l'uno sul thread della UI. Da qui le tre regole:
+ *
+ * 1. [running] falso quando la scena non si vede (un foglio aperto sopra, l'app in background):
+ *    non e' una decorazione da tenere viva sotto qualcos'altro.
+ * 2. Il tempo avanza al massimo [SceneFrameMillis]: le nuvole si spostano di un centesimo di
+ *    schermo al secondo, e a 30 Hz invece che a 120 nessuno vede la differenza. Tre fotogrammi su
+ *    quattro non toccano piu' nessuno stato, quindi non invalidano niente.
+ * 3. Fuori dal ciclo di vita non si anima: `repeatOnLifecycle(RESUMED)`.
  */
 @Composable
 fun WeatherScene(
   state: SkyState,
   quality: SceneQuality,
   modifier: Modifier = Modifier,
+  /** Falso mentre la scena e' coperta o l'app non e' davanti: il tempo si ferma dov'e'. */
+  running: Boolean = true,
 ) {
   val sky = remember(state) { SkyPalette.sky(state.phase, state.kind, state.cloudCoverPercent) }
 
@@ -55,12 +72,19 @@ fun WeatherScene(
   val animated = quality != SceneQuality.STATIC && !reducedMotion
 
   var frameSeconds by remember { mutableFloatStateOf(0f) }
-  LaunchedEffect(animated) {
-    if (!animated) return@LaunchedEffect
-    val start = awaitFrame()
-    while (true) {
-      val now = awaitFrame()
-      frameSeconds = (now - start) / 1_000_000_000f
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  LaunchedEffect(animated, running, lifecycle) {
+    if (!animated || !running) return@LaunchedEffect
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      // Il tempo riparte da dove si era fermato: riprendendo l'app le nuvole non saltano.
+      val startNanos = awaitFrame() - (frameSeconds * 1_000_000_000f).toLong()
+      var lastWrite = 0L
+      while (true) {
+        val now = awaitFrame()
+        if (now - lastWrite < SceneFrameNanos) continue
+        lastWrite = now
+        frameSeconds = (now - startNanos) / 1_000_000_000f
+      }
     }
   }
 
@@ -232,3 +256,11 @@ private class ParticleField(kind: WeatherKind?, quality: SceneQuality) {
     }
   }
 }
+
+/**
+ * Il passo del cielo: 30 fotogrammi al secondo. Non e' una resa piu' bassa, e' la stessa scena
+ * campionata al ritmo con cui si muove davvero — e su un telefono a 120 Hz sono tre invalidazioni
+ * del vetro risparmiate su quattro.
+ */
+private const val SceneFrameMillis = 33L
+private const val SceneFrameNanos = SceneFrameMillis * 1_000_000L
