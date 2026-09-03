@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.0.2",
+        "releaseDate": "2026-09-03",
+        "changelog": "Correzione: la 1.0.1 si avviava ma non rispondeva al tocco — i suggerimenti al primo uso mettevano uno strato invisibile sopra la pagina che si prendeva tutti i tocchi. Nuovo: l'app controlla gli aggiornamenti a ogni apertura e lo dice con un avviso (Aggiorna, Piu' tardi, Salta questa versione).",
+        "releaseTag": "beta-fluidweather-v1.0.2",
+        "apkAsset": "fluidweather-1.0.2.apk",
+        "sizeBytes": 3880021
+      },
+      {
         "version": "1.0.1",
         "releaseDate": "2026-09-03",
         "changelog": "Assistente IA opzionale, spento di default: con una chiave gratuita di Groq, Gemini o OpenRouter risponde a voce o per iscritto sui dati veri dell'app (nowcast, radar, provider, orari), con aureola e card in vetro. Feedback tattili in tutta l'app, con interruttore in Aspetto e pagina di prova in Diagnostica. Suggerimenti al primo uso: una riga la prima volta che incontri una funzione.",
@@ -33,12 +41,12 @@
       }
     ],
     "beta": {
-      "version": "1.0.2",
+      "version": "1.0.3",
       "releaseDate": "2026-09-03",
-      "changelog": "Correzione: la 1.0.1 si avviava ma non rispondeva al tocco — i suggerimenti al primo uso mettevano uno strato invisibile sopra la pagina che si prendeva tutti i tocchi. Nuovo: l'app controlla gli aggiornamenti a ogni apertura e lo dice con un avviso (Aggiorna, Piu' tardi, Salta questa versione).",
-      "releaseTag": "beta-fluidweather-v1.0.2",
-      "apkAsset": "fluidweather-1.0.2.apk",
-      "sizeBytes": 3880021
+      "changelog": "Correzioni: i feedback tattili non si sentivano da nessuna parte (mancava il permesso VIBRATE) e la home andava a scatti con i suggerimenti accesi. Nuovo: un quaderno degli errori in Impostazioni, Diagnostica — se l'app si chiude da sola, ora lascia la traccia e la si puo' copiare. Questa versione e' piu' pesante di proposito: niente offuscamento, cosi' le tracce si leggono.",
+      "releaseTag": "beta-fluidweather-v1.0.3",
+      "apkAsset": "fluidweather-1.0.3.apk",
+      "sizeBytes": 17533095
     }
   },
   "engine": {
