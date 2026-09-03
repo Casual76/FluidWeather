@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.collectAsState
 import dev.antigravity.fluidengine.ui.fluid.FluidButton
+import dev.antigravity.fluidengine.ui.fluid.FluidButtonSize
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
@@ -36,6 +37,7 @@ import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.ai.AiAssistant
+import dev.pampa.fluidweather.core.data.CrashLog
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
@@ -89,6 +91,8 @@ class DiagnosticsDependencies(
   val locationProvider: LocationProvider,
   /** La sezione dell'assistente (fase 19): ultime richieste, token, quote. */
   val assistant: AiAssistant,
+  /** Il quaderno degli errori (1.0.3): quello che l'app ha da raccontare quando e' caduta. */
+  val crashLog: CrashLog,
 )
 
 /**
@@ -106,6 +110,7 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
   val sampleCount by remember { deps.repository.count() }.collectAsState(initial = 0L)
   val live by remember { deps.barometer.readings() }.collectAsState(initial = null)
   val burst by deps.burstController.progress.collectAsState()
+  val crashes by deps.crashLog.records.collectAsState()
 
   // La raffica che arriva in fondo si sente: e' l'unico modo di accorgersene senza guardare.
   val haptics = rememberFluidHaptics()
@@ -298,6 +303,45 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
             title = stringResource(R.string.diag_grant_permissions),
             subtitle = stringResource(R.string.diag_grant_permissions_desc),
             onClick = { permissionLauncher.launch(missingPermissions.toTypedArray()) },
+          )
+        }
+      }
+    }
+
+    if (crashes.isNotEmpty()) {
+      item { FluidSectionHeader(title = stringResource(R.string.diag_errors), detail = stringResource(R.string.diag_errors_desc)) }
+      item {
+        FluidListGroup {
+          crashes.forEachIndexed { index, crash ->
+            if (index > 0) FluidListDivider()
+            FluidListRow(
+              title = crash.summary,
+              subtitle = crash.stackTrace.lines().firstOrNull { it.trimStart().startsWith("at dev.pampa") }?.trim()
+                ?: crash.stackTrace.lines().getOrNull(1)?.trim().orEmpty(),
+              meta = "${crash.time} · ${crash.label}",
+              badge = {
+                FluidButton(
+                  text = stringResource(R.string.diag_errors_copy),
+                  style = FluidButtonStyle.Tinted,
+                  size = FluidButtonSize.Small,
+                  onClick = {
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    val text = listOf(
+                      "${crash.time} · ${crash.label}",
+                      crash.summary,
+                      crash.stackTrace,
+                    ).joinToString(separator = System.lineSeparator())
+                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("FluidWeather", text))
+                  },
+                )
+              },
+            )
+          }
+          FluidListDivider()
+          FluidListRow(
+            title = stringResource(R.string.diag_errors_clear),
+            subtitle = stringResource(R.string.diag_errors_clear_desc),
+            onClick = { deps.crashLog.clear() },
           )
         }
       }

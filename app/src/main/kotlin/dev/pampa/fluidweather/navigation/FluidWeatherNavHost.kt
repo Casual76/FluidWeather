@@ -350,6 +350,7 @@ private fun FluidWeatherRoutes(
           fusionCoordinator = graph.fusionCoordinator,
           locationProvider = graph.locationProvider,
           assistant = graph.aiAssistant,
+          crashLog = graph.crashLog,
         )
       }
       DiagnosticsScreen(

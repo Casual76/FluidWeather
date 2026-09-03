@@ -171,6 +171,8 @@
   <string name="common_wind">Vento</string>
   <string name="common_yesterday">Ieri</string>
   <string name="compass_points">N,NNE,NE,ENE,E,ESE,SE,SSE,S,SSO,SO,OSO,O,ONO,NO,NNO</string>
+  <string name="crash_banner_text">La traccia e\' in Impostazioni, Diagnostica</string>
+  <string name="crash_banner_title">L\'app si e\' chiusa da sola</string>
   <string name="cycle_no_position">nessuna posizione: né GPS né località salvate</string>
   <string name="cycle_no_weather"> · meteo non disponibile</string>
   <string name="cycle_notifications"> · %1$s notifiche</string>
@@ -235,6 +237,11 @@
   <string name="diag_burst_progress">%1$s / %2$s s</string>
   <string name="diag_burst_running">Raffica in corso</string>
   <string name="diag_clean_title">Segnale pulito — stadi 1-2</string>
+  <string name="diag_errors">Errori</string>
+  <string name="diag_errors_clear">Svuota il quaderno</string>
+  <string name="diag_errors_clear_desc">Una volta mandata la traccia, qui non serve piu\'</string>
+  <string name="diag_errors_copy">Copia</string>
+  <string name="diag_errors_desc">Quello che l\'app ha da dire su quando e\' caduta</string>
   <string name="diag_fused">Forecast fuso</string>
   <string name="diag_fused_desc">Ogni valore tracciabile alla sua fonte e al suo peso</string>
   <string name="diag_grant_permissions">Concedi i permessi</string>

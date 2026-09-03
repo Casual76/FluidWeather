@@ -171,6 +171,8 @@
   <string name="common_wind">Wind</string>
   <string name="common_yesterday">Yesterday</string>
   <string name="compass_points">N,NNE,NE,ENE,E,ESE,SE,SSE,S,SSW,SW,WSW,W,WNW,NW,NNW</string>
+  <string name="crash_banner_text">The trace is in Settings, Diagnostics</string>
+  <string name="crash_banner_title">The app closed unexpectedly</string>
   <string name="cycle_no_position">no position: neither GPS nor saved places</string>
   <string name="cycle_no_weather"> · weather not available</string>
   <string name="cycle_notifications"> · %1$s notifications</string>
@@ -235,6 +237,11 @@
   <string name="diag_burst_progress">%1$s / %2$s s</string>
   <string name="diag_burst_running">Burst in progress</string>
   <string name="diag_clean_title">Clean signal — stages 1-2</string>
+  <string name="diag_errors">Errors</string>
+  <string name="diag_errors_clear">Clear the log</string>
+  <string name="diag_errors_clear_desc">Once the trace has been sent, it is of no use here</string>
+  <string name="diag_errors_copy">Copy</string>
+  <string name="diag_errors_desc">What the app has to say about when it fell over</string>
   <string name="diag_fused">Fused forecast</string>
   <string name="diag_fused_desc">Every value traceable to its source and weight</string>
   <string name="diag_grant_permissions">Grant permissions</string>

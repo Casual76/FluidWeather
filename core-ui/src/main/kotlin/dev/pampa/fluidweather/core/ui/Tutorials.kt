@@ -11,6 +11,7 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -347,7 +348,8 @@ fun TutorialSlot(
   val seen by controller.seen.collectAsState()
   val disabled by controller.disabled.collectAsState()
 
-  val candidates = TutorialCatalog.forScreen(screen).map { entry ->
+  val entries = remember(screen) { TutorialCatalog.forScreen(screen) }
+  val candidates = entries.map { entry ->
     entry to FluidTutorial(
       id = entry.id,
       priority = entry.priority,

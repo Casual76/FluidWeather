@@ -165,6 +165,9 @@ fun AiKeySetup(
             verifying = true
             outcome = null
             scope.launch {
+              // Tutto dentro un solo try: qui si tocca il Keystore, il disco e la rete, e un
+              // errore qualsiasi faceva cadere l'app invece di dire cos'era andato storto.
+              try {
               if (input.isNotBlank()) assistant.keys.set(provider, input)
               when (val result = assistant.verifier.verify(provider)) {
                 is VerifyResult.Ok -> {
@@ -187,6 +190,14 @@ fun AiKeySetup(
                   outcomeError = true
                   haptics.play(FluidHapticEvent.Error)
                 }
+              }
+              } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+              } catch (e: Throwable) {
+                assistant.reportError(e, "verifica chiave ${provider.id}")
+                outcome = failedPrefix.trim().trimEnd(':') + ": " + (e.message ?: e::class.java.simpleName)
+                outcomeError = true
+                haptics.play(FluidHapticEvent.Error)
               }
               verifying = false
             }

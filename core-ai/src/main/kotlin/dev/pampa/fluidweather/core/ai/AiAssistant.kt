@@ -48,6 +48,12 @@ class AiAssistant(
   rainViewer: RainViewerClient,
   sources: (RadarSampler) -> AiDataSources,
   remoteConfig: EngineRemoteConfig,
+  /**
+   * Dove finiscono gli errori che l'assistente cattura invece di far cadere l'app: il quaderno
+   * della Diagnostica. Un "verifica non riuscita" sullo schermo non dice niente a nessuno; la
+   * traccia, si'.
+   */
+  val reportError: (Throwable, String) -> Unit = { _, _ -> },
 ) {
   private val appContext = context.applicationContext
 

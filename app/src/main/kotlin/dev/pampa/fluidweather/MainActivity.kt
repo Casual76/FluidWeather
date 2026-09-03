@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -33,6 +34,7 @@ import dev.pampa.fluidweather.core.ui.LocalTutorialController
 import dev.pampa.fluidweather.core.ui.TutorialSurface
 import dev.pampa.fluidweather.feature.settings.AppUpdatePrompt
 import dev.pampa.fluidweather.navigation.FluidWeatherNavHost
+import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.theme.FluidWeatherTheme
 import androidx.compose.runtime.remember
 import dev.antigravity.fluidengine.foundation.EngineConfig
@@ -68,6 +70,7 @@ class MainActivity : ComponentActivity() {
           // di sistema (decisione 2026-09-02): l'host sta alla radice, sopra la navigazione.
           val notificationHost = rememberFluidNotificationHostState()
           InAppAlertsEffect(graph, notificationHost)
+          CrashNoticeEffect(graph, notificationHost)
           CompositionLocalProvider(
             LocalFluidNotificationHostState provides notificationHost,
             LocalTutorialController provides graph.tutorialController,
@@ -116,6 +119,30 @@ private fun ContinuousSamplingEffect(graph: AppGraph) {
     lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
       graph.continuousMonitor.run()
     }
+  }
+}
+
+/**
+ * Se l'ultimo avvio si e' chiuso da solo, l'app lo dice una volta e indica dove guardare. Senza,
+ * chi la sta provando puo' solo dire "e' crashata", che non basta a nessuno per capire.
+ */
+@Composable
+private fun CrashNoticeEffect(graph: AppGraph, host: FluidNotificationHostState) {
+  val crashes by graph.crashLog.records.collectAsState()
+  val title = stringResource(R.string.crash_banner_title)
+  val text = stringResource(R.string.crash_banner_text)
+  LaunchedEffect(crashes.firstOrNull()?.atMillis) {
+    val latest = crashes.firstOrNull() ?: return@LaunchedEffect
+    if (!graph.crashNoticeShown.compareAndSet(false, true)) return@LaunchedEffect
+    host.show(
+      FluidNotification(
+        id = "crash-${latest.atMillis}",
+        title = title,
+        message = text,
+        tone = FluidNotificationTone.Warning,
+        durationMillis = 7_000L,
+      ),
+    )
   }
 }
 

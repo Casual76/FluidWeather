@@ -3,6 +3,7 @@ package dev.pampa.fluidweather
 import android.content.Context
 import dev.antigravity.fluidengine.net.EngineHttp
 import dev.antigravity.fluidengine.storage.EngineSettingsStore
+import dev.pampa.fluidweather.core.data.CrashLog
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.cycle.AppVisibility
 import dev.pampa.fluidweather.core.cycle.BackgroundCycle
@@ -106,6 +107,13 @@ class AppGraph(context: Context) {
   val engineSettingsStore = EngineSettingsStore(context)
   val calibrationStore = CalibrationStore(context)
   val onboardingStore = OnboardingStore(context)
+
+  /** Il quaderno degli errori (1.0.3): un'app in prova senza computer attaccato, quando cade, non
+   * lascerebbe niente. La Diagnostica lo mostra e lo fa copiare. */
+  val crashLog = CrashLog(File(context.filesDir, "diagnostics/crash-log.txt"))
+
+  /** Il banner della caduta si mostra una volta per avvio, non a ogni ricomposizione. */
+  val crashNoticeShown = java.util.concurrent.atomic.AtomicBoolean(false)
 
   /** Cosa e' gia' stato spiegato (fase 21), e il controllore che la UI osserva. */
   val tutorialStore = TutorialStore(context)
@@ -291,6 +299,7 @@ class AppGraph(context: Context) {
     appTitle = "FluidWeather",
     rainViewer = rainViewerClient,
     remoteConfig = remoteConfig,
+    reportError = { error, label -> crashLog.record(error, label) },
     sources = { radarSampler ->
       AiDataSources(
         snapshotRefresher = snapshotRefresher,

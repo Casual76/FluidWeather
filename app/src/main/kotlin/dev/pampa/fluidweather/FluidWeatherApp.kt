@@ -34,6 +34,8 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
   override fun onCreate() {
     super.onCreate()
     graph = AppGraph(this)
+    // Per primo, prima di tutto quello che potrebbe cadere: se cade il resto, la traccia resta.
+    graph.crashLog.install(BuildConfig.VERSION_NAME)
     // I canali esistono prima della prima notifica: Android li vuole registrati, sempre.
     NotificationChannels.ensure(this)
     graph.activityRecognizer.start()
