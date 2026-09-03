@@ -12,6 +12,8 @@ import dev.pampa.fluidweather.core.cycle.DailySummaryAlarm
 import dev.pampa.fluidweather.core.cycle.InAppAlertBus
 import dev.pampa.fluidweather.core.cycle.PlaceContextResolver
 import dev.pampa.fluidweather.core.cycle.SystemNotifier
+import dev.pampa.fluidweather.core.ai.AiAssistant
+import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.LearningRepository
 import dev.pampa.fluidweather.core.data.LearningStore
@@ -49,6 +51,7 @@ import dev.pampa.fluidweather.core.weather.UrlCache
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
 import dev.pampa.fluidweather.core.weather.WeatherRepository
+import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.buildWeatherClients
 import java.io.File
@@ -164,6 +167,16 @@ class AppGraph(context: Context) {
   /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */
   val cleaningPipeline = CleaningPipeline()
 
+  /** Gli stadi 1-5 in un punto solo (fase 19): lo usano la home, il ciclo in background e l'assistente. */
+  val nowcastUseCase = NowcastUseCase(
+    pressureRepository = pressureRepository,
+    cleaningPipeline = cleaningPipeline,
+    calibrationStore = calibrationStore,
+    learningRepository = learningRepository,
+    learningStore = learningStore,
+    nowcastHistory = nowcastHistoryStore,
+  )
+
   val samplingEngine = SamplingEngine(
     barometer = barometer,
     locationProvider = locationProvider,
@@ -218,6 +231,7 @@ class AppGraph(context: Context) {
     notificationSettings = notificationSettingsStore,
     ledgerStore = notificationLedgerStore,
     nowcastHistory = nowcastHistoryStore,
+    nowcastUseCase = nowcastUseCase,
     barometerRegistrar = BarometerRegistrar { verdict, at -> fusionCoordinator.registerBarometer(verdict, at) },
     officialAlerts = officialAlertsClient,
     placeContext = PlaceContextResolver(context),
@@ -252,6 +266,48 @@ class AppGraph(context: Context) {
     return CalibrationReference(msl, hour.values[FusionVariables.TEMPERATURE]?.value)
   }
 
+  // L'assistente IA (fase 19): chiavi cifrate, tre provider, tool sui dati, radar numerico, voce.
+  val aiAssistant = AiAssistant(
+    context = appContext,
+    scope = applicationScope,
+    engineHttp = engineHttp,
+    userAgent = Release.userAgent,
+    referer = Release.REPOSITORY_URL,
+    appTitle = "FluidWeather",
+    rainViewer = rainViewerClient,
+    remoteConfig = remoteConfig,
+    sources = { radarSampler ->
+      AiDataSources(
+        snapshotRefresher = snapshotRefresher,
+        snapshotStore = weatherSnapshotStore,
+        nowcast = nowcastUseCase,
+        pressureRepository = pressureRepository,
+        nowcastHistory = nowcastHistoryStore,
+        samplingSettings = samplingSettingsStore,
+        calibrationStore = calibrationStore,
+        calibrationController = calibrationController,
+        locationProvider = locationProvider,
+        savedLocations = savedLocationsRepository,
+        selectedPlaceStore = selectedPlaceStore,
+        geocodingClient = geocodingClient,
+        airQualityClient = airQualityClient,
+        officialAlerts = officialAlertsClient,
+        placeContext = PlaceContextResolver(appContext),
+        verificationStore = verificationStore,
+        fusionSettings = fusionSettingsStore,
+        providerKeys = providerKeysStore,
+        weatherRepository = weatherRepository,
+        rainViewer = rainViewerClient,
+        radarSampler = radarSampler,
+        observations = observationRepository,
+        notificationSettings = notificationSettingsStore,
+        notificationLedger = notificationLedgerStore,
+        manualBurst = manualBurstController,
+        unitsStore = unitsStore,
+      )
+    },
+  )
+
   /** Dati e privacy: via tutto l'archivio locale; le impostazioni restano. */
   suspend fun wipeAllData() {
     pressureRepository.clear()
@@ -264,6 +320,8 @@ class AppGraph(context: Context) {
     notificationLedgerStore.update { NotificationLedger() }
     weatherSnapshotStore.clear()
     File(appContext.cacheDir, "providers").deleteRecursively()
+    File(appContext.cacheDir, "radar-tiles").deleteRecursively()
+    aiAssistant.diagnostics.clear()
   }
 
   /** Il riepilogo giornaliero segue l'impostazione: programmato all'ora scelta, o cancellato. */

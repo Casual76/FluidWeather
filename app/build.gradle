@@ -105,10 +105,12 @@ dependencies {
   implementation project(':feature-benchmark')
   implementation project(':feature-settings')
   implementation project(':feature-report')
+  implementation project(':feature-assistant')  // l'assistente IA (fase 19)
   implementation project(':core-ui')
   implementation project(':core-sensor')      // porta con se' core-data e core-model (api)
   implementation project(':core-weather')     // il livello provider (fase 6)
   implementation project(':core-cycle')       // ciclo in background e notifiche (fase 11)
+  implementation project(':core-ai')          // assistente IA: provider, tool, orchestratore (fase 19)
 
   implementation project(':engine-ui')        // design system (porta con se' Compose e engine-foundation)
   implementation project(':engine-storage')   // impostazioni su DataStore

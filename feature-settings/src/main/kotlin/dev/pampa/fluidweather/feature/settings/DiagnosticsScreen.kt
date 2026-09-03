@@ -28,7 +28,9 @@ import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.feature.assistant.aiDiagnosticsSection
 import dev.pampa.fluidweather.core.data.SamplingSettings
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.model.ManualBurst
@@ -76,6 +78,8 @@ class DiagnosticsDependencies(
   val cleaningPipeline: CleaningPipeline,
   val fusionCoordinator: FusionCoordinator,
   val locationProvider: LocationProvider,
+  /** La sezione dell'assistente (fase 19): ultime richieste, token, quote. */
+  val assistant: AiAssistant,
 )
 
 /**
@@ -388,6 +392,8 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit) {
         }
       }
     }
+
+    aiDiagnosticsSection(deps.assistant)
   }
 }
 

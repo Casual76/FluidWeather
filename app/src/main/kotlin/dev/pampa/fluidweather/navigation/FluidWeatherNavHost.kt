@@ -17,6 +17,18 @@ import dev.pampa.fluidweather.BuildConfig
 import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkDependencies
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
+import dev.pampa.fluidweather.core.ai.tools.OpenTarget
+import dev.pampa.fluidweather.core.ui.HomeWidget
+import dev.pampa.fluidweather.feature.assistant.AiSettingsDependencies
+import dev.pampa.fluidweather.feature.assistant.AiSettingsScreen
+import dev.pampa.fluidweather.feature.assistant.AssistantNavigator
+import dev.pampa.fluidweather.feature.assistant.AssistantOverlay
+import dev.pampa.fluidweather.feature.assistant.AssistantOverlayState
+import dev.pampa.fluidweather.feature.assistant.OverlayMode
+import dev.pampa.fluidweather.feature.home.HomeAssistantBar
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeScreen
 import dev.pampa.fluidweather.feature.radar.RadarDependencies
@@ -60,6 +72,7 @@ private object Routes {
   const val Settings = "settings"
   const val Engine = "settings/engine"
   const val Providers = "settings/providers"
+  const val Ai = "settings/ai"
   const val Notifications = "settings/notifications"
   const val Appearance = "settings/appearance"
   const val Units = "settings/units"
@@ -134,6 +147,7 @@ private fun FluidWeatherRoutes(
           activityRecognizer = graph.activityRecognizer,
           onboardingStore = graph.onboardingStore,
           calibrationController = graph.calibrationController,
+          assistant = graph.aiAssistant,
         )
       }
       OnboardingScreen(
@@ -159,6 +173,7 @@ private fun FluidWeatherRoutes(
           learningRepository = graph.learningRepository,
           learningStore = graph.learningStore,
           cleaningPipeline = graph.cleaningPipeline,
+          nowcast = graph.nowcastUseCase,
           airQualityClient = graph.airQualityClient,
           appearanceStore = graph.appearanceSettingsStore,
           layoutStore = graph.homeLayoutStore,
@@ -170,12 +185,62 @@ private fun FluidWeatherRoutes(
       }
       var benchmarkOpen by remember { mutableStateOf(false) }
       var reportOpen by remember { mutableStateOf(false) }
+      var requestedWidget by remember { mutableStateOf<HomeWidget?>(null) }
+      // L'assistente (fase 19): il tasto nella barra, l'overlay sopra la home, i deep link.
+      val assistant = graph.aiAssistant
+      val assistantEnabled by assistant.enabled.collectAsState(initial = false)
+      val assistantState by assistant.session.state.collectAsState()
+      val overlayState = remember { AssistantOverlayState() }
+      val scope = rememberCoroutineScope()
+      val navigator = remember(graph, navController) {
+        object : AssistantNavigator {
+          override fun open(target: OpenTarget) {
+            when (target) {
+              OpenTarget.RADAR -> navController.navigate(Routes.Radar)
+              OpenTarget.BENCHMARK -> benchmarkOpen = true
+              OpenTarget.REPORT -> reportOpen = true
+              OpenTarget.SETTINGS -> navController.navigate(Routes.Settings)
+              OpenTarget.AI_SETTINGS -> navController.navigate(Routes.Ai)
+              OpenTarget.NOWCAST -> requestedWidget = HomeWidget.NOWCAST
+              OpenTarget.HOURLY -> requestedWidget = HomeWidget.HOURLY
+              OpenTarget.DAILY -> requestedWidget = HomeWidget.DAILY
+              OpenTarget.PRECIPITATION -> requestedWidget = HomeWidget.PRECIPITATION
+              OpenTarget.PRESSURE -> requestedWidget = HomeWidget.PRESSURE
+              OpenTarget.AIR_QUALITY -> requestedWidget = HomeWidget.AIR_QUALITY
+              OpenTarget.SUN -> requestedWidget = HomeWidget.SUN
+              OpenTarget.MOON -> requestedWidget = HomeWidget.MOON
+              OpenTarget.DETAILS -> requestedWidget = HomeWidget.DETAILS
+            }
+          }
+
+          override fun selectPlace(name: String) {
+            scope.launch {
+              val saved = graph.savedLocationsRepository.places.first().firstOrNull { !it.isGps && it.name.equals(name, ignoreCase = true) }
+              val place = saved ?: runCatching { graph.geocodingClient.search(name) }.getOrNull()?.firstOrNull()?.also { graph.savedLocationsRepository.save(it) }
+              place?.let { graph.selectedPlaceStore.select(it.id) }
+            }
+          }
+        }
+      }
       HomeScreen(
         deps = homeDeps,
         onOpenRadar = { navController.navigate(Routes.Radar) },
         onOpenBenchmark = { benchmarkOpen = true },
         onOpenSettings = { navController.navigate(Routes.Settings) },
         onOpenReport = { reportOpen = true },
+        assistant = HomeAssistantBar(
+          enabled = assistantEnabled,
+          working = assistantState.isBusy,
+          onTap = { overlayState.openVoice() },
+          onLongPress = { overlayState.openText() },
+        ),
+        requestedWidget = requestedWidget,
+        onWidgetConsumed = { requestedWidget = null },
+        overlay = { chrome ->
+          if (assistantEnabled || overlayState.mode != OverlayMode.HIDDEN) {
+            AssistantOverlay(assistant = assistant, overlay = overlayState, backdrop = chrome, navigator = navigator)
+          }
+        },
       )
       val benchmarkDeps = remember(graph) {
         BenchmarkDependencies(
@@ -211,6 +276,7 @@ private fun FluidWeatherRoutes(
         onBack = { navController.popBackStack() },
         onOpenEngine = { navController.navigate(Routes.Engine) },
         onOpenProviders = { navController.navigate(Routes.Providers) },
+        onOpenAi = { navController.navigate(Routes.Ai) },
         onOpenNotifications = { navController.navigate(Routes.Notifications) },
         onOpenAppearance = { navController.navigate(Routes.Appearance) },
         onOpenUnits = { navController.navigate(Routes.Units) },
@@ -239,6 +305,12 @@ private fun FluidWeatherRoutes(
         ProvidersDependencies(providerKeys = graph.providerKeysStore, fusionSettings = graph.fusionSettingsStore)
       }
       ProvidersScreen(deps = deps, onBack = { navController.popBackStack() })
+    }
+    composable(Routes.Ai) {
+      val deps = remember(graph) {
+        AiSettingsDependencies(assistant = graph.aiAssistant, onOpenDiagnostics = { navController.navigate(Routes.Diagnostics) })
+      }
+      AiSettingsScreen(deps = deps, onBack = { navController.popBackStack() })
     }
     composable(Routes.Notifications) {
       val deps = remember(graph) {
@@ -274,6 +346,7 @@ private fun FluidWeatherRoutes(
           cleaningPipeline = graph.cleaningPipeline,
           fusionCoordinator = graph.fusionCoordinator,
           locationProvider = graph.locationProvider,
+          assistant = graph.aiAssistant,
         )
       }
       DiagnosticsScreen(deps = deps, onBack = { navController.popBackStack() })

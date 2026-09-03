@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -41,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -121,6 +123,13 @@ fun HomeScreen(
   onOpenBenchmark: () -> Unit,
   onOpenSettings: () -> Unit,
   onOpenReport: () -> Unit,
+  /** Il tasto dell'assistente nella barra (fase 19); null = niente tasto. */
+  assistant: HomeAssistantBar? = null,
+  /** Una pagina nera di widget chiesta da fuori (l'assistente, un chip): si apre e si consuma. */
+  requestedWidget: HomeWidget? = null,
+  onWidgetConsumed: () -> Unit = {},
+  /** Cio' che sta sopra tutto (l'overlay dell'assistente), col backdrop della chrome per il vetro. */
+  overlay: @Composable BoxScope.(GlassBackdropState) -> Unit = {},
 ) {
   val context = LocalContext.current
   val appearance by deps.appearanceStore.settings.collectAsState(initial = AppearanceSettings())
@@ -149,6 +158,10 @@ fun HomeScreen(
       onOpenBenchmark = onOpenBenchmark,
       onOpenSettings = onOpenSettings,
       onOpenReport = onOpenReport,
+      assistant = assistant,
+      requestedWidget = requestedWidget,
+      onWidgetConsumed = onWidgetConsumed,
+      overlay = overlay,
     )
   }
 }
@@ -164,6 +177,10 @@ private fun HomeShell(
   onOpenBenchmark: () -> Unit,
   onOpenSettings: () -> Unit,
   onOpenReport: () -> Unit,
+  assistant: HomeAssistantBar?,
+  requestedWidget: HomeWidget?,
+  onWidgetConsumed: () -> Unit,
+  overlay: @Composable BoxScope.(GlassBackdropState) -> Unit,
 ) {
   val canvasBackdrop = rememberGlassBackdrop()
   val contentBackdrop = rememberGlassBackdrop()
@@ -198,6 +215,13 @@ private fun HomeShell(
   val order = liveOrder ?: HomeWidget.ordered(storedOrder).map { it.id }
   val drag = remember(gridState) { GridDragController(gridState) }
   var selectedWidget by remember { mutableStateOf<HomeWidget?>(null) }
+  // Un widget chiesto da fuori (assistente, chip) apre la sua pagina nera come un tocco.
+  LaunchedEffect(requestedWidget) {
+    if (requestedWidget != null) {
+      selectedWidget = requestedWidget
+      onWidgetConsumed()
+    }
+  }
 
   // La pillola e il suo pannello: il pannello nasce dal rettangolo della pillola.
   var locationOpen by remember { mutableStateOf(false) }
@@ -263,6 +287,7 @@ private fun HomeShell(
         onOpenSettings = onOpenSettings,
         onOpenReport = onOpenReport,
         onLocationTap = { locationOpen = true },
+        assistant = assistant,
         onLocationSwipe = { forward ->
           val target = if (forward) {
             PlaceCycle.next(places, selectedPlace.id)
@@ -301,6 +326,8 @@ private fun HomeShell(
       )
       // Ultimo nella scatola: il pannello di vetro sta sopra la barra e sopra il menu'.
       FluidGlassModalHost(state = modalHost, backdrop = chromeBackdrop)
+      // Sopra tutto, l'overlay dell'assistente (fase 19): aureola, barra, card.
+      overlay(chromeBackdrop)
     }
   }
 }

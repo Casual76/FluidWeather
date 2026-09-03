@@ -12,23 +12,19 @@ import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.model.AppNotification
-import dev.pampa.fluidweather.core.model.DeviceCalibration
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NowcastIssueRecord
 import dev.pampa.fluidweather.core.model.PlattParamsRecord
 import dev.pampa.fluidweather.core.model.OfficialAlert
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
+import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
-import dev.pampa.fluidweather.core.weather.toContext
 import dev.pampa.fluidweather.nowcast.cleaning.CalibrationMath
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
-import dev.pampa.fluidweather.nowcast.learning.LearningState
 import dev.pampa.fluidweather.nowcast.learning.LearningStateBuilder
-import dev.pampa.fluidweather.nowcast.learning.NowcastEngine
 import dev.pampa.fluidweather.nowcast.learning.PlattCalibration
-import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import dev.pampa.fluidweather.nowcast.verdict.toRecord
@@ -133,6 +129,7 @@ class BackgroundCycle(
   private val notificationSettings: NotificationSettingsStore,
   private val ledgerStore: NotificationLedgerStore,
   private val nowcastHistory: NowcastHistoryStore,
+  private val nowcastUseCase: NowcastUseCase,
   private val barometerRegistrar: BarometerRegistrar,
   private val officialAlerts: OfficialAlertsClient,
   private val placeContext: PlaceContextResolver,
@@ -146,8 +143,6 @@ class BackgroundCycle(
 
   private val mutex = Mutex()
   private var lastTickMillis = 0L
-  private val engine = NowcastEngine.trained()
-  private var learningCache: Pair<Long, LearningState>? = null
 
   suspend fun run(trigger: CycleTrigger): CycleOutcome = mutex.withLock {
     val now = clock()
@@ -171,25 +166,13 @@ class BackgroundCycle(
       else -> runCatching { refresher.refresh(key, latitude, longitude) }.getOrNull() ?: cached
     }
 
-    // 2) Il verdetto locale: barometro pulito + contesto dell'opinione piu' completa.
-    val temperature = snapshot?.fused?.hours
-      ?.minByOrNull { abs(it.timestampMillis - now) }
-      ?.values?.get(FusionVariables.TEMPERATURE)?.value
-    // Ventiquattro ore, non dodici: il modello vuole tredici ore di storia (era il baco del
-    // verdetto che non arrivava mai, visto sul telefono dopo diciassette ore).
-    val samples = runCatching { pressureRepository.samplesSince(now - HISTORY_WINDOW_MILLIS) }.getOrDefault(emptyList())
-    val calibration = runCatching { calibrationStore.current()?.toDeviceCalibration() }.getOrNull() ?: DeviceCalibration()
-    val cleaning = runCatching {
-      cleaningPipeline.process(samples, calibration = calibration, temperatureCelsius = temperature)
-    }.getOrNull()
-    val features = cleaning?.let {
-      FeatureExtractor.extract(it, snapshot?.context?.toContext(now), normalHpa = null, nowMillis = now)
-    }
-    // Fase 16: il modello del banco, ricalibrato sulle verifiche locali e corretto dagli analoghi.
-    val explanation = features?.let { engine.evaluate(it, loadLearning(now)) }
+    // 2) Il verdetto locale (stadi 1-5) dal caso d'uso condiviso con la home (fase 19): barometro
+    // pulito + contesto dell'opinione piu' completa; lo storico dei verdetti si scrive qui.
+    val nowcast = nowcastUseCase.evaluate(snapshot, now, calibrationProgress = null, record = true)
+    val cleaning = nowcast.cleaning
+    val features = nowcast.features
+    val explanation = nowcast.explanation
     val verdict = explanation?.verdict
-    // Lo storico dei verdetti: la pagina del nowcast lo mostra, la pagella lo giudichera'.
-    if (verdict != null) runCatching { nowcastHistory.record(verdict.toRecord(now)) }
     // In classifica alla pari: il barometro si iscrive alla verifica quando si iscrivono i
     // provider (una volta l'ora, lo decide il refresher), cosi' i conti sono confrontabili.
     val registeredNow = snapshot?.predictionsRegisteredAtMillis?.let { abs(now - it) < 5 * 60_000L } == true
@@ -280,20 +263,6 @@ class BackgroundCycle(
     outcome
   }
 
-  /** Lo stato dell'apprendimento, riletto al piu' una volta l'ora: mappe di Platt e archivio degli analoghi. */
-  private suspend fun loadLearning(now: Long): LearningState {
-    learningCache?.let { (at, state) -> if (now - at < LEARNING_CACHE_MILLIS) return state }
-    val state = runCatching {
-      LearningStateBuilder.build(
-        platt = learningStore.current(),
-        issues = learningRepository.issuesSince(now - LearningRepository.KEEP_MILLIS),
-        outcomes = learningRepository.outcomesSince(now - LearningRepository.KEEP_MILLIS),
-      )
-    }.getOrDefault(LearningState.EMPTY)
-    learningCache = now to state
-    return state
-  }
-
   /** Ogni sei ore la ricalibrazione si ristima sulle coppie (grezza, esito) raccolte. */
   private suspend fun maybeRefitPlatt(now: Long) {
     if (now - runCatching { learningStore.lastFitMillis() }.getOrDefault(0L) < REFIT_INTERVAL_MILLIS) return
@@ -305,7 +274,7 @@ class BackgroundCycle(
         PlattCalibration.fit(samples)?.let { PlattParamsRecord(window, it.a, it.b, samples.size, now) }
       }
       learningStore.save(fitted, fittedAtMillis = now)
-      learningCache = null
+      nowcastUseCase.invalidateLearning()
     }
   }
 
@@ -349,11 +318,7 @@ class BackgroundCycle(
 
     const val LOCATION_TIMEOUT_MILLIS = 15_000L
 
-    const val LEARNING_CACHE_MILLIS = 60 * 60_000L
-
     const val REFIT_INTERVAL_MILLIS = 6 * 3_600_000L
 
-    /** La storia che si da' alla pipeline: piu' delle 13 ore che il modello pretende. */
-    const val HISTORY_WINDOW_MILLIS = 24 * 3_600_000L
   }
 }

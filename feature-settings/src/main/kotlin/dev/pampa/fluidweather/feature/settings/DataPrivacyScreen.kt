@@ -92,6 +92,14 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
       )
     }
 
+    item {
+      androidx.compose.material3.Text(
+        stringResource(R.string.data_ai_note),
+        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = androidx.compose.ui.Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+      )
+    }
     item { FluidSectionHeader(title = stringResource(R.string.data_export)) }
     item {
       FluidListGroup {

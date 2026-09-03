@@ -18,6 +18,7 @@ fun SettingsScreen(
   onBack: () -> Unit,
   onOpenEngine: () -> Unit,
   onOpenProviders: () -> Unit,
+  onOpenAi: () -> Unit,
   onOpenNotifications: () -> Unit,
   onOpenAppearance: () -> Unit,
   onOpenUnits: () -> Unit,
@@ -38,6 +39,12 @@ fun SettingsScreen(
           title = stringResource(R.string.prov_title),
           subtitle = stringResource(R.string.settings_providers_desc),
           onClick = onOpenProviders,
+        )
+        FluidListDivider()
+        FluidListRow(
+          title = stringResource(R.string.ai_title),
+          subtitle = stringResource(R.string.ai_settings_desc),
+          onClick = onOpenAi,
         )
         FluidListDivider()
         FluidListRow(

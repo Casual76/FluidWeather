@@ -1,21 +1,30 @@
 package dev.pampa.fluidweather.feature.home
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Radar
@@ -25,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
@@ -45,9 +56,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
 import dev.antigravity.fluidengine.ui.fluid.FluidContextAction
-import dev.antigravity.fluidengine.ui.fluid.FluidGlassIconButton
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
+import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import dev.antigravity.fluidengine.ui.fluid.fluidExpandOrigin
 import dev.antigravity.fluidengine.ui.fluid.fluidPressable
 import dev.antigravity.fluidengine.ui.fluid.glassControlSurface
@@ -58,11 +69,27 @@ import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
 
 /**
- * La barra flottante a tre isole: radar a sinistra, pillola della localita' al centro, menu' a
- * destra. Il menu' e' un morph di vetro: il tocco lo apre, la pressione lunga pure, nessun
- * gesto nascosto. La pillola e' dello stesso materiale e dello stesso carattere: al tocco si
- * espande in vetro (il pannello vive in [LocationPane]), trascinata a destra o sinistra cambia
- * posto.
+ * Quello che la barra sa dell'assistente, senza conoscerlo (fase 19): se mostrare il tasto, se
+ * sta lavorando, cosa fare al tocco (voce) e alla pressione lunga (testo). Lo costruisce `:app`.
+ */
+@Stable
+class HomeAssistantBar(
+  val enabled: Boolean,
+  val working: Boolean,
+  val onTap: () -> Unit,
+  val onLongPress: () -> Unit,
+)
+
+/** L'altezza della barra e dei tasti tondi (decisione 2026-09-02: piu' grandi, a tutta larghezza). */
+val HomeBarHeight = 54.dp
+private val BarIconSize = 22.dp
+private val BarGap = 10.dp
+
+/**
+ * La barra flottante a tutta larghezza: radar a sinistra, pillola della localita' elastica al
+ * centro, il tasto dell'assistente (solo se attivo) e il menu' a destra. Il menu' e' un morph
+ * di vetro: il tocco lo apre, la pressione lunga pure. La pillola e' dello stesso materiale: al
+ * tocco si espande in vetro (il pannello vive in [LocationPane]), trascinata cambia posto.
  */
 @Composable
 internal fun HomeFloatingBar(
@@ -80,6 +107,7 @@ internal fun HomeFloatingBar(
   onLocationTap: () -> Unit,
   /** true = avanti nell'elenco, false = indietro: lo swipe laterale sulla pillola. */
   onLocationSwipe: (forward: Boolean) -> Unit,
+  assistant: HomeAssistantBar?,
   modifier: Modifier = Modifier,
 ) {
   // Le voci del menu' si leggono qui, nel composable: la lambda che le costruisce non lo e'.
@@ -97,15 +125,14 @@ internal fun HomeFloatingBar(
   Row(
     modifier = modifier.padding(horizontal = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(BarGap),
   ) {
-    FluidGlassIconButton(onClick = onOpenRadar, backdrop = backdrop) {
-      Icon(
-        imageVector = Icons.Rounded.Radar,
-        contentDescription = stringResource(R.string.radar_title),
-        tint = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.size(20.dp),
-      )
-    }
+    BarIconButton(
+      icon = Icons.Rounded.Radar,
+      contentDescription = stringResource(R.string.radar_title),
+      backdrop = backdrop,
+      onClick = onOpenRadar,
+    )
 
     LocationPill(
       name = locationName ?: stringResource(R.string.place_my_location),
@@ -114,11 +141,26 @@ internal fun HomeFloatingBar(
       onBounds = onLocationBounds,
       onTap = onLocationTap,
       onSwipe = onLocationSwipe,
-      modifier = Modifier.padding(horizontal = 12.dp),
+      modifier = Modifier.weight(1f),
     )
+
+    AnimatedVisibility(
+      visible = assistant?.enabled == true,
+      enter = expandHorizontally(FluidMotion.intSize(FluidMotion.DampingChrome, FluidMotion.ResponseSnappy)) + fadeIn(FluidMotion.fadeIn(160)),
+      exit = shrinkHorizontally(FluidMotion.intSize(FluidMotion.DampingChrome, FluidMotion.ResponseSnappy)) + fadeOut(FluidMotion.fadeOut(120)),
+    ) {
+      AssistantButton(
+        working = assistant?.working == true,
+        backdrop = backdrop,
+        onTap = { assistant?.onTap?.invoke() },
+        onLongPress = { assistant?.onLongPress?.invoke() },
+      )
+    }
 
     var menuBounds by remember { mutableStateOf<Rect?>(null) }
     Box(Modifier.onGloballyPositioned { menuBounds = it.boundsInRoot() }) {
+      // Il modifier esterno precede l'altezza fissa dell'engine (44 dp): un vincolo fisso di 54 dp
+      // vince, e il vetro copre tutta la capsula.
       FluidMorphMenuButton(
         state = menuState,
         actions = menuActions,
@@ -129,8 +171,83 @@ internal fun HomeFloatingBar(
         },
         icon = Icons.Rounded.Menu,
         backdrop = backdrop,
+        modifier = Modifier.size(HomeBarHeight),
       )
     }
+  }
+}
+
+/**
+ * Un tasto tondo di vetro da 54 dp: la stessa ricetta di `FluidGlassIconButton` dell'engine, che
+ * pero' ha misure interne fisse (48/44 dp) e non si presta alla barra piu' grande.
+ */
+@Composable
+private fun BarIconButton(
+  icon: ImageVector,
+  contentDescription: String,
+  backdrop: GlassBackdropState,
+  onClick: () -> Unit,
+  onLongClick: (() -> Unit)? = null,
+  modifier: Modifier = Modifier,
+  content: (@Composable () -> Unit)? = null,
+) {
+  Box(
+    modifier = modifier
+      .size(HomeBarHeight)
+      .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
+      .fluidPressable(onClick = onClick, onLongClick = onLongClick, pressedScale = 1f, role = Role.Button),
+    contentAlignment = Alignment.Center,
+  ) {
+    if (content != null) {
+      content()
+    } else {
+      Icon(
+        imageVector = icon,
+        contentDescription = contentDescription,
+        tint = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.size(BarIconSize),
+      )
+    }
+  }
+}
+
+/** Il tasto dell'assistente: tocco = voce, pressione lunga = testo; mentre lavora l'icona respira. */
+@Composable
+private fun AssistantButton(
+  working: Boolean,
+  backdrop: GlassBackdropState,
+  onTap: () -> Unit,
+  onLongPress: () -> Unit,
+) {
+  val reducedMotion = LocalFluidMotionPolicy.current.reducedMotion
+  val pulse = rememberInfiniteTransition(label = "assistantPulse")
+  val scale by pulse.animateFloat(
+    initialValue = 1f,
+    targetValue = 1.18f,
+    animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+    label = "assistantScale",
+  )
+  val description = stringResource(R.string.a11y_assistant_button)
+  BarIconButton(
+    icon = Icons.Rounded.AutoAwesome,
+    contentDescription = description,
+    backdrop = backdrop,
+    onClick = onTap,
+    onLongClick = onLongPress,
+  ) {
+    Icon(
+      imageVector = Icons.Rounded.AutoAwesome,
+      contentDescription = description,
+      tint = MaterialTheme.colorScheme.primary,
+      modifier = Modifier
+        .size(BarIconSize)
+        .graphicsLayer {
+          if (working && !reducedMotion) {
+            scaleX = scale
+            scaleY = scale
+          }
+        },
+    )
   }
 }
 
@@ -143,10 +260,9 @@ private const val LABEL_FOLLOW = 0.35f
 /**
  * La pillola della localita': una capsula di vetro (lo stesso [glassControlSurface] dei tasti
  * della barra) coi due gesti del piano, tocco per espandersi e trascinamento laterale per
- * scorrere i posti. Il primo tentativo appoggiava il gesto sopra un `FluidGlassButton`, e il
- * tasto se lo mangiava: qui il rilevatore del trascinamento sta FUORI dal tocco nella catena
- * dei modificatori, cosi' il tocco parte, ma al superamento della soglia il trascinamento lo
- * consuma e il tasto si arrende.
+ * scorrere i posti. Il rilevatore del trascinamento sta FUORI dal tocco nella catena dei
+ * modificatori, cosi' il tocco parte, ma al superamento della soglia il trascinamento lo
+ * consuma e il tasto si arrende. Riempie lo spazio fra i tasti tondi (weight dal chiamante).
  */
 @Composable
 private fun LocationPill(
@@ -199,9 +315,8 @@ private fun LocationPill(
       }
       .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
       .fluidPressable(onClick = onTap, pressedScale = 1f, role = Role.Button)
-      .height(48.dp)
-      .widthIn(min = 150.dp, max = 220.dp)
-      .padding(horizontal = 20.dp),
+      .height(HomeBarHeight)
+      .padding(horizontal = 18.dp),
     contentAlignment = Alignment.Center,
   ) {
     AnimatedContent(

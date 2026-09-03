@@ -22,6 +22,8 @@ include ':feature-radar'
 include ':feature-benchmark'
 include ':feature-settings'
 include ':feature-report'
+// L'assistente IA (fase 19): la UI in vetro (aureola, barra, card) e le impostazioni IA.
+include ':feature-assistant'
 include ':core-ui'
 include ':core-sensor'
 include ':core-model'
@@ -31,6 +33,8 @@ include ':core-data'
 include ':core-weather'
 // Il ciclo in background: giro meteo, verdetto, notifiche (fase 11).
 include ':core-cycle'
+// L'assistente IA (fase 19): client dei provider, tool sui dati, orchestratore, voce, radar numerico.
+include ':core-ai'
 // Puro Kotlin/JVM, zero Android: la pipeline di nowcast si verifica sul computer.
 include ':nowcast'
 // Banco di prova JVM: dataset, replay, metriche. Non spedito nell'APK.

@@ -34,6 +34,8 @@ dependencies {
   api project(':core-sensor')
   api project(':core-weather')
   api project(':core-cycle')
+  // La pagina dell'assistente nell'onboarding e la riga nell'indice (fase 19).
+  api project(':feature-assistant')
   implementation project(':engine-storage')
   implementation project(':engine-foundation')
   // L'aggiornamento in-app e l'avviso remoto nella pagina Informazioni (fase 18).

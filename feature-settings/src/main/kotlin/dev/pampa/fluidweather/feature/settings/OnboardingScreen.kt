@@ -52,7 +52,9 @@ import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
 import dev.antigravity.fluidengine.ui.theme.FluidTheme
+import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
+import dev.pampa.fluidweather.feature.assistant.AiOnboardingPage
 import dev.pampa.fluidweather.core.data.OnboardingStore
 import dev.pampa.fluidweather.core.data.SamplingSettings
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
@@ -81,12 +83,14 @@ class OnboardingDependencies(
   val activityRecognizer: ActivityRecognizer,
   val onboardingStore: OnboardingStore,
   val calibrationController: CalibrationController,
+  /** La pagina dell'assistente (fase 19): chiavi, microfono, azioni. */
+  val assistant: AiAssistant,
 )
 
-private const val PAGES = 7
+private const val PAGES = 8
 
 /**
- * Il primo avvio (fase 15): sette pagine sopra il cielo del momento — l'app si presenta con la
+ * Il primo avvio (fase 15, poi 19): otto pagine sopra il cielo del momento — l'app si presenta con la
  * sua faccia (decisione 2026-09-02). Tre passi narrativi coi permessi (posizione, notifiche,
  * attivita'), la scelta del vetro e dell'accuratezza, e l'ultimo passo che fa partire la
  * taratura di dieci minuti IN BACKGROUND: nessuno resta inchiodato a una schermata.
@@ -226,6 +230,7 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
             Spacer(Modifier.height(16.dp))
             FluidButton(text = stringResource(R.string.common_next), onClick = { next() }, fillWidth = true)
           }
+          6 -> AiOnboardingPage(assistant = deps.assistant, onNext = { next() })
           else -> Page(
             eyebrow = stringResource(R.string.onb_calibration),
             title = stringResource(R.string.onb_calibration_title),

@@ -211,3 +211,31 @@ fun compassPoint(resources: Resources, degrees: Double): String {
   val index = ((degrees % 360 + 360) % 360 / 22.5 + 0.5).toInt() % 16
   return names.getOrElse(index) { "" }
 }
+
+/** La fascia dell'indice UV secondo la scala OMS: le stesse soglie della pagina dei dettagli. */
+@StringRes
+fun uvLabelRes(uv: Double): Int = when {
+  uv < 3 -> R.string.uv_low
+  uv < 6 -> R.string.uv_moderate
+  uv < 8 -> R.string.uv_high
+  uv < 11 -> R.string.uv_very_high
+  else -> R.string.uv_extreme
+}
+
+/** La visibilita' a parole: le stesse soglie della pagina dei dettagli. */
+@StringRes
+fun visibilityLabelRes(meters: Double): Int = when {
+  meters >= 10_000 -> R.string.visibility_excellent
+  meters >= 4_000 -> R.string.visibility_good
+  meters >= 1_000 -> R.string.visibility_reduced
+  else -> R.string.details_visibility_fog
+}
+
+/** Come si sente il punto di rugiada: secco, comodo, umido, afoso. */
+@StringRes
+fun dewPointLabelRes(dewPointC: Double): Int = when {
+  dewPointC < 10 -> R.string.details_dew_dry
+  dewPointC < 16 -> R.string.details_dew_comfortable
+  dewPointC < 21 -> R.string.details_dew_humid
+  else -> R.string.details_dew_muggy
+}

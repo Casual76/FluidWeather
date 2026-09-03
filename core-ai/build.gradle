@@ -1,0 +1,45 @@
+plugins {
+  id 'com.android.library'
+  id 'org.jetbrains.kotlin.android'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+
+android {
+  namespace 'dev.pampa.fluidweather.core.ai'
+  compileSdk engine.compileSdk
+
+  defaultConfig {
+    minSdk engine.minSdk
+  }
+
+  compileOptions {
+    sourceCompatibility engine.javaVersion
+    targetCompatibility engine.javaVersion
+  }
+
+  kotlinOptions {
+    jvmTarget = engine.jvmTarget
+  }
+}
+
+dependencies {
+  // L'assistente (fase 19) legge tutto cio' che l'app sa: provider, istantanee, nowcast, radar,
+  // sensore, ciclo in background. Niente Compose qui: la UI vive in :feature-assistant.
+  api project(':core-weather')
+  api project(':core-sensor')
+  api project(':core-cycle')
+  // EngineFlag e EngineRemoteConfig per l'interruttore remoto; EngineHttp.download per le tile del radar.
+  implementation project(':engine-foundation')
+  implementation project(':engine-config')
+  implementation project(':engine-net')
+
+  implementation "androidx.datastore:datastore-preferences:${engine.datastore}"
+  // Solo il runtime (JsonElement): come nel resto dell'app, i JSON dei provider IA si navigano
+  // a mano e ogni campo mancante e' una decisione.
+  implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:${engine.serialization}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
+
+  testImplementation "junit:junit:${engine.junit}"
+  testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"
+}

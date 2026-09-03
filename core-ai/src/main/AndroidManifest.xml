@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- L'assistente ascolta solo quando l'utente tocca il tasto: il permesso si chiede
+       nell'onboarding (pagina dell'assistente) o dalle impostazioni, mai a sorpresa. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+</manifest>

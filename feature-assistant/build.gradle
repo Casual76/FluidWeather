@@ -1,0 +1,43 @@
+plugins {
+  id 'com.android.library'
+  id 'org.jetbrains.kotlin.android'
+  id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+apply from: "${rootDir}/engine/versions.gradle"
+
+android {
+  namespace 'dev.pampa.fluidweather.feature.assistant'
+  compileSdk engine.compileSdk
+
+  defaultConfig {
+    minSdk engine.minSdk
+  }
+
+  buildFeatures {
+    compose true
+  }
+
+  compileOptions {
+    sourceCompatibility engine.javaVersion
+    targetCompatibility engine.javaVersion
+  }
+
+  kotlinOptions {
+    jvmTarget = engine.jvmTarget
+  }
+}
+
+dependencies {
+  implementation project(':engine-ui')
+  implementation project(':core-ui')
+  api project(':core-ai')
+  implementation project(':engine-storage')
+  implementation project(':engine-foundation')
+
+  // rememberLauncherForActivityResult per il permesso del microfono dalle impostazioni.
+  implementation "androidx.activity:activity-compose:${engine.activityCompose}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
+
+  testImplementation "junit:junit:${engine.junit}"
+}

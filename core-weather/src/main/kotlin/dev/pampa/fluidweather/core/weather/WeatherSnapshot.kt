@@ -81,7 +81,7 @@ data class WeatherSnapshot(
   }
 }
 
-internal fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
   val r = 6371.0
   val dLat = Math.toRadians(lat2 - lat1)
   val dLon = Math.toRadians(lon2 - lon1)
@@ -360,12 +360,16 @@ class WeatherSnapshotRefresher(
     return snapshot
   }
 
-  /** Il giro completo, poi l'istantanea su disco. Le eccezioni dei provider restano dentro il giro. */
-  suspend fun refresh(placeKey: String, latitude: Double, longitude: Double): WeatherSnapshot {
+  /**
+   * Il giro completo, poi l'istantanea su disco. Le eccezioni dei provider restano dentro il giro.
+   * [registerPredictions] = false salta la semina delle verifiche: per i posti chiesti al volo
+   * all'assistente (fase 19), che non devono inquinare la pagella dei provider.
+   */
+  suspend fun refresh(placeKey: String, latitude: Double, longitude: Double, registerPredictions: Boolean? = null): WeatherSnapshot {
     val now = clock()
     val previous = store.read(placeKey)
     val lastRegistration = previous?.predictionsRegisteredAtMillis
-    val register = lastRegistration == null || now - lastRegistration >= REGISTRATION_INTERVAL_MILLIS
+    val register = registerPredictions ?: (lastRegistration == null || now - lastRegistration >= REGISTRATION_INTERVAL_MILLIS)
     val round = coordinator.refresh(latitude, longitude, registerPredictions = register)
     val snapshot = WeatherSnapshot.from(placeKey, latitude, longitude, round, now).copy(
       predictionsRegisteredAtMillis = if (register) now else lastRegistration,

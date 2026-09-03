@@ -31,15 +31,15 @@ class ProviderHttp(
 
 // --- Navigazione JSON senza modelli: ogni campo mancante e' una decisione esplicita. ---
 
-internal operator fun JsonElement?.get(key: String): JsonElement? = (this as? JsonObject)?.get(key)
+operator fun JsonElement?.get(key: String): JsonElement? = (this as? JsonObject)?.get(key)
 
-internal fun JsonElement?.at(index: Int): JsonElement? = (this as? JsonArray)?.getOrNull(index)
+fun JsonElement?.at(index: Int): JsonElement? = (this as? JsonArray)?.getOrNull(index)
 
-internal fun JsonElement?.asArray(): List<JsonElement> = (this as? JsonArray)?.toList() ?: emptyList()
+fun JsonElement?.asArray(): List<JsonElement> = (this as? JsonArray)?.toList() ?: emptyList()
 
-internal fun JsonElement?.double(): Double? = (this as? JsonPrimitive)?.doubleOrNull
+fun JsonElement?.double(): Double? = (this as? JsonPrimitive)?.doubleOrNull
 
-internal fun JsonElement?.string(): String? = (this as? JsonPrimitive)?.contentOrNull
+fun JsonElement?.string(): String? = (this as? JsonPrimitive)?.contentOrNull
 
 /** m/s -> km/h: la valuta canonica del vento e' il km/h. */
 internal fun Double.metersPerSecondToKmh(): Double = this * 3.6

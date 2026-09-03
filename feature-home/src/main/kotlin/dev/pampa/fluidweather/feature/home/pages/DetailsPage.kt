@@ -16,6 +16,8 @@ import dev.pampa.fluidweather.core.ui.PageCharts
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import kotlin.math.abs
 import dev.pampa.fluidweather.strings.R
+import dev.pampa.fluidweather.strings.uvLabelRes
+import dev.pampa.fluidweather.strings.visibilityLabelRes
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.strings.compassPoint
@@ -152,18 +154,7 @@ internal fun DetailsPage(state: HomeUiState) {
 }
 
 @Composable
-private fun uvLabel(uv: Double): String = when {
-  uv < 3 -> stringResource(R.string.uv_low)
-  uv < 6 -> stringResource(R.string.uv_moderate)
-  uv < 8 -> stringResource(R.string.uv_high)
-  uv < 11 -> stringResource(R.string.uv_very_high)
-  else -> stringResource(R.string.uv_extreme)
-}
+private fun uvLabel(uv: Double): String = stringResource(uvLabelRes(uv))
 
 @Composable
-private fun visibilityLabel(meters: Double): String = when {
-  meters >= 10_000 -> stringResource(R.string.visibility_excellent)
-  meters >= 4_000 -> stringResource(R.string.visibility_good)
-  meters >= 1_000 -> stringResource(R.string.visibility_reduced)
-  else -> stringResource(R.string.details_visibility_fog)
-}
+private fun visibilityLabel(meters: Double): String = stringResource(visibilityLabelRes(meters))

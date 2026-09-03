@@ -29,7 +29,9 @@
     "minimumVersion": null,
     "recommendedVersion": null,
     "notice": null,
-    "flags": {},
+    "flags": {
+      "ai_assistant": true
+    },
     "killSwitch": {
       "enabled": false,
       "message": null
