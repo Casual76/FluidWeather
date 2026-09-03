@@ -133,7 +133,12 @@ private fun CrashNoticeEffect(graph: AppGraph, host: FluidNotificationHostState)
   val text = stringResource(R.string.crash_banner_text)
   LaunchedEffect(crashes.firstOrNull()?.atMillis) {
     val latest = crashes.firstOrNull() ?: return@LaunchedEffect
+    // Due guardie, ognuna per la sua ragione: il flag in memoria perche' l'avviso e' una cosa
+    // dell'apertura (un errore catturato mentre l'app e' aperta ha gia' il suo messaggio sullo
+    // schermo), il segno su file perche' una caduta si annuncia UNA volta e non a ogni riapertura.
+    if (graph.crashLog.unannounced()?.atMillis != latest.atMillis) return@LaunchedEffect
     if (!graph.crashNoticeShown.compareAndSet(false, true)) return@LaunchedEffect
+    graph.crashLog.markAnnounced(latest.atMillis)
     host.show(
       FluidNotification(
         id = "crash-${latest.atMillis}",

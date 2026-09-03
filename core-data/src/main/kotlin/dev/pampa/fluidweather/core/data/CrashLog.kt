@@ -31,10 +31,26 @@ data class CrashRecord(
  * lasciano un'operazione a meta': una verifica di chiave che va storta racconta di piu' di un
  * "verifica non riuscita" sullo schermo.
  */
-class CrashLog(private val file: File) {
+class CrashLog(
+  private val file: File,
+  /** L'orologio, iniettabile: un test deve poter far cadere due volte l'app in due istanti noti. */
+  private val clock: () -> Long = System::currentTimeMillis,
+) {
 
   private val state = MutableStateFlow<List<CrashRecord>>(emptyList())
   val records: StateFlow<List<CrashRecord>> = state
+
+  /**
+   * Fin dove si e' annunciato: il millisecondo della caduta piu' recente di cui si e' gia' dato
+   * avviso all'apertura.
+   *
+   * Un file suo, accanto al quaderno, perche' deve sopravvivere al processo. Il quaderno invece
+   * resta pieno finche' non lo si svuota a mano — serve, la traccia si copia a mente fredda — e
+   * quello era il problema: l'avviso guardava solo "c'e' una caduta in cima", quindi una caduta
+   * di tre giorni fa e gia' corretta tornava ad annunciarsi ogni volta che il sistema chiudeva il
+   * processo e si riapriva l'app.
+   */
+  private val marker: File get() = File(file.parentFile, file.name + ".announced")
 
   /** Da chiamare per primo in Application.onCreate: prende il posto del gestore di sistema. */
   fun install(versionName: String) {
@@ -51,7 +67,7 @@ class CrashLog(private val file: File) {
   fun record(error: Throwable, label: String, persist: Boolean = true): List<CrashRecord> {
     val trace = StringWriter().also { writer -> error.printStackTrace(PrintWriter(writer)) }.toString()
     val entry = CrashRecord(
-      atMillis = System.currentTimeMillis(),
+      atMillis = clock(),
       label = label,
       summary = "${error::class.java.simpleName}: ${error.message ?: "-"}",
       stackTrace = trace.take(MAX_TRACE_CHARS),
@@ -62,15 +78,38 @@ class CrashLog(private val file: File) {
     return updated
   }
 
-  /** Vero se c'e' un errore che l'utente non ha ancora visto in Diagnostica. */
-  fun unseen(sinceMillis: Long): CrashRecord? = state.value.firstOrNull { it.atMillis > sinceMillis }
+  /** L'errore piu' recente di cui non si e' ancora dato avviso, o null se sono tutti annunciati. */
+  fun unannounced(): CrashRecord? {
+    val announcedUpTo = runCatching {
+      if (marker.exists()) marker.readText().trim().toLongOrNull() else null
+    }.getOrNull() ?: 0L
+    return state.value.firstOrNull { it.atMillis > announcedUpTo }
+  }
+
+  /** Segna come annunciato tutto fino a [atMillis] compreso. */
+  fun markAnnounced(atMillis: Long) {
+    runCatching {
+      marker.parentFile?.mkdirs()
+      marker.writeText(atMillis.toString())
+    }
+  }
 
   fun clear() {
     state.value = emptyList()
     runCatching { if (file.exists()) file.delete() }
+    // Via anche il segno: senza record da annunciare non serve, e se l'orologio del telefono
+    // tornasse indietro un segno vecchio nel futuro zittirebbe una caduta nuova.
+    runCatching { if (marker.exists()) marker.delete() }
   }
 
-  private fun load() {
+  /**
+   * Rilegge il quaderno da disco.
+   *
+   * Pubblica e separata da [install]: chi vuole solo *leggere* le tracce (un test, o un domani in
+   * cui la Diagnostica vivesse in un altro processo) non deve prendersi anche il gestore degli
+   * errori non catturati del processo.
+   */
+  fun load() {
     val text = runCatching { if (file.exists()) file.readText() else "" }.getOrDefault("")
     if (text.isBlank()) return
     state.value = text.split(SEPARATOR).mapNotNull { block ->
