@@ -53,7 +53,7 @@ class UnitsStore(private val context: Context) {
   suspend fun setDistance(unit: DistanceUnit?) = set(Keys.Distance, unit?.name)
 
   private suspend fun set(key: Preferences.Key<String>, value: String?) {
-    context.unitsStore.edit { if (value == null) it.remove(key) else it[key] = value }
+    context.unitsStore.edit { if (value == null) it -= key else it[key] = value }
   }
 
   private object Keys {

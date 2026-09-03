@@ -35,7 +35,7 @@ class ProviderKeysStore(private val context: Context) {
   suspend fun set(providerId: String, key: String?) {
     context.providerKeysStore.edit { preferences ->
       val preferenceKey = stringPreferencesKey("$PREFIX$providerId")
-      if (key.isNullOrBlank()) preferences.remove(preferenceKey) else preferences[preferenceKey] = key
+      if (key.isNullOrBlank()) preferences -= preferenceKey else preferences[preferenceKey] = key
     }
   }
 

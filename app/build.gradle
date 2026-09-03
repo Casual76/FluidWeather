@@ -38,8 +38,8 @@ android {
     applicationId 'dev.pampa.fluidweather'
     minSdk engine.minSdk
     targetSdk engine.compileSdk
-    versionCode 4
-    versionName '1.0.3'
+    versionCode 5
+    versionName '1.0.4'
     manifestPlaceholders = [mapsApiKey: localProperties.getProperty('maps.apiKey', '')]
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
     // La prima release esce su beta (decisione 2026-09-02): chi la installa segue beta finche'
@@ -69,14 +69,12 @@ android {
       minifyEnabled false
     }
     release {
-      // Niente R8, per ora (1.0.3). Due ragioni, tutte e due imparate su un telefono: una traccia
-      // di crash offuscata non si legge, e questa app la si prova senza un computer attaccato —
-      // il quaderno degli errori in Diagnostica vale piu' del megabyte e mezzo che R8 risparmia.
-      // E finche' non c'e' un giro di prove vere sulla build minificata, ogni classe che R8
-      // rinomina o toglie e' un crash che si scopre dall'utente. Si riaccendera' con le sue
-      // regole, e provandola.
-      minifyEnabled false
-      shrinkResources false
+      // R8 alleggerisce, ma NON rinomina: la regola `-dontobfuscate` sta in proguard-rules.pro.
+      // Il crash del 2026-09-03 (una chiave IA che non si salvava) si e' letto solo perche' la
+      // traccia aveva i nomi veri; l'app si prova su un telefono senza computer attaccato, e una
+      // traccia offuscata li' non serve a niente. Il taglio del codice morto resta.
+      minifyEnabled true
+      shrinkResources true
       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
       if (hasReleaseKey) {
         signingConfig signingConfigs.release

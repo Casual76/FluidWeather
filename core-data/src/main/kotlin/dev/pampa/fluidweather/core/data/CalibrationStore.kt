@@ -44,7 +44,7 @@ class CalibrationStore(private val context: Context) {
       preferences[Keys.LocalMsl] = record.localMslHpa
       preferences[Keys.ReferenceMsl] = record.referenceMslHpa
       val altitude = record.altitudeMeters
-      if (altitude != null) preferences[Keys.Altitude] = altitude else preferences.remove(Keys.Altitude)
+      if (altitude != null) preferences[Keys.Altitude] = altitude else preferences -= Keys.Altitude
     }
   }
 

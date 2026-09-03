@@ -105,17 +105,17 @@ class AiSettingsStore(private val store: DataStore<Preferences>) {
 
   suspend fun setChatModel(provider: ProviderId, model: String?) = edit { prefs ->
     val key = stringPreferencesKey("chat_model_${provider.id}")
-    if (model.isNullOrBlank()) prefs.remove(key) else prefs[key] = model
+    if (model.isNullOrBlank()) prefs -= key else prefs[key] = model
   }
 
   suspend fun setSttModel(provider: ProviderId, model: String?) = edit { prefs ->
     val key = stringPreferencesKey("stt_model_${provider.id}")
-    if (model.isNullOrBlank()) prefs.remove(key) else prefs[key] = model
+    if (model.isNullOrBlank()) prefs -= key else prefs[key] = model
   }
 
   suspend fun setClassifierModel(provider: ProviderId, model: String?) = edit { prefs ->
     val key = stringPreferencesKey("classifier_model_${provider.id}")
-    if (model.isNullOrBlank()) prefs.remove(key) else prefs[key] = model
+    if (model.isNullOrBlank()) prefs -= key else prefs[key] = model
   }
 
   suspend fun setOpenRouterFallbacks(models: List<String>) =

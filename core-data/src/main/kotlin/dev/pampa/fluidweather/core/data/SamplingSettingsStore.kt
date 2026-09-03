@@ -70,7 +70,7 @@ class FusionSettingsStore(private val context: Context) {
 
   suspend fun setOnlyProvider(providerId: String?) {
     context.fluidWeatherStore.edit { preferences ->
-      if (providerId.isNullOrBlank()) preferences.remove(OnlyProvider) else preferences[OnlyProvider] = providerId
+      if (providerId.isNullOrBlank()) preferences -= OnlyProvider else preferences[OnlyProvider] = providerId
     }
   }
 

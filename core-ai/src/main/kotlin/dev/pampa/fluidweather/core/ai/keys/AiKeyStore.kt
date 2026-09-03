@@ -63,12 +63,15 @@ class AiKeyStore(
   suspend fun set(provider: ProviderId, key: String?) {
     val trimmed = key?.trim()
     store.edit { preferences ->
+      // `-=` e non `remove`: `remove` restituisce il valore tolto, e su una chiave di tipo
+      // primitivo mai scritta prima Kotlin lo spacchetta da null. Salvare la PRIMA chiave di un
+      // provider faceva cadere l'app proprio li' (visto sul telefono, 1.0.3).
       if (trimmed.isNullOrEmpty()) {
-        preferences.remove(keyOf(provider))
-        preferences.remove(verifiedOf(provider))
+        preferences -= keyOf(provider)
+        preferences -= verifiedOf(provider)
       } else {
         preferences[keyOf(provider)] = cipher.encrypt(trimmed)
-        preferences.remove(verifiedOf(provider))
+        preferences -= verifiedOf(provider)
       }
     }
   }
