@@ -42,9 +42,10 @@ android {
     versionName '1.1.0'
     manifestPlaceholders = [mapsApiKey: localProperties.getProperty('maps.apiKey', '')]
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
-    // La prima release esce su beta (decisione 2026-09-02): chi la installa segue beta finche'
-    // non sceglie altro in Informazioni. Quando si promuove a stable, questo diventa "stable".
-    buildConfigField 'String', 'DEFAULT_UPDATE_CHANNEL', '"beta"'
+    // La 1.1.0 promuove l'app a stable (decisione 2026-09-03): chi la installa segue stable
+    // finche' non sceglie altro in Informazioni. Il canale e' compilato dentro l'APK, quindi
+    // cambiarlo vuol dire una build nuova: non basta il manifest.
+    buildConfigField 'String', 'DEFAULT_UPDATE_CHANNEL', '"stable"'
   }
 
   signingConfigs {
