@@ -8,6 +8,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
@@ -20,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.collectAsState
 import dev.antigravity.fluidengine.ui.fluid.FluidButton
@@ -32,8 +34,11 @@ import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.feature.assistant.aiDiagnosticsSection
 import dev.pampa.fluidweather.core.data.SamplingSettings
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
@@ -300,7 +305,8 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
 
     item { FluidSectionHeader(title = stringResource(R.string.diag_tools)) }
     item {
-      FluidListGroup {
+      TutorialSlot(screen = TutorialScreen.DIAGNOSTICS)
+      FluidListGroup(modifier = Modifier.fluidTutorialAnchor("diagnostics_tools")) {
         val burstProgress = burst
         if (burstProgress == null) {
           FluidListRow(

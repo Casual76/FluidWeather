@@ -64,6 +64,7 @@ import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuButton
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuState
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
@@ -132,6 +133,7 @@ internal fun HomeFloatingBar(
       contentDescription = stringResource(R.string.radar_title),
       backdrop = backdrop,
       onClick = onOpenRadar,
+      modifier = Modifier.fluidTutorialAnchor("home_radar"),
     )
 
     LocationPill(
@@ -141,7 +143,9 @@ internal fun HomeFloatingBar(
       onBounds = onLocationBounds,
       onTap = onLocationTap,
       onSwipe = onLocationSwipe,
-      modifier = Modifier.weight(1f),
+      modifier = Modifier
+        .weight(1f)
+        .fluidTutorialAnchor("home_pill"),
     )
 
     AnimatedVisibility(
@@ -154,6 +158,7 @@ internal fun HomeFloatingBar(
         backdrop = backdrop,
         onTap = { assistant?.onTap?.invoke() },
         onLongPress = { assistant?.onLongPress?.invoke() },
+        modifier = Modifier.fluidTutorialAnchor("home_ai"),
       )
     }
 
@@ -171,7 +176,9 @@ internal fun HomeFloatingBar(
         },
         icon = Icons.Rounded.Menu,
         backdrop = backdrop,
-        modifier = Modifier.size(HomeBarHeight),
+        modifier = Modifier
+          .size(HomeBarHeight)
+          .fluidTutorialAnchor("home_menu"),
       )
     }
   }
@@ -220,6 +227,7 @@ private fun AssistantButton(
   backdrop: GlassBackdropState,
   onTap: () -> Unit,
   onLongPress: () -> Unit,
+  modifier: Modifier = Modifier,
 ) {
   val reducedMotion = LocalFluidMotionPolicy.current.reducedMotion
   val pulse = rememberInfiniteTransition(label = "assistantPulse")
@@ -236,6 +244,7 @@ private fun AssistantButton(
     backdrop = backdrop,
     onClick = onTap,
     onLongClick = onLongPress,
+    modifier = modifier,
     // Il tocco apre il microfono e l'assistente risponde subito con la sua salita: un tap in
     // piu', a un decimo di secondo di distanza, si sentirebbe come una sbavatura sola.
     haptic = null,

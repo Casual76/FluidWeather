@@ -29,6 +29,8 @@ import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationUrgency
+import dev.pampa.fluidweather.core.ui.LocalTutorialController
+import dev.pampa.fluidweather.core.ui.TutorialSurface
 import dev.pampa.fluidweather.navigation.FluidWeatherNavHost
 import dev.pampa.fluidweather.theme.FluidWeatherTheme
 import androidx.compose.runtime.remember
@@ -65,8 +67,13 @@ class MainActivity : ComponentActivity() {
           // di sistema (decisione 2026-09-02): l'host sta alla radice, sopra la navigazione.
           val notificationHost = rememberFluidNotificationHostState()
           InAppAlertsEffect(graph, notificationHost)
-          CompositionLocalProvider(LocalFluidNotificationHostState provides notificationHost) {
-            Box(Modifier.fillMaxSize()) {
+          CompositionLocalProvider(
+            LocalFluidNotificationHostState provides notificationHost,
+            LocalTutorialController provides graph.tutorialController,
+          ) {
+            // I suggerimenti stanno sopra la navigazione ma sotto i banner: un'allerta ha sempre
+            // la precedenza su una spiegazione.
+            TutorialSurface {
               FluidWeatherNavHost(graph, startAtOnboarding = !done)
               FluidNotificationHost(
                 state = notificationHost,

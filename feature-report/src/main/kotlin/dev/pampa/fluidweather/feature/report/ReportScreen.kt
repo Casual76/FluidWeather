@@ -56,6 +56,7 @@ import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.data.ObservationRepository
 import dev.pampa.fluidweather.core.model.ObservedCondition
 import dev.pampa.fluidweather.core.model.Observation
@@ -63,6 +64,8 @@ import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.BlackSheet
 import dev.pampa.fluidweather.core.ui.BlackSheetNote
 import dev.pampa.fluidweather.core.ui.BlackSheetSectionTitle
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -176,9 +179,15 @@ private fun ReportContent(deps: ReportDependencies) {
       modifier = Modifier.padding(top = 2.dp, bottom = 14.dp),
     )
 
+    TutorialSlot(screen = TutorialScreen.REPORT)
     val conditions = ObservedCondition.entries
     conditions.chunked(3).forEachIndexed { rowIndex, row ->
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Row(
+        Modifier
+          .fillMaxWidth()
+          .then(if (rowIndex == 0) Modifier.fluidTutorialAnchor("report_conditions") else Modifier),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
         row.forEachIndexed { columnIndex, condition ->
           val index = rowIndex * 3 + columnIndex
           ConditionTile(

@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -35,12 +36,15 @@ import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.ai.keys.AiSettings
 import dev.pampa.fluidweather.core.ai.keys.KeyState
 import dev.pampa.fluidweather.core.ai.keys.ThinkingLevel
 import dev.pampa.fluidweather.core.ai.provider.ModelCatalogue
 import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.strings.R
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -79,7 +83,8 @@ fun AiSettingsScreen(deps: AiSettingsDependencies, onBack: () -> Unit) {
 
   FluidScreen(title = stringResource(R.string.ai_title), onBack = onBack) {
     item {
-      FluidListGroup {
+      TutorialSlot(screen = TutorialScreen.AI)
+      FluidListGroup(modifier = Modifier.fluidTutorialAnchor("ai_state_group")) {
         FluidListRow(
           title = stringResource(R.string.ai_enabled),
           subtitle = when {

@@ -40,6 +40,7 @@ import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.model.AppearanceSettings
 import dev.pampa.fluidweather.core.model.GlassLevel
+import dev.pampa.fluidweather.core.ui.LocalTutorialController
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
@@ -210,6 +211,21 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
             )
           },
         )
+        val tutorials = LocalTutorialController.current
+        if (tutorials != null) {
+          val tutorialsOff by tutorials.disabled.collectAsState()
+          FluidListDivider()
+          FluidListRow(
+            title = stringResource(R.string.appear_tutorials),
+            subtitle = stringResource(R.string.appear_tutorials_desc),
+            badge = {
+              FluidSwitch(
+                checked = !tutorialsOff,
+                onCheckedChange = { on -> tutorials.setDisabled(!on) },
+              )
+            },
+          )
+        }
       }
     }
   }

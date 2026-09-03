@@ -16,6 +16,7 @@ import dev.antigravity.fluidengine.ui.fluid.fluidLicensesSection
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.pampa.fluidweather.core.ui.LocalTutorialController
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
 import dev.pampa.fluidweather.core.weather.RainViewerClient
 import dev.pampa.fluidweather.strings.R
@@ -52,6 +53,17 @@ fun AboutScreen(deps: AboutDependencies, onBack: () -> Unit) {
           subtitle = stringResource(R.string.about_replay_desc),
           onClick = deps.onReviewOnboarding,
         )
+        val tutorials = LocalTutorialController.current
+        if (tutorials != null) {
+          FluidListDivider()
+          FluidListRow(
+            title = stringResource(R.string.about_replay_tutorials),
+            subtitle = stringResource(R.string.about_replay_tutorials_desc),
+            // Rifare la presentazione non li riporta: sono due cose diverse, e chi rivede
+            // l'onboarding di solito non vuole rivedersi spiegare anche i gesti.
+            onClick = { tutorials.replayAll() },
+          )
+        }
       }
     }
 

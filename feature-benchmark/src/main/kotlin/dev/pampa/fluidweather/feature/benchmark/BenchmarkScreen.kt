@@ -33,6 +33,7 @@ import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidChip
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.VerificationStore
@@ -40,6 +41,8 @@ import dev.pampa.fluidweather.core.ui.BlackSheet
 import dev.pampa.fluidweather.core.ui.BlackSheetNote
 import dev.pampa.fluidweather.core.ui.BlackSheetSectionTitle
 import dev.pampa.fluidweather.core.ui.Charts
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.core.weather.Benchmark
 import dev.pampa.fluidweather.core.weather.BenchmarkReport
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
@@ -137,7 +140,10 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
   }
 
   // ------------------------------------------------------------------------ la classifica
-  BlackSheetSectionTitle(stringResource(R.string.bench_ranking))
+  TutorialSlot(screen = TutorialScreen.BENCHMARK)
+  Box(Modifier.fluidTutorialAnchor("benchmark_ranking_list")) {
+    BlackSheetSectionTitle(stringResource(R.string.bench_ranking))
+  }
   if (ready.ranking.isEmpty()) {
     BlackSheetNote(stringResource(R.string.bench_ranking_empty))
   } else {

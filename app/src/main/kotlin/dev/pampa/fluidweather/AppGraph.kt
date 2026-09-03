@@ -21,6 +21,7 @@ import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
 import dev.pampa.fluidweather.core.data.OnboardingStore
+import dev.pampa.fluidweather.core.data.TutorialStore
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NowcastOutcomeRecord
@@ -36,6 +37,7 @@ import dev.pampa.fluidweather.core.data.RoomVerificationStore
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.data.SelectedPlaceStore
+import dev.pampa.fluidweather.core.ui.TutorialController
 import dev.pampa.fluidweather.core.weather.AirQualityClient
 import dev.pampa.fluidweather.core.weather.ForecastFusion
 import dev.pampa.fluidweather.core.weather.ForecastVerifier
@@ -74,6 +76,9 @@ import kotlin.math.abs
 import dev.pampa.fluidweather.core.cycle.ResourceNotificationTexts
 import dev.pampa.fluidweather.core.data.UnitsStore
 import dev.pampa.fluidweather.strings.UnitFormatter
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import dev.pampa.fluidweather.feature.settings.ReleaseSettingsStore
 import dev.pampa.fluidweather.feature.settings.UpdateDependencies
@@ -101,6 +106,16 @@ class AppGraph(context: Context) {
   val engineSettingsStore = EngineSettingsStore(context)
   val calibrationStore = CalibrationStore(context)
   val onboardingStore = OnboardingStore(context)
+
+  /** Cosa e' gia' stato spiegato (fase 21), e il controllore che la UI osserva. */
+  val tutorialStore = TutorialStore(context)
+  val tutorialController = TutorialController(
+    seen = tutorialStore.seen.stateIn(applicationScope, SharingStarted.Eagerly, emptySet()),
+    disabled = tutorialStore.disabledAll.stateIn(applicationScope, SharingStarted.Eagerly, false),
+    onSeen = { id -> applicationScope.launch { tutorialStore.markSeen(id) } },
+    onDisabled = { disabled -> applicationScope.launch { tutorialStore.setDisabledAll(disabled) } },
+    onReplay = { applicationScope.launch { tutorialStore.resetAll() } },
+  )
   val latestActivityStore = LatestActivityStore(context)
 
   val barometer = Barometer(context)

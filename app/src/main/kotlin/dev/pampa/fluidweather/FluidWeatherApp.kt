@@ -9,6 +9,8 @@ import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.SamplingEngine
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.sensor.SensorRuntime
+import dev.pampa.fluidweather.core.ui.TutorialCatalog
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -42,5 +44,21 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime {
     // La config remota (fase 18): si rinfresca solo se la copia in cache ha piu' di sei ore,
     // mai davanti al primo fotogramma; un download fallito lascia l'ultima risposta valida.
     graph.applicationScope.launch { runCatching { graph.remoteConfig.refreshIfStale() } }
+    graph.applicationScope.launch { runCatching { markKnownTutorialsSeen() } }
+  }
+
+  /**
+   * Chi aggiorna non si rivede spiegare l'app che usa da mesi (fase 21): al primo avvio dopo un
+   * aggiornamento, se l'onboarding e' gia' fatto, si segnano visti i suggerimenti delle funzioni
+   * che c'erano gia', e restano solo quelli delle novita'. A un'installazione nuova non si tocca
+   * niente: li vedra' tutti, uno per volta, mentre incontra le funzioni.
+   */
+  private suspend fun markKnownTutorialsSeen() {
+    val store = graph.tutorialStore
+    if (store.currentBaseline() != null) return
+    if (graph.onboardingStore.done.first()) {
+      store.markSeen(TutorialCatalog.introducedBefore(BuildConfig.VERSION_CODE).map { it.id })
+    }
+    store.setBaselineVersionCode(BuildConfig.VERSION_CODE)
   }
 }

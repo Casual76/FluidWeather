@@ -17,7 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidProgressBar
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.ui.PageCharts
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import dev.pampa.fluidweather.nowcast.tide.TideSource
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
@@ -41,7 +44,10 @@ internal fun NowcastPage(state: HomeUiState) {
   val verdict = state.verdict
   val units = rememberUnitFormatter()
 
-  PageSection(stringResource(R.string.common_now))
+  TutorialSlot(screen = TutorialScreen.WIDGET_NOWCAST)
+  Box(Modifier.fluidTutorialAnchor("nowcast_readiness_card")) {
+    PageSection(stringResource(R.string.common_now))
+  }
   if (verdict == null) {
     PageNote(
       stringResource(R.string.nowcast_waiting_note),
@@ -83,7 +89,9 @@ internal fun NowcastPage(state: HomeUiState) {
       stringResource(R.string.nowcast_band_note),
     )
 
-    PageSection(stringResource(R.string.nowcast_factors_title))
+    Box(Modifier.fluidTutorialAnchor("nowcast_factors_card")) {
+      PageSection(stringResource(R.string.nowcast_factors_title))
+    }
     verdict.windows.forEach { window ->
       Text(
         windowLabel(window.window),

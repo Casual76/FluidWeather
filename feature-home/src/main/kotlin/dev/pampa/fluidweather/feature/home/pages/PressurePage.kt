@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.feature.home.pages
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
@@ -12,7 +13,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.model.PressureTrend
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
@@ -54,7 +58,10 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
   }
 
   val latest = state.cleaning?.latest
-  PageSection(stringResource(R.string.common_now))
+  TutorialSlot(screen = TutorialScreen.WIDGET_PRESSURE)
+  Box(Modifier.fluidTutorialAnchor("pressure_values")) {
+    PageSection(stringResource(R.string.common_now))
+  }
   if (latest == null) {
     PageNote(stringResource(R.string.pressure_no_series))
     state.latestRawPressureHpa?.let { StatRow(stringResource(R.string.pressure_last_raw), units.pressure(it, 1)) }

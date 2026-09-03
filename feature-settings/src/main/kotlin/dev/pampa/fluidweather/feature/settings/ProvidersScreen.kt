@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.feature.settings
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,8 +28,11 @@ import dev.antigravity.fluidengine.ui.fluid.FluidTextField
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
 import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
@@ -55,7 +59,8 @@ fun ProvidersScreen(deps: ProvidersDependencies, onBack: () -> Unit) {
   FluidScreen(title = stringResource(R.string.prov_title), onBack = onBack) {
     item { FluidSectionHeader(title = stringResource(R.string.prov_keys)) }
     item {
-      FluidListGroup {
+      TutorialSlot(screen = TutorialScreen.PROVIDERS)
+      FluidListGroup(modifier = Modifier.fluidTutorialAnchor("providers_keys")) {
         ProviderRegistry.all.filter { it.requiresKey }.forEachIndexed { index, descriptor ->
           if (index > 0) FluidListDivider()
           KeyRow(

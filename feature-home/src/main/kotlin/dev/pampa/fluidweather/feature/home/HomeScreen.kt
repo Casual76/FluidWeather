@@ -78,6 +78,7 @@ import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import dev.antigravity.fluidengine.ui.fluid.rememberFluidGlassModalHostState
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.ui.HeaderCollapse
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidCanvasBackdrop
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassQuality
@@ -98,6 +99,8 @@ import dev.pampa.fluidweather.core.ui.GlassTile
 import dev.pampa.fluidweather.core.ui.GridReorder
 import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.core.ui.SkyState
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import dev.pampa.fluidweather.core.ui.WeatherScene
 import dev.pampa.fluidweather.core.ui.deviceGlassTier
@@ -343,6 +346,15 @@ private fun HomeShell(
           }
         },
       )
+      // I suggerimenti della home: la griglia che si riordina, la pillola, il tasto dell'IA.
+      TutorialSlot(
+        screen = TutorialScreen.HOME,
+        busy = gridState.isScrollInProgress,
+        // Con un foglio o il pannello dei posti aperti la home e' coperta: un callout qui sotto
+        // verrebbe segnato come visto senza che nessuno l'abbia visto davvero.
+        loading = state.loading || selectedWidget != null || locationOpen,
+        hidden = if (state.verdict == null || state.verdict?.level == AlertLevel.QUIETE) setOf("home_alert_row") else emptySet(),
+      )
       // Ultimo nella scatola: il pannello di vetro sta sopra la barra e sopra il menu'.
       FluidGlassModalHost(state = modalHost, backdrop = chromeBackdrop)
       // Sopra tutto, l'overlay dell'assistente (fase 19): aureola, barra, card.
@@ -429,10 +441,12 @@ private fun HomeGrid(
     ) { id ->
       val widget = HomeWidget.entries.firstOrNull { it.id == id } ?: return@items
       val dragging = drag.draggingKey == id
+      // La prima tessera fa da ancora ai due suggerimenti della griglia (fase 21).
+      val anchor = if (order.firstOrNull() == id) Modifier.fluidTutorialAnchor("home_first_tile") else Modifier
       GlassTile(
         onClick = { onOpenWidget(widget) },
         onClickLabel = stringResource(R.string.a11y_open_widget, stringResource(widget.titleRes)),
-        modifier = Modifier
+        modifier = anchor
           .zIndex(if (dragging) 1f else 0f)
           .then(if (dragging) Modifier else Modifier.animateItem())
           .graphicsLayer {

@@ -77,6 +77,9 @@ fun BlackSheet(
     dragHandle = { FluidGrabber(Modifier.statusBarsPadding()) },
     contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
   ) {
+    // Il foglio vive in una finestra sua: i suggerimenti delle sue pagine hanno bisogno di un
+    // padrone di casa qui dentro, o finirebbero dietro al foglio con le coordinate sbagliate.
+    TutorialSurface {
     Column(
       modifier = Modifier
         .fillMaxWidth()
@@ -103,6 +106,7 @@ fun BlackSheet(
       Spacer(Modifier.height(8.dp))
       content()
       Spacer(Modifier.height(28.dp))
+    }
     }
   }
 }

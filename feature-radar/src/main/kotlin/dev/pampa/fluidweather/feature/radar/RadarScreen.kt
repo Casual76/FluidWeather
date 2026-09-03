@@ -86,11 +86,14 @@ import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.antigravity.fluidengine.ui.theme.FluidTheme
+import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.data.SelectedPlaceStore
 import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.sensor.LocationProvider
+import dev.pampa.fluidweather.core.ui.TutorialScreen
+import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import dev.pampa.fluidweather.core.weather.PointWeatherClient
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
@@ -337,6 +340,7 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
         onClick = { menuBounds?.let { menu.open(it, null, Icons.Rounded.Layers, layerActions()) } },
         icon = Icons.Rounded.Layers,
         backdrop = chromeBackdrop,
+        modifier = Modifier.fluidTutorialAnchor("radar_layers_button"),
       )
     }
 
@@ -364,7 +368,14 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
           .align(Alignment.BottomEnd)
           .padding(end = 12.dp, bottom = navigationBottom + barHeight + 8.dp),
       ) {
-        Icon(Icons.Rounded.MyLocation, contentDescription = stringResource(R.string.place_my_location), tint = White, modifier = Modifier.size(20.dp))
+        Icon(
+          Icons.Rounded.MyLocation,
+          contentDescription = stringResource(R.string.place_my_location),
+          tint = White,
+          modifier = Modifier
+            .size(20.dp)
+            .fluidTutorialAnchor("radar_locate_button"),
+        )
       }
     }
 
@@ -380,8 +391,12 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
       },
       modifier = Modifier
         .align(Alignment.BottomCenter)
-        .padding(start = 12.dp, end = 12.dp, bottom = navigationBottom + 8.dp),
+        .padding(start = 12.dp, end = 12.dp, bottom = navigationBottom + 8.dp)
+        .fluidTutorialAnchor("radar_timeline_bar"),
     )
+
+    // I suggerimenti del radar: la linea del tempo, gli strati, il tasto che riporta sul posto.
+    TutorialSlot(screen = TutorialScreen.RADAR, loading = frames == null)
 
     FluidMorphMenuHost(state = menu, backdrop = chromeBackdrop)
   }
