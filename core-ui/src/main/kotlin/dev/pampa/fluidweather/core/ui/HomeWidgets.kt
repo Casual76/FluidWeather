@@ -40,5 +40,15 @@ enum class HomeWidget(
       val missing = defaultOrder.filter { it !in stored }
       return stored + missing
     }
+
+    /**
+     * Gli id delle tessere da mostrare davvero, dato l'ordine salvato.
+     *
+     * Il nowcast viene dal barometro di QUESTO telefono: su una localita' lontana non ha niente da
+     * dire, e una tessera che dicesse "in attesa di storia" parlerebbe di un altro posto. Sparisce
+     * — ma **l'ordine salvato non si tocca**: chi torna sulla propria posizione la ritrova dov'era.
+     */
+    fun visibleIds(orderedIds: List<String>, barometerApplies: Boolean): List<String> =
+      if (barometerApplies) orderedIds else orderedIds.filterNot { it == NOWCAST.id }
   }
 }

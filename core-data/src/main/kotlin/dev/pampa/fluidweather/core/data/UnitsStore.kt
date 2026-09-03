@@ -14,9 +14,13 @@ import dev.pampa.fluidweather.core.model.UnitOverrides
 import dev.pampa.fluidweather.core.model.UnitPreferences
 import dev.pampa.fluidweather.core.model.WindUnit
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 
 private val Context.unitsStore: DataStore<Preferences> by preferencesDataStore(name = "units")
 
@@ -41,6 +45,20 @@ class UnitsStore(private val context: Context) {
   val preferences: Flow<UnitPreferences> = overrides.map { it.resolve(Locale.getDefault().country) }
 
   suspend fun current(): UnitPreferences = preferences.first()
+
+  /**
+   * Le unita' come stato sempre pronto, per chi non puo' sospendere.
+   *
+   * Serve ai testi delle notifiche: li' c'era un `runBlocking { current() }`, e quella lambda la
+   * chiama anche il thread principale (la prova del ciclo dalle impostazioni), dove una lettura
+   * bloccante del DataStore e' un ANR che aspetta il momento giusto. Il valore iniziale e' quello
+   * del paese del locale: esattamente cio' che si otterrebbe senza scelte salvate.
+   */
+  fun preferencesIn(scope: CoroutineScope): StateFlow<UnitPreferences> = preferences.stateIn(
+    scope,
+    SharingStarted.Eagerly,
+    UnitOverrides().resolve(Locale.getDefault().country),
+  )
 
   suspend fun setTemperature(unit: TemperatureUnit?) = set(Keys.Temperature, unit?.name)
 

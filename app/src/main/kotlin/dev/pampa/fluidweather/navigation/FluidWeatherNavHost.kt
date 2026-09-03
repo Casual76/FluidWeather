@@ -266,6 +266,7 @@ private fun FluidWeatherRoutes(
     composable(Routes.Radar) {
       val deps = remember(graph) {
         RadarDependencies(
+          engineSettings = graph.engineSettingsStore,
           rainViewer = graph.rainViewerClient,
           pointWeather = graph.pointWeatherClient,
           savedLocations = graph.savedLocationsRepository,

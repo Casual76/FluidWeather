@@ -91,7 +91,11 @@ internal class HourlyModel(val days: List<HourlyDay>, val providers: Int) {
                 precipitation = if (mm != null && mm >= 0.05) units.precipitationValue(mm) else "",
                 wind = value(FusionVariables.WIND_SPEED)?.let { units.wind(it) } ?: "—",
                 windDirectionDeg = direction,
-                windDescription = direction?.let { compassPoint(resources, it) },
+                // "da NE": la freccia punta dove va il vento, il nome cardinale dice da dove
+                // viene, e senza la preposizione le due cose si contraddicono.
+                windDescription = direction?.let {
+                  resources.getString(R.string.a11y_wind_from, compassPoint(resources, it))
+                },
                 humidity = value(FusionVariables.HUMIDITY)?.let { "${it.toInt()}%" } ?: "",
               )
             },

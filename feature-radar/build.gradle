@@ -31,6 +31,8 @@ android {
 
 dependencies {
   implementation project(':engine-ui')
+  // Il tema (chiaro/scuro) vive nelle impostazioni del motore: la mappa e i controlli lo seguono.
+  implementation project(':engine-storage')
   implementation project(':core-ui')
   api project(':core-sensor')
   api project(':core-weather')

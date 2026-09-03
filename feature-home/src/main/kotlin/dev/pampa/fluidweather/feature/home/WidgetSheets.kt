@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.feature.home
 import androidx.compose.runtime.Composable
 import dev.pampa.fluidweather.core.ui.BlackSheet
 import dev.pampa.fluidweather.core.ui.BlackSheetLazy
+import dev.pampa.fluidweather.core.ui.BlackSheetNote
 import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.feature.home.pages.AirQualityPage
 import dev.pampa.fluidweather.feature.home.pages.DailyPage
@@ -15,6 +16,7 @@ import dev.pampa.fluidweather.feature.home.pages.PrecipitationPage
 import dev.pampa.fluidweather.feature.home.pages.PressurePage
 import dev.pampa.fluidweather.feature.home.pages.SunPage
 import androidx.compose.ui.res.stringResource
+import dev.pampa.fluidweather.strings.R
 
 /**
  * Il foglio NERO del piano ([BlackSheet]): sale dal basso, prende tutta la pagina, si chiude
@@ -40,7 +42,11 @@ internal fun WidgetSheetHost(
   }
   BlackSheet(title = stringResource(selected.titleRes), onDismiss = onDismiss) {
     when (selected) {
-      HomeWidget.NOWCAST -> NowcastPage(state)
+      HomeWidget.NOWCAST -> if (state.barometerApplies) {
+        NowcastPage(state)
+      } else {
+        BlackSheetNote(stringResource(R.string.tile_barometer_here_only))
+      }
       // Gestita sopra, nel foglio pigro: qui non ci arriva mai.
       HomeWidget.HOURLY -> Unit
       HomeWidget.DAILY -> DailyPage(state)

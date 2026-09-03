@@ -21,6 +21,8 @@ import dev.pampa.fluidweather.nowcast.learning.NowcastExplanation
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import dev.pampa.fluidweather.nowcast.verdict.toRecord
 import kotlin.math.abs
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Tutto quello che la pipeline del barometro sa dire adesso, in un colpo solo. */
 data class NowcastSnapshot(
@@ -60,7 +62,18 @@ class NowcastUseCase(
   private val learningCacheMillis: Long = LEARNING_CACHE_MILLIS,
 ) {
 
+  /**
+   * Lo stato dell'apprendimento in cache, condiviso.
+   *
+   * Questa istanza e' unica per l'app: la home, il ciclo in background e l'assistente la chiamano
+   * dai loro thread. Con un `var` semplice due chiamate vicine ricostruivano lo stato due volte
+   * (l'archivio delle issue: disco e conti) e una poteva sovrascrivere la cache dell'altra con un
+   * valore piu' vecchio. Il mutex serializza la ricostruzione; il riferimento e' volatile perche'
+   * la lettura veloce, quella che nel 99% dei casi trova la cache buona, resta fuori dal lucchetto.
+   */
+  @Volatile
   private var learningCache: Pair<Long, LearningState>? = null
+  private val learningMutex = Mutex()
 
   /**
    * Il verdetto di adesso. [record] = true scrive anche nello storico dei verdetti (throttlato
@@ -109,17 +122,24 @@ class NowcastUseCase(
 
   /** Lo stato dell'apprendimento (mappe di Platt, analoghi), in cache per un'ora. */
   suspend fun learningState(nowMillis: Long): LearningState {
-    learningCache?.let { (at, state) -> if (nowMillis - at < learningCacheMillis) return state }
-    val state = runCatching {
-      LearningStateBuilder.build(
-        platt = learningStore.current(),
-        issues = learningRepository.issuesSince(nowMillis - LearningRepository.KEEP_MILLIS),
-        outcomes = learningRepository.outcomesSince(nowMillis - LearningRepository.KEEP_MILLIS),
-      )
-    }.getOrDefault(LearningState.EMPTY)
-    learningCache = nowMillis to state
-    return state
+    fresh(nowMillis)?.let { return it }
+    return learningMutex.withLock {
+      // Ricontrollo dentro il lucchetto: chi ha aspettato in coda trova il lavoro gia' fatto.
+      fresh(nowMillis)?.let { return@withLock it }
+      val state = runCatching {
+        LearningStateBuilder.build(
+          platt = learningStore.current(),
+          issues = learningRepository.issuesSince(nowMillis - LearningRepository.KEEP_MILLIS),
+          outcomes = learningRepository.outcomesSince(nowMillis - LearningRepository.KEEP_MILLIS),
+        )
+      }.getOrDefault(LearningState.EMPTY)
+      learningCache = nowMillis to state
+      state
+    }
   }
+
+  private fun fresh(nowMillis: Long): LearningState? =
+    learningCache?.takeIf { nowMillis - it.first < learningCacheMillis }?.second
 
   fun invalidateLearning() {
     learningCache = null

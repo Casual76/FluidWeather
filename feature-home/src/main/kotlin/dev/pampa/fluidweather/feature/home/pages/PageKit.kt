@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.antigravity.fluidengine.ui.fluid.FluidChip
+import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.ui.BlackSheetNote
 import dev.pampa.fluidweather.core.ui.BlackSheetSectionTitle
 import dev.pampa.fluidweather.core.ui.Charts
@@ -184,6 +185,19 @@ internal fun ChipRow(options: List<String>, selectedIndex: Int, onSelect: (Int) 
       FluidChip(label = label, selected = index == selectedIndex, onClick = { onSelect(index) })
     }
   }
+}
+
+/**
+ * I punti di una curva oraria e le loro etichette, presi INSIEME.
+ *
+ * Filtrare i valori con `mapNotNull` e prendere le etichette da tutte le ore disallineava le due
+ * cose: se ai provider manca un'ora il punto salta ma l'etichetta resta, e la prima, la mediana e
+ * l'ultima finiscono su ore che la curva non contiene. Qui o si tengono entrambi o non si tiene
+ * niente.
+ */
+internal fun curvePoints(hours: List<FusedHour>, variable: String): Pair<List<Double>, List<String>> {
+  val kept = hours.mapNotNull { hour -> hour.values[variable]?.value?.let { hour.timestampMillis to it } }
+  return kept.map { it.second } to timeLabels(kept.map { it.first })
 }
 
 /** Le etichette temporali per una serie: prima, meta' e ultima ora. */

@@ -453,6 +453,9 @@ private fun HomeGrid(
   // La leva che l'engine ha e che nessuno tirava: mentre si scorre, lente, dispersione, ombre e
   // soprattutto la risoluzione della cattura scendono, e risalgono appena il dito si ferma.
   val qualityScroll = remember(quality) { fluidGlassQualityScrollConnection(quality) }
+  val visible = remember(order, state.barometerApplies) {
+    HomeWidget.visibleIds(order, state.barometerApplies)
+  }
   LazyVerticalGrid(
     columns = GridCells.Fixed(2),
     state = gridState,
@@ -504,7 +507,7 @@ private fun HomeGrid(
       HomeHeader(state = state, gridState = gridState, collapse = collapse)
     }
 
-    val verdict = state.verdict
+    val verdict = state.verdict.takeIf { state.barometerApplies }
     if (verdict != null && verdict.level != AlertLevel.QUIETE) {
       item(key = ALERT_KEY, span = { GridItemSpan(2) }) {
         BarometerAlertRow(verdict)
@@ -512,7 +515,7 @@ private fun HomeGrid(
     }
 
     items(
-      items = order,
+      items = visible,
       key = { it },
       span = { id -> GridItemSpan(HomeWidget.entries.firstOrNull { it.id == id }?.span ?: 2) },
     ) { id ->

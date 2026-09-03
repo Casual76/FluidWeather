@@ -113,6 +113,16 @@ data class HomeUiState(
   val readiness: BarometerReadiness? = null,
   /** Vero mentre il gesto di aggiornamento rifa' il giro: lo legge la rotella in cima. */
   val refreshing: Boolean = false,
+  /**
+   * Vero solo quando la localita' scelta e' quella dove sei.
+   *
+   * Il barometro e' quello del telefono: misura la pressione **qui**, non a duecento chilometri.
+   * Prima il verdetto si calcolava comunque e — peggio — al modello arrivava il contesto meteo
+   * della citta' lontana insieme al segnale di questo sensore: sensore di qui, contesto di la'.
+   * Era il motivo per cui i numeri del nowcast cambiavano cambiando posto, che e' proprio la cosa
+   * che non doveva succedere. Fuori casa il nowcast non c'e' e la pressione la danno i provider.
+   */
+  val barometerApplies: Boolean = true,
   /** Il verdetto spiegato: grezzo, ricalibrato, analoghi (fase 16). */
   val nowcastExplanation: NowcastExplanation? = null,
   val dayLengthTodayMillis: Long? = null,
@@ -198,23 +208,39 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
     )
 
     // Il verdetto locale (stadi 1-5) dal caso d'uso condiviso col ciclo in background (fase 19):
-    // barometro pulito + contesto dell'opinione piu' completa (dall'istantanea), registrato nello storico.
-    val nowcast = deps.nowcast.evaluate(
-      snapshot = snapshot,
-      nowMillis = now,
-      calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
-      record = true,
-    )
-    val history = runCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
-    value = value.copy(
-      verdict = nowcast.verdict,
-      cleaning = nowcast.cleaning,
-      latestRawPressureHpa = nowcast.latestRawPressureHpa,
-      verdictHistory = history,
-      nowcastExplanation = nowcast.explanation,
-      readiness = nowcast.readiness,
-      loading = false,
-    )
+    // barometro pulito + contesto dell'opinione piu' completa (dall'istantanea), registrato nello
+    // storico. **Solo dove sei**: su una citta' lontana questo sensore non ha niente da dire, e
+    // registrarne il verdetto sporcherebbe anche lo storico con previsioni di un altro posto.
+    if (place.isGps) {
+      val nowcast = deps.nowcast.evaluate(
+        snapshot = snapshot,
+        nowMillis = now,
+        calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
+        record = true,
+      )
+      val history = runCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
+      value = value.copy(
+        barometerApplies = true,
+        verdict = nowcast.verdict,
+        cleaning = nowcast.cleaning,
+        latestRawPressureHpa = nowcast.latestRawPressureHpa,
+        verdictHistory = history,
+        nowcastExplanation = nowcast.explanation,
+        readiness = nowcast.readiness,
+        loading = false,
+      )
+    } else {
+      value = value.copy(
+        barometerApplies = false,
+        verdict = null,
+        cleaning = null,
+        latestRawPressureHpa = null,
+        verdictHistory = emptyList(),
+        nowcastExplanation = null,
+        readiness = null,
+        loading = false,
+      )
+    }
 
     val air = runCatching { deps.airQualityClient.now(latitude, longitude) }.getOrNull()
     if (air != null) value = value.copy(airQuality = air)

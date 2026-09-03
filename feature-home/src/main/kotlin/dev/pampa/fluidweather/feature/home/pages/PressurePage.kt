@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
+import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.PressureTrend
 import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
@@ -33,6 +34,15 @@ import dev.pampa.fluidweather.strings.labelRes
 private val PeriodHours = listOf(12, 24, 72, 168)
 
 /**
+ * Quante ore di previsione mostrare a chi guarda una localita' lontana.
+ *
+ * Due giorni: e' l'orizzonte su cui la pressione dei modelli dice ancora qualcosa di leggibile a
+ * occhio (i passaggi di fronte durano ore, non minuti), e sono abbastanza punti perche' la curva
+ * abbia una forma senza diventare una riga di rumore.
+ */
+private const val ProviderHours = 48
+
+/**
  * La pagina della pressione: il livello adesso e le soglie classiche applicate alle ultime tre
  * ore, la serie grezza e quella pulita sul periodo scelto (dall'archivio del telefono, rigiocato
  * dalla stessa pipeline del banco), la marea sottratta, cosa e' stato scartato e da quale
@@ -40,6 +50,13 @@ private val PeriodHours = listOf(12, 24, 72, 168)
  */
 @Composable
 internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
+  // Su una localita' lontana il barometro di questo telefono non parla di quel posto: archivio,
+  // marea sottratta e taratura sarebbero una pagina su un altro luogo. Al suo posto la pressione
+  // che i provider prevedono qui, dichiarata per quello che e'.
+  if (!state.barometerApplies) {
+    ProviderPressurePage(state)
+    return
+  }
   var period by remember { mutableIntStateOf(0) }
   val units = rememberUnitFormatter()
   val periodLabels = listOf(stringResource(R.string.period_12h), stringResource(R.string.period_24h), stringResource(R.string.period_3d), stringResource(R.string.period_7d))
@@ -131,7 +148,7 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
     PageSection(stringResource(R.string.pressure_tide))
     val tide = shown.tide
     StatRow(stringResource(R.string.pressure_tide_model), tideSourceLabel(tide.source))
-    StatRow(stringResource(R.string.pressure_tide_amplitudes), "S1 ${units.pressureValue(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}", stringResource(R.string.pressure_tide_kinds))
+    StatRow(stringResource(R.string.pressure_tide_amplitudes), "S1 ${units.pressure(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}", stringResource(R.string.pressure_tide_kinds))
     if (tide.source != TideSource.NONE) {
       StatRow(stringResource(R.string.pressure_tide_push), units.pressureDelta(tide.tideAtLatestHpa, 2), stringResource(R.string.pressure_tide_subtracted))
     }
@@ -160,6 +177,83 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
   PageNote(
     stringResource(R.string.pressure_bias_note),
   )
+}
+
+/**
+ * La pressione di una localita' lontana: quella prevista dai provider, ora per ora.
+ *
+ * Non e' la pagina di sopra con meno righe: gli stadi 1-5 (pulizia, marea, taratura, incertezza)
+ * sono il sensore di questo telefono, e il sensore e' dove sei tu. Qui c'e' un'altra cosa — una
+ * previsione — e va detto, altrimenti si legge un numero credendolo una misura.
+ */
+@Composable
+private fun ProviderPressurePage(state: HomeUiState) {
+  val units = rememberUnitFormatter()
+  // L'ora al passo dell'ora, come nella pagina orario: `System.currentTimeMillis()` in
+  // composizione cambierebbe la chiave ad ogni fotogramma e rifarebbe tutto.
+  val hourStamp = remember(state.fusedHours) { System.currentTimeMillis() / 3_600_000L }
+  val series = remember(state.fusedHours, hourStamp) {
+    val from = hourStamp * 3_600_000L - 3_600_000L
+    state.fusedHours
+      .asSequence()
+      .filter { it.timestampMillis >= from }
+      .mapNotNull { hour ->
+        hour.values[FusionVariables.PRESSURE_MSL]?.value?.let { hour.timestampMillis to it }
+      }
+      .take(ProviderHours)
+      .toList()
+  }
+
+  PageSection(stringResource(R.string.common_now))
+  if (series.isEmpty()) {
+    PageNote(stringResource(R.string.common_waiting_providers))
+    PageSection(stringResource(R.string.pressure_provider_title))
+    PageNote(stringResource(R.string.tile_barometer_here_only))
+    return
+  }
+
+  val (firstMillis, current) = series.first()
+  BigStat(
+    units.pressureValue(current, 1),
+    units.pressureSymbol(),
+    stringResource(R.string.pressure_provider_caption),
+  )
+  Spacer(Modifier.height(8.dp))
+  // "Fra tre ore" e non "nelle ultime tre": di una previsione si legge il seguito. La stessa
+  // finestra delle soglie classiche, cosi' le due pagine si confrontano.
+  val inThree = series.firstOrNull { it.first >= firstMillis + 3 * 3_600_000L }?.second
+  val delta3h = inThree?.let { it - current }
+  StatGrid(
+    listOf(
+      stringResource(R.string.pressure_provider_next3h) to (inThree?.let { units.pressure(it, 1) } ?: "\u2014"),
+      stringResource(R.string.pressure_trend) to (delta3h?.let { units.pressureRate(it / 3.0, 2) } ?: "\u2014"),
+      stringResource(R.string.pressure_provider_hours) to "${series.size}",
+    ),
+  )
+  if (delta3h != null) {
+    Spacer(Modifier.height(8.dp))
+    Text(
+      text = when {
+        abs(delta3h) >= 3.0 -> stringResource(R.string.pressure_storm)
+        abs(delta3h) >= 1.6 -> stringResource(R.string.pressure_change)
+        else -> stringResource(R.string.pressure_normal)
+      },
+      style = MaterialTheme.typography.bodyMedium,
+      color = if (abs(delta3h) >= 1.6) PageAmber else Dim,
+    )
+  }
+
+  PageSection(stringResource(R.string.pressure_provider_series))
+  CurveWithLabels(
+    values = units.pressureSeries(series.map { it.second }),
+    labels = timeLabels(series.map { it.first }),
+    color = PageBlue,
+    unit = " " + units.pressureSymbol(),
+    decimals = units.pressureChartDecimals() + 1,
+  )
+
+  PageSection(stringResource(R.string.pressure_provider_title))
+  PageNote(stringResource(R.string.pressure_provider_note))
 }
 
 @Composable

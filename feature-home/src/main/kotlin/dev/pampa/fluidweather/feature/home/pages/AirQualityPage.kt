@@ -132,8 +132,8 @@ internal fun AirQualityPage(state: HomeUiState) {
 @Composable
 private fun pollenLevel(value: Double): String = when {
   value <= 0.0 -> stringResource(R.string.pollen_none)
-  value < 10 -> stringResource(R.string.uv_low)
-  value < 50 -> stringResource(R.string.uv_moderate)
-  value < 100 -> stringResource(R.string.uv_high)
-  else -> stringResource(R.string.uv_very_high)
+  value < 10 -> stringResource(R.string.pollen_low)
+  value < 50 -> stringResource(R.string.pollen_moderate)
+  value < 100 -> stringResource(R.string.pollen_high)
+  else -> stringResource(R.string.pollen_very_high)
 }

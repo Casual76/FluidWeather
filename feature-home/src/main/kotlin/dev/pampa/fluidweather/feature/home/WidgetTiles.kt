@@ -432,6 +432,12 @@ private fun PrecipitationTile(state: HomeUiState) {
 
 @Composable
 private fun PressureTile(state: HomeUiState) {
+  // Fuori casa il sensore non c'entra: la pressione al livello del mare e' una variabile che i
+  // provider danno ora per ora, e la si dichiara per quello che e'.
+  if (!state.barometerApplies) {
+    ProviderPressureBody(state)
+    return
+  }
   val raw = state.latestRawPressureHpa
   if (raw == null) {
     EmptyTileBody(stringResource(R.string.tile_no_barometer_reading))
@@ -661,7 +667,9 @@ private fun DetailsTile(state: HomeUiState) {
         if (direction != null) {
           Icon(
             imageVector = Icons.Rounded.Navigation,
-            contentDescription = compassPoint(context.resources, direction),
+            // "da NE", non "NE": la freccia punta DOVE VA il vento, il nome cardinale dice
+            // DA DOVE VIENE. Senza la preposizione grafica e voce si contraddicono.
+            contentDescription = context.getString(R.string.a11y_wind_from, compassPoint(context.resources, direction)),
             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             // L'icona punta in su; il vento VIENE da direction: la freccia indica dove va.
             modifier = Modifier
@@ -751,4 +759,37 @@ private fun kindIconAndTint(kind: WeatherKind?): Pair<ImageVector, Color> = when
   WeatherKind.HEAVY_SNOW -> Icons.Rounded.AcUnit to Color(0xFFC8DCF0)
   WeatherKind.THUNDERSTORM -> Icons.Rounded.Thunderstorm to Color(0xFFB99AE8)
   else -> Icons.Rounded.HelpOutline to Color(0xFF9AA4B0)
+}
+
+/** La pressione di una localita' lontana: quella fusa dei provider, col nome della fonte. */
+@Composable
+private fun ProviderPressureBody(state: HomeUiState) {
+  val nowMillis = remember(state.fusedHours) { System.currentTimeMillis() }
+  val hour = remember(state.fusedHours, nowMillis) {
+    state.fusedHours.minByOrNull { kotlin.math.abs(it.timestampMillis - nowMillis) }
+  }
+  val pressure = hour?.values?.get(FusionVariables.PRESSURE_MSL)?.value
+  if (pressure == null) {
+    EmptyTileBody(stringResource(R.string.common_waiting_providers))
+    return
+  }
+  val units = rememberUnitFormatter()
+  Spacer(Modifier.height(6.dp))
+  Text(
+    text = units.pressureValue(pressure, 1),
+    fontSize = 34.sp,
+    fontWeight = FontWeight.Light,
+    color = MaterialTheme.colorScheme.onSurface,
+  )
+  Text(
+    text = stringResource(R.string.tile_pressure_provider, units.pressureSymbol()),
+    style = MaterialTheme.typography.labelSmall,
+    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+  )
+  Spacer(Modifier.height(8.dp))
+  Text(
+    text = stringResource(R.string.tile_barometer_here_only),
+    style = MaterialTheme.typography.labelMedium,
+    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+  )
 }

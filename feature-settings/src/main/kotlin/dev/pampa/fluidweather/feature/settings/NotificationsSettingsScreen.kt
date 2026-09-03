@@ -34,12 +34,14 @@ import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NotificationSettings
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.descriptionRes
 import dev.pampa.fluidweather.strings.labelRes
+import kotlinx.coroutines.withContext
 
 /** Tutto quello che la pagina delle notifiche tocca; lo costruisce :app dal suo grafo. */
 class NotificationsDependencies(
@@ -184,7 +186,11 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
                 running = true
                 scope.launch {
                   try {
-                    cycleNote = runCatching { deps.runCycleNow() }.getOrElse { context.getString(R.string.common_error, it.message ?: "") }
+                    // Il ciclo fa rete, disco e DataStore: lanciato sullo scope della
+                    // composizione girava sul Main, e la schermata restava ferma finche' non
+                    // finiva (secondi, con la rete lenta).
+                    cycleNote = runCatching { withContext(Dispatchers.Default) { deps.runCycleNow() } }
+                      .getOrElse { context.getString(R.string.common_error, it.message ?: "") }
                   } finally {
                     running = false
                   }

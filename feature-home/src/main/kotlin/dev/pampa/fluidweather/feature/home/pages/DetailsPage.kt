@@ -40,9 +40,11 @@ internal fun DetailsPage(state: HomeUiState) {
     return
   }
   val next24 = state.fusedHours.filter { it.timestampMillis >= now - 30 * 60_000L }.take(24)
-  val labels = timeLabels(next24.map { it.timestampMillis })
+  // Curva ed etichette si costruiscono INSIEME (vedi `curvePoints`): con le etichette prese da
+  // tutte le ore e i valori filtrati, un'ora mancante ai provider spostava le etichette su ore
+  // che la curva non contiene.
+  fun curve(variable: String) = curvePoints(next24, variable)
   fun value(variable: String): Double? = current.values[variable]?.value
-  fun series(variable: String): List<Double> = next24.mapNotNull { it.values[variable]?.value }
 
   // ------------------------------------------------------------------------------- vento
   PageSection(stringResource(R.string.common_wind))
@@ -68,9 +70,10 @@ internal fun DetailsPage(state: HomeUiState) {
       if (gust != null) StatRow(stringResource(R.string.details_gusts), units.wind(gust))
     }
   }
-  if (series(FusionVariables.WIND_SPEED).size >= 2) {
+  val (windCurve, windLabels) = curve(FusionVariables.WIND_SPEED)
+  if (windCurve.size >= 2) {
     Spacer(Modifier.height(6.dp))
-    CurveWithLabels(units.windSeries(series(FusionVariables.WIND_SPEED)), labels, PageBlue, " " + units.windSymbol(), height = 70.dp)
+    CurveWithLabels(units.windSeries(windCurve), windLabels, PageBlue, " " + units.windSymbol(), height = 70.dp)
   }
   PageNote(stringResource(R.string.details_wind_note))
 
@@ -102,8 +105,9 @@ internal fun DetailsPage(state: HomeUiState) {
       } + stringResource(R.string.details_dew_explain),
     )
   }
-  if (series(FusionVariables.HUMIDITY).size >= 2) {
-    CurveWithLabels(series(FusionVariables.HUMIDITY), labels, PageBlue, "%", height = 70.dp)
+  val (humidityCurve, humidityLabels) = curve(FusionVariables.HUMIDITY)
+  if (humidityCurve.size >= 2) {
+    CurveWithLabels(humidityCurve, humidityLabels, PageBlue, "%", height = 70.dp)
   }
   if (apparent != null) {
     PageNote(stringResource(R.string.details_feels_note))
@@ -119,8 +123,9 @@ internal fun DetailsPage(state: HomeUiState) {
   if (uvPeak != null) {
     StatRow(stringResource(R.string.details_uv_max), fmt0(uvPeak.second), stringResource(R.string.details_uv_at, fmtTime(uvPeak.first), uvLabel(uvPeak.second)))
   }
-  if (series(FusionVariables.UV_INDEX).size >= 2) {
-    CurveWithLabels(series(FusionVariables.UV_INDEX), labels, PageAmber, "", height = 60.dp)
+  val (uvCurve, uvLabels) = curve(FusionVariables.UV_INDEX)
+  if (uvCurve.size >= 2) {
+    CurveWithLabels(uvCurve, uvLabels, PageAmber, "", height = 60.dp)
   }
   PageNote(stringResource(R.string.details_uv_scale))
 
@@ -132,8 +137,9 @@ internal fun DetailsPage(state: HomeUiState) {
     visibility?.let { units.visibilityMeters(it, 1) } ?: "—",
     visibility?.let { visibilityLabel(it) },
   )
-  if (series(FusionVariables.VISIBILITY).size >= 2) {
-    CurveWithLabels(units.distanceSeries(series(FusionVariables.VISIBILITY).map { it / 1000 }), labels, PageBlue, " " + units.distanceSymbol(), height = 60.dp)
+  val (visibilityCurve, visibilityLabels) = curve(FusionVariables.VISIBILITY)
+  if (visibilityCurve.size >= 2) {
+    CurveWithLabels(units.distanceSeries(visibilityCurve.map { it / 1000 }), visibilityLabels, PageBlue, " " + units.distanceSymbol(), height = 60.dp)
   }
 
   // ---------------------------------------------------------- pressione: provider vs barometro
@@ -145,8 +151,9 @@ internal fun DetailsPage(state: HomeUiState) {
   if (fusedMsl != null && local != null) {
     StatRow(stringResource(R.string.details_pressure_gap), units.pressureDelta(local - fusedMsl), stringResource(R.string.details_gap_hint))
   }
-  if (series(FusionVariables.PRESSURE_MSL).size >= 2) {
-    CurveWithLabels(units.pressureSeries(series(FusionVariables.PRESSURE_MSL)), labels, PageAmber, " " + units.pressureSymbol(), height = 70.dp, decimals = units.pressureChartDecimals() + 1)
+  val (pressureCurve, pressureLabels) = curve(FusionVariables.PRESSURE_MSL)
+  if (pressureCurve.size >= 2) {
+    CurveWithLabels(units.pressureSeries(pressureCurve), pressureLabels, PageAmber, " " + units.pressureSymbol(), height = 70.dp, decimals = units.pressureChartDecimals() + 1)
   }
   PageNote(
     stringResource(R.string.details_bias_note),

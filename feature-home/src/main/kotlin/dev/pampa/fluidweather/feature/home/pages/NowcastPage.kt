@@ -157,7 +157,7 @@ internal fun NowcastPage(state: HomeUiState) {
     StatRow(
       stringResource(R.string.pressure_tide),
       tideSourceLabel(tide.source),
-      "S1 ${units.pressureValue(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}",
+      "S1 ${units.pressure(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}",
     )
     if (tide.source != TideSource.NONE) {
       StatRow(stringResource(R.string.nowcast_tide_now), units.pressureDelta(tide.tideAtLatestHpa, 2), stringResource(R.string.nowcast_tide_subtracted))

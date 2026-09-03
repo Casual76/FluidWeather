@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -45,6 +47,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -59,6 +62,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -72,6 +78,7 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
 import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.antigravity.fluidengine.foundation.ThemeMode
+import dev.antigravity.fluidengine.storage.EngineSettingsStore
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidContextAction
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassIconButton
@@ -108,6 +115,8 @@ import androidx.compose.ui.res.stringResource
 
 /** Tutto quello che il radar tocca; lo costruisce :app dal suo grafo. */
 class RadarDependencies(
+  /** Il tema dell'app: la mappa e i controlli lo seguono, chiaro compreso. */
+  val engineSettings: EngineSettingsStore,
   val rainViewer: RainViewerClient,
   val pointWeather: PointWeatherClient,
   val savedLocations: SavedLocationsRepository,
@@ -119,11 +128,31 @@ class RadarDependencies(
 /** Un pin sulla mappa: una localita' salvata (o il telefono) con la sua temperatura. */
 private data class RadarPin(val name: String, val position: LatLng, val temperatureC: Double?)
 
-private val Ink = Color(0xFF0B0B0E)
-private val Panel = Color(0xCC0B0B0E)
-private val White = Color.White
-private val Faint = Color.White.copy(alpha = 0.55f)
-private val Accent = Color(0xFF8FC7F0)
+/**
+ * I colori della schermata, dal tema.
+ *
+ * Erano cinque costanti scure, perche' la mappa era in tema scuro fisso: l'impostazione "Chiaro"
+ * non toccava il radar. Ora la mappa segue il tema dell'app e questi seguono la mappa — senza,
+ * con la mappa chiara legenda, pin e barra del tempo sarebbero rimasti neri su chiaro.
+ *
+ * Restano cinque nomi corti letti come prima (`Ink`, `Panel`, ...) perche' sono usati in una
+ * ventina di punti e la loro identita' non e' cambiata: e' cambiato da dove viene il valore.
+ */
+internal class RadarPalette(val dark: Boolean) {
+  val ink: Color = if (dark) Color(0xFF0B0B0E) else Color(0xFFEFF3F8)
+  val panel: Color = if (dark) Color(0xCC0B0B0E) else Color(0xE6FFFFFF)
+  val onPanel: Color = if (dark) Color.White else Color(0xFF11151C)
+  val faint: Color = onPanel.copy(alpha = 0.55f)
+  val accent: Color = if (dark) Color(0xFF8FC7F0) else Color(0xFF1B6FB8)
+}
+
+private val LocalRadarPalette = staticCompositionLocalOf { RadarPalette(dark = true) }
+
+private val Ink: Color @Composable get() = LocalRadarPalette.current.ink
+private val Panel: Color @Composable get() = LocalRadarPalette.current.panel
+private val White: Color @Composable get() = LocalRadarPalette.current.onPanel
+private val Faint: Color @Composable get() = LocalRadarPalette.current.faint
+private val Accent: Color @Composable get() = LocalRadarPalette.current.accent
 
 /**
  * Il radar a schermo intero, come nella reference: X in alto a sinistra, selettore dei livelli
@@ -140,11 +169,22 @@ fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
     RadarUnavailable(status, onBack)
     return
   }
+  // La stessa regola dell'engine: Sistema segue il telefono, Chiaro e' chiaro, Scuro e' scuro.
+  val settings by deps.engineSettings.settings.collectAsState(initial = EngineSettings())
+  val dark = when (settings.themeMode) {
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK, ThemeMode.AMOLED -> true
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+  }
   FluidTheme(
-    settings = remember { EngineSettings(themeMode = ThemeMode.DARK, dynamicColorEnabled = false) },
-    brand = WeatherAccent.presetFor(null, DayPhase.NIGHT),
+    settings = remember(dark) {
+      EngineSettings(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColorEnabled = false)
+    },
+    brand = WeatherAccent.presetFor(null, if (dark) DayPhase.NIGHT else DayPhase.DAY),
   ) {
-    RadarShell(deps, onBack)
+    CompositionLocalProvider(LocalRadarPalette provides RadarPalette(dark)) {
+      RadarShell(deps, onBack, dark)
+    }
   }
 }
 
@@ -170,7 +210,7 @@ private fun RadarUnavailable(status: MapsStatus, onBack: () -> Unit) {
 }
 
 @Composable
-private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
+private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit, dark: Boolean) {
   val scope = rememberCoroutineScope()
   // La mappa e' una View di sistema: il vetro non puo' registrarla. Il backdrop resta vuoto e i
   // controlli mostrano la loro pellicola: e' il degrado dichiarato, non un errore.
@@ -179,7 +219,16 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
   val selectedId by deps.selectedPlaceStore.selectedId.collectAsState()
   val keys by deps.providerKeys.keys.collectAsState(initial = emptyMap())
   val owmKey = keys[ProviderRegistry.OPENWEATHERMAP]
-  val hasLocationPermission = remember { deps.locationProvider.hasPermission() }
+  // Il permesso si rilegge a ogni ritorno in primo piano: concesso dal sistema (un'altra
+  // attivita', quindi un altro RESUMED) il puntino blu e il tasto "dove sono" restavano spenti
+  // finche' la schermata non veniva ricreata.
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  var hasLocationPermission by remember { mutableStateOf(deps.locationProvider.hasPermission()) }
+  LaunchedEffect(lifecycle) {
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      hasLocationPermission = deps.locationProvider.hasPermission()
+    }
+  }
 
   // I fotogrammi del radar e l'animazione: parte in play (decisione 2026-09-02), un tocco ferma.
   val frames by produceState<RadarFrames?>(initialValue = null) {
@@ -203,14 +252,18 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
   val cameraPositionState = rememberCameraPositionState {
     position = CameraPosition.fromLatLngZoom(LatLng(42.5, 12.5), 5f)
   }
-  var centered by remember { mutableStateOf(false) }
+  // Si ricentra a ogni cambio di localita', non solo la prima volta: chi cambia posto nella
+  // pillola della home e poi apre il radar si aspetta di trovarci quel posto. La chiave e' la
+  // localita' su cui siamo GIA' centrati, non un "fatto" una volta per sempre: cosi' i gesti
+  // sulla mappa restano dove li ha lasciati chi guarda.
+  var centeredOn by remember { mutableStateOf<Long?>(null) }
   LaunchedEffect(places, selectedId) {
-    if (centered || places.isEmpty()) return@LaunchedEffect
+    if (places.isEmpty() || centeredOn == selectedId) return@LaunchedEffect
     val place = places.firstOrNull { it.id == selectedId && !it.isGps }
     val target = place?.let { LatLng(it.latitude, it.longitude) }
       ?: deps.locationProvider.snapshot()?.let { LatLng(it.latitude, it.longitude) }
     if (target != null) {
-      centered = true
+      centeredOn = selectedId
       cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(target, 7f))
     }
   }
@@ -218,7 +271,17 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
   // I pin: le salvate piu' il telefono, con la temperatura di adesso in UNA chiamata.
   // Il nome del pin "qui" si legge nel composable: produceState non lo e'.
   val hereLabel = stringResource(R.string.radar_here)
-  val pins by produceState<List<RadarPin>>(initialValue = emptyList(), places) {
+  // Al passo dell'ora: le temperature dei pin erano legate solo all'elenco delle localita', e su
+  // una schermata lasciata aperta restavano quelle del momento in cui si era entrati. L'ora
+  // (non i millisecondi) e' il passo dei dati: i provider danno un valore per ora.
+  val pinHour by produceState(System.currentTimeMillis() / 3_600_000L) {
+    while (true) {
+      val now = System.currentTimeMillis()
+      delay(3_600_000L - now % 3_600_000L + 1_000L)
+      value = System.currentTimeMillis() / 3_600_000L
+    }
+  }
+  val pins by produceState<List<RadarPin>>(initialValue = emptyList(), places, pinHour, hasLocationPermission) {
     val saved = places.filter { !it.isGps }
     val here = if (deps.locationProvider.hasPermission()) deps.locationProvider.snapshot() else null
     val points = saved.map { it.latitude to it.longitude } +
@@ -256,7 +319,9 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit) {
         tiltGesturesEnabled = false,
         zoomControlsEnabled = false,
       ),
-      mapColorScheme = ComposeMapColorScheme.DARK,
+      // Non FOLLOW_SYSTEM: quello seguirebbe il telefono anche quando l'utente ha scelto "Chiaro"
+      // dentro l'app, e mappa e interfaccia si contraddirebbero.
+      mapColorScheme = if (dark) ComposeMapColorScheme.DARK else ComposeMapColorScheme.LIGHT,
       // Il logo di Google resta visibile sopra la barra del tempo: e' la sua condizione d'uso.
       contentPadding = PaddingValues(top = 72.dp, bottom = navigationBottom + barHeight),
     ) {
@@ -498,6 +563,10 @@ private fun RadarTimelineBar(
       }
       val count = frames?.all?.size ?: 0
       val nowIndex = frames?.nowIndex ?: 0
+      // Dentro il Canvas non si e' piu' in composizione: i colori del tema si leggono qui.
+      val trackColour = Faint
+      val pastColour = Accent
+      val markColour = White
       Canvas(
         Modifier
           .weight(1f)
@@ -533,14 +602,14 @@ private fun RadarTimelineBar(
         val y = size.height / 2f
         val inset = 8f
         val trackEnd = size.width - inset
-        drawLine(Faint.copy(alpha = 0.3f), Offset(inset, y), Offset(trackEnd, y), strokeWidth = 4f, cap = StrokeCap.Round)
+        drawLine(trackColour.copy(alpha = 0.3f), Offset(inset, y), Offset(trackEnd, y), strokeWidth = 4f, cap = StrokeCap.Round)
         if (count > 1) {
           val nowX = inset + RadarTimeline.fractionForIndex(nowIndex, count) * (trackEnd - inset)
           // Il passato in pieno, il nowcast tratteggiato dopo "adesso".
-          drawLine(Accent.copy(alpha = 0.55f), Offset(inset, y), Offset(nowX, y), strokeWidth = 4f, cap = StrokeCap.Round)
-          drawLine(White, Offset(nowX, y - 9f), Offset(nowX, y + 9f), strokeWidth = 2f)
+          drawLine(pastColour.copy(alpha = 0.55f), Offset(inset, y), Offset(nowX, y), strokeWidth = 4f, cap = StrokeCap.Round)
+          drawLine(markColour, Offset(nowX, y - 9f), Offset(nowX, y + 9f), strokeWidth = 2f)
           val thumbX = inset + RadarTimeline.fractionForIndex(index, count) * (trackEnd - inset)
-          drawCircle(White, radius = 8f, center = Offset(thumbX, y))
+          drawCircle(markColour, radius = 8f, center = Offset(thumbX, y))
         }
       }
       val label = if (frames == null || count == 0) {

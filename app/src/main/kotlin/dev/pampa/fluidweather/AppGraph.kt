@@ -236,8 +236,12 @@ class AppGraph(context: Context) {
   val notificationSettingsStore = NotificationSettingsStore(context)
   val notificationLedgerStore = NotificationLedgerStore(context)
   val systemNotifier = SystemNotifier(context)
+  // Le unita' dei testi delle notifiche, tenute pronte da un collettore: la lambda viene
+  // chiamata anche dal Main (la prova del ciclo dalle impostazioni), e li' un `runBlocking` su
+  // una lettura del DataStore blocca la schermata.
+  val notificationUnits = unitsStore.preferencesIn(applicationScope)
   val notificationTexts = ResourceNotificationTexts(context) {
-    UnitFormatter(context.resources, runBlocking { unitsStore.current() })
+    UnitFormatter(context.resources, notificationUnits.value)
   }
   val inAppAlerts = InAppAlertBus()
   val appVisibility = AppVisibility()

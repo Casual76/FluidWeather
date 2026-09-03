@@ -8,6 +8,7 @@
   <string name="a11y_drag_handle">Handle: press and hold, then drag to reorder</string>
   <string name="a11y_location_pill">Location: %1$s. Tap to change, swipe for the next one.</string>
   <string name="a11y_moon">Moon: %1$s</string>
+  <string name="a11y_wind_from">Wind from %1$s</string>
   <string name="a11y_open_widget">Open %1$s</string>
   <string name="a11y_progress">Progress %1$s%%</string>
   <string name="a11y_radar_frame">Radar frame: %1$s</string>
@@ -581,6 +582,10 @@
   <string name="pollen_alder">Alder</string>
   <string name="pollen_birch">Birch</string>
   <string name="pollen_grass">Grass</string>
+  <string name="pollen_low">low</string>
+  <string name="pollen_moderate">moderate</string>
+  <string name="pollen_high">high</string>
+  <string name="pollen_very_high">very high</string>
   <string name="pollen_none">none</string>
   <string name="pollen_olive">Olive</string>
   <string name="pollen_ragweed">Ragweed</string>
@@ -611,6 +616,12 @@
   <string name="pressure_of_aggregates">out of %1$s aggregates</string>
   <string name="pressure_period">Period</string>
   <string name="pressure_points">Points in the period</string>
+  <string name="pressure_provider_title">From the providers</string>
+  <string name="pressure_provider_caption">at sea level, from the forecast</string>
+  <string name="pressure_provider_next3h">In 3 hours</string>
+  <string name="pressure_provider_series">The next two days</string>
+  <string name="pressure_provider_hours">Hours available</string>
+  <string name="pressure_provider_note">Here there is no cleaning, no tide subtracted and no calibration: those need the phone\'s sensor, and the sensor is where you are. This is the pressure the providers forecast for this place, hour by hour.</string>
   <string name="pressure_raw_station">Raw at station</string>
   <string name="pressure_rejected_none">Nothing: every point in the period passed stages 1 and 2.</string>
   <string name="pressure_rejected_title">What was discarded</string>
@@ -770,6 +781,7 @@
   <string name="surv_title">Barometric watch active</string>
   <string name="tile_air_dominant">Dominant: %1$s</string>
   <string name="tile_air_unavailable">Air quality not available.</string>
+  <string name="tile_barometer_here_only">The barometer is the phone\'s: it only speaks for where you are</string>
   <string name="tile_calibration_running">The calibration burst runs in the background: you can close the app.</string>
   <string name="tile_history_needed">The model wants %1$s hours of clean signal before its first verdict.</string>
   <string name="tile_level_alert">Alert: precipitation likely soon</string>
@@ -780,6 +792,7 @@
   <string name="tile_no_fused_temperature">No fused temperature available.</string>
   <string name="tile_no_rain_6h">No rain expected in the next 6 hours</string>
   <string name="tile_nowcast_waiting">The barometer is still building up history (~13 hours).</string>
+  <string name="tile_pressure_provider">%1$s · from the providers</string>
   <string name="tile_pressure_raw">%1$s · raw</string>
   <string name="tile_rain_6h">~%1$s in the next 6 hours</string>
   <string name="tile_sun_no_crossing">Today the sun does not cross the horizon here.</string>

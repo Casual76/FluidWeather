@@ -168,10 +168,16 @@ class BackgroundCycle(
 
     // 2) Il verdetto locale (stadi 1-5) dal caso d'uso condiviso con la home (fase 19): barometro
     // pulito + contesto dell'opinione piu' completa; lo storico dei verdetti si scrive qui.
-    val nowcast = nowcastUseCase.evaluate(snapshot, now, calibrationProgress = null, record = true)
-    val cleaning = nowcast.cleaning
-    val features = nowcast.features
-    val explanation = nowcast.explanation
+    //
+    // **Solo se il punto e' dove sei.** Senza permesso di posizione il ciclo ripiega sulla prima
+    // localita' salvata, e allora il barometro di questo telefono non parla di quel posto: un
+    // verdetto calcolato li' sarebbe un'allerta per una citta' dove il sensore non c'e', e
+    // finirebbe anche nello storico e nella classifica del benchmark.
+    val here = key == WeatherSnapshot.GPS_KEY
+    val nowcast = if (here) nowcastUseCase.evaluate(snapshot, now, calibrationProgress = null, record = true) else null
+    val cleaning = nowcast?.cleaning
+    val features = nowcast?.features
+    val explanation = nowcast?.explanation
     val verdict = explanation?.verdict
     // In classifica alla pari: il barometro si iscrive alla verifica quando si iscrivono i
     // provider (una volta l'ora, lo decide il refresher), cosi' i conti sono confrontabili.

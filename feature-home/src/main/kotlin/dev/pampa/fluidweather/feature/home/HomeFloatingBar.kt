@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -299,12 +300,21 @@ private fun LocationPill(
   val drag = remember { Animatable(0f) }
   // La direzione dell'ultimo swipe: il nome nuovo entra dal lato da cui il dito e' partito.
   var forward by remember { mutableStateOf(true) }
+  // `pointerInput(Unit)` non aggiorna mai il suo nodo, quindi teneva per sempre la PRIMA lambda
+  // `onSwipe` — quella che aveva catturato la localita' selezionata al momento in cui la pillola
+  // e' entrata in composizione. Ogni swipe ripartiva da quella: avanti portava sempre alla stessa,
+  // indietro a un'altra ancora, e alla fine si oscillava fra due posti. `rememberUpdatedState` da'
+  // al nodo sempre l'ultima, che e' lo stesso rimedio che la pagina della luna usa da sempre.
+  val currentSwipe = rememberUpdatedState(onSwipe)
 
   Box(
     modifier = modifier
       .fluidExpandOrigin(open = { expanded }, onMeasured = onBounds)
       .pointerInput(Unit) {
         detectHorizontalDragGestures(
+          // Il gesto riparte da zero: se il rientro elastico del precedente e' ancora in volo, il
+          // suo residuo si sommava a questo e la soglia scattava prima, o dalla parte sbagliata.
+          onDragStart = { scope.launch { drag.snapTo(0f) } },
           onHorizontalDrag = { change, delta ->
             change.consume()
             scope.launch { drag.snapTo(drag.value + delta) }
@@ -315,12 +325,12 @@ private fun LocationPill(
               total < -SWIPE_THRESHOLD_PX -> {
                 forward = true
                 haptics.play(FluidHapticEvent.Threshold)
-                onSwipe(true)
+                currentSwipe.value(true)
               }
               total > SWIPE_THRESHOLD_PX -> {
                 forward = false
                 haptics.play(FluidHapticEvent.Threshold)
-                onSwipe(false)
+                currentSwipe.value(false)
               }
             }
             scope.launch {
