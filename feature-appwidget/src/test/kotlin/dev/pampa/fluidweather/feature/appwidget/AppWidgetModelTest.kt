@@ -154,6 +154,84 @@ class AppWidgetModelTest {
     assertNull(model.verdictWindow)
   }
 
+  // ------------------------------------------------------- la riga in fondo al compatto
+
+  @Test
+  fun `le taglie compatte portano massima, minima e pioggia`() {
+    // Lo spazio che restava in fondo: e' la richiesta dell'utente dopo aver visto la 1.2.0.
+    listOf(AppWidgetTier.SMALL, AppWidgetTier.MEDIUM).forEach { tier ->
+      val model = AppWidgetModelBuilder.of(istantanea(), null, null, adesso, tier)
+
+      assertNotNull("$tier senza massima", model.maxC)
+      assertNotNull("$tier senza minima", model.minC)
+    }
+  }
+
+  @Test
+  fun `la grande non li porta, sotto ci sono gia' le ore`() {
+    val model = AppWidgetModelBuilder.of(istantanea(), null, null, adesso, AppWidgetTier.LARGE)
+
+    assertNull(model.maxC)
+    assertNull(model.minC)
+    assertNull(model.rainProbabilityPercent)
+  }
+
+  @Test
+  fun `massima e minima sono quelle di OGGI, non delle prossime 24 ore`() {
+    // Alle 23 "la massima delle prossime 24 ore" sarebbe quella di domani: un numero giusto per
+    // una domanda che nessuno ha fatto. Qui domani e' molto piu' caldo e non deve entrare.
+    val oggi = ore(3, adesso)
+    val domani = (0 until 3).map { h ->
+      FusedHour(
+        timestampMillis = adesso + (30 + h) * ora,
+        values = mapOf(FusionVariables.TEMPERATURE to FusedValue(40.0, emptyList())),
+        kind = WeatherKind.CLEAR,
+      )
+    }
+
+    val model = AppWidgetModelBuilder.of(istantanea(hours = oggi + domani), null, null, adesso, AppWidgetTier.SMALL)
+
+    assertTrue("la massima di domani e' finita in quella di oggi", model.maxC!! < 30.0)
+  }
+
+  @Test
+  fun `la pioggia e' la piu' alta in vista, non la media`() {
+    // Un temporale di un'ora dentro sei ore di sereno: la media lo cancellerebbe, e l'ombrello
+    // resterebbe a casa.
+    val hours = (0 until 6).map { h ->
+      FusedHour(
+        timestampMillis = adesso + h * ora,
+        values = mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(if (h == 3) 80.0 else 5.0, emptyList())),
+        kind = WeatherKind.CLEAR,
+      )
+    }
+
+    val model = AppWidgetModelBuilder.of(istantanea(hours = hours), null, null, adesso, AppWidgetTier.SMALL)
+
+    assertEquals(80, model.rainProbabilityPercent)
+  }
+
+  @Test
+  fun `la pioggia guarda avanti, non indietro`() {
+    // Un acquazzone di due ore fa non e' un motivo per prendere l'ombrello adesso.
+    val hours = listOf(
+      FusedHour(adesso - 2 * ora, mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(90.0, emptyList())), null),
+      FusedHour(adesso + ora, mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(10.0, emptyList())), null),
+    )
+
+    val model = AppWidgetModelBuilder.of(istantanea(hours = hours), null, null, adesso, AppWidgetTier.SMALL)
+
+    assertEquals(10, model.rainProbabilityPercent)
+  }
+
+  @Test
+  fun `senza probabilita' non si inventa uno zero`() {
+    // Zero vuol dire "non pioggera'"; assente vuol dire "non lo so". Non sono la stessa cosa.
+    val model = AppWidgetModelBuilder.of(istantanea(), null, null, adesso, AppWidgetTier.SMALL)
+
+    assertNull(model.rainProbabilityPercent)
+  }
+
   // -------------------------------------------------------------------------------- le icone
 
   @Test

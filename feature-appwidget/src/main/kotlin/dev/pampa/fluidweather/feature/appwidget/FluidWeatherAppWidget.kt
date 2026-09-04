@@ -151,14 +151,33 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
           ),
         )
       }
-      Text(
-        text = model.placeName ?: resources.getString(R.string.place_my_location),
-        style = TextStyle(color = dim, fontSize = 13.sp),
-        maxLines = 1,
-      )
+      // Il nome del posto, e accanto o sotto massima/minima e pioggia.
+      //
+      // La taglia MEDIA e' larga e BASSA (sotto i 150 dp): li' una riga in piu' verrebbe tagliata
+      // dal launcher a meta', senza avvisare. Ma di larghezza ne ha, quindi i tre numeri stanno
+      // sulla stessa riga del posto e non costano un pixel di altezza. La PICCOLA e' l'opposto —
+      // stretta ma con spazio sotto — e li' vanno a capo.
+      if (tier == AppWidgetTier.MEDIUM) {
+        Row(verticalAlignment = Alignment.Vertical.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
+          Text(
+            text = model.placeName ?: resources.getString(R.string.place_my_location),
+            style = TextStyle(color = dim, fontSize = 13.sp),
+            maxLines = 1,
+            modifier = GlanceModifier.defaultWeight(),
+          )
+          TodayLine(model, units, onSky, dim, leadingSpace = false)
+        }
+      } else {
+        Text(
+          text = model.placeName ?: resources.getString(R.string.place_my_location),
+          style = TextStyle(color = dim, fontSize = 13.sp),
+          maxLines = 1,
+        )
+        if (tier == AppWidgetTier.SMALL) TodayLine(model, units, onSky, dim, leadingSpace = true)
+      }
 
       if (tier != AppWidgetTier.SMALL && model.verdictLevel != null) {
-        Spacer(GlanceModifier.height(8.dp))
+        Spacer(GlanceModifier.height(6.dp))
         VerdictLine(model, resources, onSky, target)
       }
 
@@ -172,6 +191,53 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
       dataAgeLabel(resources, model.dataAtMillis, nowMillis)?.let {
         Spacer(GlanceModifier.height(6.dp))
         Text(text = it, style = TextStyle(color = dim, fontSize = 11.sp), maxLines = 1)
+      }
+    }
+  }
+
+  /**
+   * "29° / 22°   ○ 40%": la riga in fondo al widget compatto.
+   *
+   * La massima e la minima sono quelle del **giorno locale**, le stesse della testata dell'app —
+   * stessa funzione, non una copia, perche' due superfici che dicono due massime diverse nello
+   * stesso momento sono peggio di una che non la dice.
+   *
+   * La goccia non e' decorazione: senza, un "40%" accanto a due temperature si legge come
+   * umidita' o come copertura, e sarebbe una percentuale che non vuol dire niente.
+   */
+  @Composable
+  private fun TodayLine(
+    model: AppWidgetModel,
+    units: UnitFormatter,
+    onSky: ColorProvider,
+    dim: ColorProvider,
+    /** Vero quando va a capo (taglia piccola): serve un respiro sopra, in riga no. */
+    leadingSpace: Boolean,
+  ) {
+    val range = if (model.maxC != null && model.minC != null) {
+      "${units.degrees(model.maxC)} / ${units.degrees(model.minC)}"
+    } else {
+      null
+    }
+    // Sotto il 5% non e' un'informazione, e' rumore: la tessera dell'app usa la stessa soglia.
+    val rain = model.rainProbabilityPercent?.takeIf { it >= RAIN_WORTH_SAYING_PERCENT }
+    if (range == null && rain == null) return
+
+    if (leadingSpace) Spacer(GlanceModifier.height(4.dp))
+    Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+      if (range != null) {
+        Text(text = range, style = TextStyle(color = onSky, fontSize = 12.sp), maxLines = 1)
+      }
+      if (rain != null) {
+        if (range != null) Spacer(GlanceModifier.width(8.dp))
+        Image(
+          provider = ImageProvider(dev.pampa.fluidweather.feature.appwidget.R.drawable.ic_drop),
+          contentDescription = null,
+          colorFilter = androidx.glance.ColorFilter.tint(dim),
+          modifier = GlanceModifier.size(11.dp),
+        )
+        Spacer(GlanceModifier.width(3.dp))
+        Text(text = "$rain%", style = TextStyle(color = dim, fontSize = 12.sp), maxLines = 1)
       }
     }
   }
@@ -244,6 +310,9 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
   }
 
   private companion object {
+    /** Sotto il 5% la probabilita' non e' un'informazione: la tessera dell'app usa la stessa. */
+    const val RAIN_WORTH_SAYING_PERCENT = 5
+
     val Small = DpSize(110.dp, 110.dp)
     val Medium = DpSize(250.dp, 110.dp)
     val Large = DpSize(250.dp, 200.dp)

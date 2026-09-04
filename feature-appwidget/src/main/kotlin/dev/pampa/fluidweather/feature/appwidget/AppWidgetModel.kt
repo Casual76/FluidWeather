@@ -9,6 +9,8 @@ import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.model.nearestHour
+import dev.pampa.fluidweather.core.model.rainProbabilityPercent
+import dev.pampa.fluidweather.core.model.todayRange
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
@@ -52,6 +54,10 @@ data class AppWidgetModel(
   val verdictLevel: AlertLevel?,
   val verdictProbabilityPercent: Int?,
   val verdictWindow: String?,
+  /** Minima e massima di oggi, e la pioggia piu' probabile in vista: la riga in fondo al compatto. */
+  val minC: Double?,
+  val maxC: Double?,
+  val rainProbabilityPercent: Int?,
   val hours: List<AppWidgetHour>,
 ) {
   /** Niente istantanea: il widget dice che non c'e' ancora niente e al tocco apre l'app. */
@@ -80,6 +86,7 @@ object AppWidgetModelBuilder {
   ): AppWidgetModel {
     val current = snapshot?.fused?.hours?.nearestHour(nowMillis)?.first
     val kind = current?.kind
+    val range = snapshot?.fused?.hours?.todayRange(nowMillis) ?: (null to null)
     return AppWidgetModel(
       placeName = placeName,
       temperatureC = current?.values?.get(FusionVariables.TEMPERATURE)?.value,
@@ -96,6 +103,15 @@ object AppWidgetModelBuilder {
       verdictProbabilityPercent = verdict?.strongest()?.let { (it.second * 100).toInt() }
         ?.takeIf { tier != AppWidgetTier.SMALL },
       verdictWindow = verdict?.strongest()?.first?.takeIf { tier != AppWidgetTier.SMALL },
+      // Massima, minima e pioggia riempiono lo spazio che restava in fondo alle due taglie
+      // compatte. Nella grande no: li' sotto ci sono gia' le prossime ore, che dicono di piu'.
+      minC = if (tier == AppWidgetTier.LARGE) null else range.first,
+      maxC = if (tier == AppWidgetTier.LARGE) null else range.second,
+      rainProbabilityPercent = if (tier == AppWidgetTier.LARGE) {
+        null
+      } else {
+        snapshot?.fused?.hours?.rainProbabilityPercent(nowMillis)
+      },
       // Le ore si calcolano solo se qualcuno le disegnera': un widget piccolo non deve pagare
       // una lista che non entra da nessuna parte.
       hours = if (tier == AppWidgetTier.LARGE) stripOf(snapshot?.fused?.hours.orEmpty(), nowMillis) else emptyList(),

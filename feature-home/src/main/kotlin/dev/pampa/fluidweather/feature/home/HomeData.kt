@@ -36,6 +36,7 @@ import dev.pampa.fluidweather.core.model.SolarEphemeris
 import dev.pampa.fluidweather.core.model.SunTimes
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.model.nearestHour
+import dev.pampa.fluidweather.core.model.todayRange
 import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.WeatherAccent
@@ -342,17 +343,6 @@ private fun FusedForecast.at(nowMillis: Long): Map<String, Double>? =
   nearestHour(nowMillis)?.first?.values?.mapValues { it.value.value }
 
 private fun FusedForecast.kindAt(nowMillis: Long): WeatherKind? = nearestHour(nowMillis)?.first?.kind
-
-/** Min e max del giorno locale, dal fuso: il "Max/Min" della testata. */
-private fun FusedForecast.todayRange(nowMillis: Long): Pair<Double?, Double?> {
-  val zone = ZoneId.systemDefault()
-  val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-  val temperatures = hours
-    .filter { Instant.ofEpochMilli(it.timestampMillis).atZone(zone).toLocalDate() == today }
-    .mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
-  if (temperatures.isEmpty()) return null to null
-  return temperatures.min() to temperatures.max()
-}
 
 /** Senza posizione il cielo non mente ne' spegne: fase grossolana dall'orologio locale. */
 private fun phaseFromClock(): DayPhase {

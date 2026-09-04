@@ -149,3 +149,48 @@ fun FusedForecast.nearestHour(nowMillis: Long): Pair<FusedHour, Long>? = hours.n
 
 fun FusedForecast.hourAround(nowMillis: Long, withinMillis: Long = NOW_WINDOW_MILLIS): FusedHour? =
   hours.hourAround(nowMillis, withinMillis)
+
+/**
+ * Minima e massima del **giorno locale**, non delle prossime ventiquattro ore.
+ *
+ * Sono due cose diverse e la seconda inganna: alle undici di sera "massima nelle prossime 24 ore"
+ * sarebbe quella di domani. La testata della home dice il giorno, e il widget deve dire lo stesso
+ * numero — per questo la funzione sta qui e non in due copie.
+ *
+ * Null quando la previsione non copre oggi: meglio niente che il massimo di un altro giorno.
+ */
+fun List<FusedHour>.todayRange(
+  nowMillis: Long,
+  zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+): Pair<Double?, Double?> {
+  val today = java.time.Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
+  val temperatures = this
+    .filter { java.time.Instant.ofEpochMilli(it.timestampMillis).atZone(zone).toLocalDate() == today }
+    .mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
+  if (temperatures.isEmpty()) return null to null
+  return temperatures.min() to temperatures.max()
+}
+
+fun FusedForecast.todayRange(nowMillis: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()) =
+  hours.todayRange(nowMillis, zone)
+
+/**
+ * Quante ore avanti guarda la probabilita' di pioggia riassunta in un numero solo: sei.
+ *
+ * E' la stessa finestra della tessera Precipitazioni dentro l'app, e non e' un caso: due superfici
+ * che dicono "40%" e "70%" nello stesso momento sono peggio di una che non lo dice affatto.
+ */
+const val RAIN_OUTLOOK_HOURS: Int = 6
+
+/**
+ * La probabilita' di pioggia piu' alta nelle prossime [withinHours] ore, o null se non si sa.
+ *
+ * Il massimo e non la media: quello che serve sapere e' se **a un certo punto** conviene prendere
+ * l'ombrello, e una media di sei ore annacqua un temporale di un'ora fino a farlo sparire.
+ */
+fun List<FusedHour>.rainProbabilityPercent(nowMillis: Long, withinHours: Int = RAIN_OUTLOOK_HOURS): Int? = this
+  .filter { it.timestampMillis >= nowMillis }
+  .take(withinHours)
+  .mapNotNull { it.values[FusionVariables.PRECIP_PROBABILITY]?.value }
+  .maxOrNull()
+  ?.toInt()
