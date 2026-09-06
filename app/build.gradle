@@ -123,6 +123,8 @@ dependencies {
   implementation project(':engine-storage')   // impostazioni su DataStore
   implementation project(':engine-config')    // feature flag remoti
   implementation project(':engine-update')    // aggiornamento in-app
+  implementation project(':engine-ai')        // i tipi dei tool per il bridge
+  implementation project(':engine-ai-bridge') // tool federati: il meteo per PampAI/Aria
 
   implementation "androidx.activity:activity-compose:${engine.activityCompose}"
   implementation "androidx.navigation:navigation-compose:${engine.navigation}"

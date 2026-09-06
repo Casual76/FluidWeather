@@ -945,6 +945,10 @@
   <string name="ai_action_open">Open %1$s</string>
   <string name="ai_action_save_place">Save %1$s?</string>
   <string name="ai_action_select_place">Show %1$s</string>
+  <string name="ai_action_set_unit">Change the unit for %1$s</string>
+  <string name="ai_action_remove_place">Remove %1$s from the saved places?</string>
+  <string name="ai_action_delete_observation">Delete the observation of %1$s?</string>
+  <string name="ai_action_calibrate">Start the barometer calibration?</string>
   <string name="ai_actions">Actions in the app</string>
   <string name="ai_actions_desc">Change the location, open pages, start a burst, record an observation, save a place. Writes always ask first.</string>
   <string name="ai_answer_ready">Answer ready</string>

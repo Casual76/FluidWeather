@@ -22,6 +22,19 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
+    <!--
+        Gli strumenti del meteo per PampAI/Aria: permesso `signature`, quindi li chiama solo un'app
+        firmata con la stessa chiave. L'authority segue l'applicationId (la debug ha la sua).
+    -->
+    <provider
+        android:name=".pampai.WeatherToolHostProvider"
+        android:authorities="${applicationId}.ai.tools"
+        android:exported="true"
+        android:permission="dev.antigravity.fluidengine.permission.AI_TOOLS">
+      <meta-data
+          android:name="dev.antigravity.fluidengine.ai.TOOL_HOST"
+          android:value="1" />
+    </provider>
   </application>
 
 </manifest>

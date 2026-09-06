@@ -51,6 +51,23 @@ sealed interface AssistantAction {
   data class SavePlace(val place: Place) : AssistantAction {
     override val needsConfirmation: Boolean = true
   }
+
+  /** Un'unita' di misura: [unitName] null = torna a quella del paese. Reversibile, quindi subito. */
+  data class SetUnit(val kind: String, val unitName: String?) : AssistantAction {
+    override val needsConfirmation: Boolean = false
+  }
+
+  data class RemovePlace(val placeId: Long, val label: String) : AssistantAction {
+    override val needsConfirmation: Boolean = true
+  }
+
+  data class DeleteObservation(val observationId: Long, val label: String) : AssistantAction {
+    override val needsConfirmation: Boolean = true
+  }
+
+  data object StartCalibration : AssistantAction {
+    override val needsConfirmation: Boolean = true
+  }
 }
 
 enum class ActionOutcome { DONE, REJECTED, TIMEOUT, UNAVAILABLE }

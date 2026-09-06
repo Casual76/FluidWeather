@@ -275,6 +275,10 @@ private fun ConfirmationRow(action: AssistantAction, onConfirm: (Boolean) -> Uni
     is AssistantAction.SavePlace -> stringResource(R.string.ai_action_save_place, action.place.name)
     is AssistantAction.Open -> stringResource(R.string.ai_action_open, stringResource(AssistantStrings.targetRes(action.target)))
     is AssistantAction.SelectPlace -> stringResource(R.string.ai_action_select_place, action.place.name)
+    is AssistantAction.SetUnit -> stringResource(R.string.ai_action_set_unit, action.kind)
+    is AssistantAction.RemovePlace -> stringResource(R.string.ai_action_remove_place, action.label)
+    is AssistantAction.DeleteObservation -> stringResource(R.string.ai_action_delete_observation, action.label)
+    AssistantAction.StartCalibration -> stringResource(R.string.ai_action_calibrate)
   }
   Column {
     Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)

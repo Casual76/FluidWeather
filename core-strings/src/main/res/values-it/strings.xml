@@ -945,6 +945,10 @@
   <string name="ai_action_open">Apri %1$s</string>
   <string name="ai_action_save_place">Salvare %1$s?</string>
   <string name="ai_action_select_place">Mostra %1$s</string>
+  <string name="ai_action_set_unit">Cambiare l\'unità per %1$s</string>
+  <string name="ai_action_remove_place">Togliere %1$s dalle località salvate?</string>
+  <string name="ai_action_delete_observation">Cancellare l\'osservazione del %1$s?</string>
+  <string name="ai_action_calibrate">Avviare la taratura del barometro?</string>
   <string name="ai_actions">Azioni nell\'app</string>
   <string name="ai_actions_desc">Cambiare località, aprire pagine, avviare una raffica, registrare un\'osservazione, salvare un posto. Le scritture chiedono sempre prima.</string>
   <string name="ai_answer_ready">Risposta pronta</string>

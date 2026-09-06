@@ -324,6 +324,14 @@ class AssistantSession(
     }
   }
 
+  /**
+   * Esegue senza chiedere: la conferma l'ha gia' data qualcun altro. E' la strada dei tool
+   * federati — PampAI/Aria chiede all'utente prima di chiamarci, e qui non c'e' una card a cui
+   * chiedere. Dentro l'app si passa sempre da [perform].
+   */
+  suspend fun performPreConfirmed(action: AssistantAction): ActionOutcome =
+    runCatching { execute(action) }.getOrDefault(ActionOutcome.UNAVAILABLE)
+
   private suspend fun execute(action: AssistantAction): ActionOutcome = when (action) {
     is AssistantAction.Open -> {
       commandFlow.tryEmit(UiCommand.Open(action.target))
@@ -345,6 +353,29 @@ class AssistantSession(
     }
     is AssistantAction.SavePlace -> {
       sources.savedLocations.save(action.place)
+      ActionOutcome.DONE
+    }
+    is AssistantAction.SetUnit -> {
+      val store = sources.unitsStore
+      when (action.kind) {
+        "temperatura" -> store.setTemperature(action.unitName?.let { name -> dev.pampa.fluidweather.core.model.TemperatureUnit.entries.first { it.name == name } })
+        "vento" -> store.setWind(action.unitName?.let { name -> dev.pampa.fluidweather.core.model.WindUnit.entries.first { it.name == name } })
+        "pressione" -> store.setPressure(action.unitName?.let { name -> dev.pampa.fluidweather.core.model.PressureUnit.entries.first { it.name == name } })
+        "pioggia" -> store.setPrecipitation(action.unitName?.let { name -> dev.pampa.fluidweather.core.model.PrecipitationUnit.entries.first { it.name == name } })
+        "distanza" -> store.setDistance(action.unitName?.let { name -> dev.pampa.fluidweather.core.model.DistanceUnit.entries.first { it.name == name } })
+      }
+      ActionOutcome.DONE
+    }
+    is AssistantAction.RemovePlace -> {
+      sources.savedLocations.remove(action.placeId)
+      ActionOutcome.DONE
+    }
+    is AssistantAction.DeleteObservation -> {
+      sources.observations.delete(action.observationId)
+      ActionOutcome.DONE
+    }
+    AssistantAction.StartCalibration -> {
+      sources.calibrationController.start()
       ActionOutcome.DONE
     }
   }
