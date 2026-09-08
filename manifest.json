@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.2.1",
+        "releaseDate": "2026-09-04",
+        "changelog": "Il widget compatto usa lo spazio che restava in fondo: ora mostra la massima e la minima di oggi e\nla probabilità di pioggia più alta nelle prossime sei ore, con una goccia accanto perché il numero\nnon si confonda con l'umidità.\n\nNel widget largo e basso stanno sulla stessa riga del nome del posto, così non rubano altezza; in\nquello piccolo vanno a capo. Il widget grande resta com'era: sotto ha già le prossime ore.\n\nLa massima e la minima sono quelle del giorno, non delle prossime ventiquattro ore — alle undici di\nsera la seconda sarebbe quella di domani — e sono le stesse che scrive la testata dell'app.",
+        "releaseTag": "stable-fluidweather-v1.2.1",
+        "apkAsset": "fluidweather-1.2.1.apk",
+        "sizeBytes": 4736952
+      },
+      {
         "version": "1.2.0",
         "releaseDate": "2026-09-03",
         "changelog": "## Il widget sulla schermata Home\n\n- Un widget solo, che cresce col posto che gli dai: piccolo mostra luogo, temperatura e icona;\n  medio aggiunge il verdetto del barometro; grande aggiunge le prossime ore.\n- Lo sfondo è il cielo dell'app, con il tempo di adesso: sereno, nuvoloso, notte.\n- Mostra sempre dove sei. Non consuma batteria né dati: legge quello che l'app ha già raccolto.\n- Toccandolo si apre l'app; toccando il verdetto o le ore si apre direttamente quella pagina.\n\n## Senza rete l'app resta in piedi\n\n- **Prima**: un solo tentativo fallito cancellava la previsione salvata, e la home si svuotava\n  sotto gli occhi — temperatura \"—\", tessere in attesa. **Ora** i dati restano dove sono.\n- I dati dei provider si mostrano sempre, anche vecchi, e la testata dice quanto: \"Aggiornato 2 h\n  fa\", e passate alcune ore \"Ultimi dati: 09:20\". Niente limiti, ma niente numeri spacciati per\n  attuali.\n- Il barometro continua a lavorare: il verdetto locale, il sole e la luna non hanno mai avuto\n  bisogno della rete, e ora si vede.\n- La notifica di inizio e fine pioggia tace quando i dati non sono freschi, invece di annunciare\n  \"pioggia alle 16\" leggendo una previsione di cinque ore fa. L'allerta del barometro invece\n  continua, ed è proprio senza rete che serve di più.\n- Il riepilogo giornaliero esce lo stesso, ma dichiara l'ora dei suoi dati.\n- Se un provider risponde e un altro no, si tiene quello che ha risposto invece di buttare tutto.\n\n## Meno batteria, meno traffico\n\n- Durante la sorveglianza del barometro l'app chiedeva il meteo **una volta al minuto** per due\n  ore. Ora al massimo ogni dieci minuti: da 120 giri a 12, con lo stesso verdetto.\n- Con la rete spenta non parte più nemmeno il tentativo.\n- Gli archivi sul telefono smettono di crescere all'infinito: i campioni grezzi del barometro si\n  tengono trenta giorni, le verifiche dei provider sei mesi.\n\n## Correzioni\n\n- La temperatura e il tipo di tempo nella testata non si contraddicono più (poteva scrivere \"—\" e\n  sotto \"Sereno\" leggendo lo stesso dato).\n- L'archivio del barometro non rischia più di essere cancellato da un aggiornamento.\n- La Diagnostica distingue \"non c'è rete\" da \"il provider ha risposto male\".",
@@ -73,20 +81,20 @@
       }
     ],
     "beta": {
-      "version": "1.2.1",
-      "releaseDate": "2026-09-04",
-      "changelog": "Il widget compatto usa lo spazio che restava in fondo: ora mostra la massima e la minima di oggi e\nla probabilità di pioggia più alta nelle prossime sei ore, con una goccia accanto perché il numero\nnon si confonda con l'umidità.\n\nNel widget largo e basso stanno sulla stessa riga del nome del posto, così non rubano altezza; in\nquello piccolo vanno a capo. Il widget grande resta com'era: sotto ha già le prossime ore.\n\nLa massima e la minima sono quelle del giorno, non delle prossime ventiquattro ore — alle undici di\nsera la seconda sarebbe quella di domani — e sono le stesse che scrive la testata dell'app.",
-      "releaseTag": "stable-fluidweather-v1.2.1",
-      "apkAsset": "fluidweather-1.2.1.apk",
-      "sizeBytes": 4736952
+      "version": "1.3.0",
+      "releaseDate": "2026-09-08",
+      "changelog": "Il meteo parla con Aria: sette strumenti nuovi (il riepilogo del tempo, la finestra asciutta, il confronto fra luoghi, le unita', la rimozione di una localita' o di un'osservazione, lo stato della calibrazione) e il ponte che espone all'assistente PampAI tutti e trentaquattro.",
+      "releaseTag": "stable-fluidweather-v1.3.0",
+      "apkAsset": "fluidweather-1.3.0.apk",
+      "sizeBytes": 4754022
     },
     "stable": {
-      "version": "1.2.1",
-      "releaseDate": "2026-09-04",
-      "changelog": "Il widget compatto usa lo spazio che restava in fondo: ora mostra la massima e la minima di oggi e\nla probabilità di pioggia più alta nelle prossime sei ore, con una goccia accanto perché il numero\nnon si confonda con l'umidità.\n\nNel widget largo e basso stanno sulla stessa riga del nome del posto, così non rubano altezza; in\nquello piccolo vanno a capo. Il widget grande resta com'era: sotto ha già le prossime ore.\n\nLa massima e la minima sono quelle del giorno, non delle prossime ventiquattro ore — alle undici di\nsera la seconda sarebbe quella di domani — e sono le stesse che scrive la testata dell'app.",
-      "releaseTag": "stable-fluidweather-v1.2.1",
-      "apkAsset": "fluidweather-1.2.1.apk",
-      "sizeBytes": 4736952
+      "version": "1.3.0",
+      "releaseDate": "2026-09-08",
+      "changelog": "Il meteo parla con Aria: sette strumenti nuovi (il riepilogo del tempo, la finestra asciutta, il confronto fra luoghi, le unita', la rimozione di una localita' o di un'osservazione, lo stato della calibrazione) e il ponte che espone all'assistente PampAI tutti e trentaquattro.",
+      "releaseTag": "stable-fluidweather-v1.3.0",
+      "apkAsset": "fluidweather-1.3.0.apk",
+      "sizeBytes": 4754022
     }
   },
   "engine": {
