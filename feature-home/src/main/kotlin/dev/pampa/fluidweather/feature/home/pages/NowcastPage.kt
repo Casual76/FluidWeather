@@ -28,6 +28,7 @@ import dev.pampa.fluidweather.nowcast.verdict.Factor
 import dev.pampa.fluidweather.nowcast.verdict.WindowVerdict
 import kotlin.math.abs
 import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.ui.stageText
@@ -205,7 +206,7 @@ internal fun NowcastPage(state: HomeUiState) {
       Text(fmtTime(observed.first().first), style = MaterialTheme.typography.labelSmall, color = Faint)
       Text(fmtTime(observed.last().first), style = MaterialTheme.typography.labelSmall, color = Faint)
     }
-    StatRow(stringResource(R.string.nowcast_rain_observed), units.precipitation(observed.sumOf { it.second }), stringResource(R.string.nowcast_last_hours, observed.size))
+    StatRow(stringResource(R.string.nowcast_rain_observed), units.precipitation(observed.sumOf { it.second }), pluralStringResource(R.plurals.nowcast_last_hours, observed.size, observed.size))
     PageNote(
       stringResource(R.string.nowcast_truth_note),
     )

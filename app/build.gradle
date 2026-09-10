@@ -38,8 +38,8 @@ android {
     applicationId 'dev.pampa.fluidweather'
     minSdk engine.minSdk
     targetSdk engine.compileSdk
-    versionCode 11
-    versionName '1.4.1'
+    versionCode 12
+    versionName '1.4.2'
     manifestPlaceholders = [mapsApiKey: localProperties.getProperty('maps.apiKey', '')]
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
     // La 1.1.0 promuove l'app a stable (decisione 2026-09-03): chi la installa segue stable

@@ -27,6 +27,7 @@ import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import dev.pampa.fluidweather.feature.home.WeatherKindIcon
+import dev.pampa.fluidweather.feature.home.isNightAt
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.UnitFormatter
 import dev.pampa.fluidweather.strings.compassPoint
@@ -42,6 +43,8 @@ internal class HourlyRow(
   val timestampMillis: Long,
   val hour: String,
   val kind: WeatherKind?,
+  /** Di notte il sereno ha la luna, non il sole coi raggi. */
+  val night: Boolean,
   val temperature: String,
   val probability: String,
   val precipitation: String,
@@ -86,6 +89,7 @@ internal class HourlyModel(val days: List<HourlyDay>, val providers: Int) {
                 timestampMillis = hour.timestampMillis,
                 hour = fmtHour(hour.timestampMillis),
                 kind = hour.kind,
+                night = isNightAt(hour.timestampMillis, state.latitude, state.longitude),
                 temperature = value(FusionVariables.TEMPERATURE)?.let { units.degrees(it) } ?: "—",
                 probability = if (pop != null && pop >= 5) "${pop.toInt()}%" else "",
                 precipitation = if (mm != null && mm >= 0.05) units.precipitationValue(mm) else "",
@@ -168,7 +172,7 @@ private fun HourRow(row: HourlyRow) {
       .padding(vertical = 4.dp),
   ) {
     Text(row.hour, style = MaterialTheme.typography.bodySmall, color = Dim, modifier = Modifier.width(34.dp))
-    WeatherKindIcon(row.kind, size = 18.dp)
+    WeatherKindIcon(row.kind, size = 18.dp, night = row.night)
     Spacer(Modifier.width(8.dp))
     Text(row.temperature, style = MaterialTheme.typography.titleSmall, color = White, modifier = Modifier.width(44.dp))
     Text(row.probability, style = MaterialTheme.typography.bodySmall, color = PageBlue, modifier = Modifier.width(52.dp))

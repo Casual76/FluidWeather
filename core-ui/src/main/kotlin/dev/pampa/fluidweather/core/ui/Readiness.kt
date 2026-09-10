@@ -10,11 +10,16 @@ import java.util.Locale
 /** La riga sopra la barra unica del barometro: home, pagina del nowcast e impostazioni la dicono uguale. */
 @Composable
 fun BarometerReadiness.stageText(): String = when (stage) {
-  ReadinessStage.CALIBRATING -> stringResource(
-    R.string.readiness_burst,
-    "${calibrationCompletedSeconds / 60}:${String.format(Locale.ROOT, "%02d", calibrationCompletedSeconds % 60)}",
-    "${calibrationTotalSeconds / 60}:00",
-  )
+  ReadinessStage.CALIBRATING -> if (calibrationWaiting) {
+    // I minuti UTILI, non quelli passati: e' quello che sta aspettando.
+    stringResource(R.string.readiness_burst_waiting, calibrationCompletedSeconds / 60, calibrationTotalSeconds / 60)
+  } else {
+    stringResource(
+      R.string.readiness_burst,
+      "${calibrationCompletedSeconds / 60}:${String.format(Locale.ROOT, "%02d", calibrationCompletedSeconds % 60)}",
+      "${calibrationTotalSeconds / 60}:00",
+    )
+  }
   // Zero ore esatte e' aritmeticamente giusto — subito dopo la raffica i seicento campioni sono
   // **un solo** punto aggregato, quindi non c'e' ancora nessuna ampiezza da misurare — ma "0 di 13
   // ore" si legge come un contatore inchiodato. E' letteralmente la frase che ha fatto pensare a

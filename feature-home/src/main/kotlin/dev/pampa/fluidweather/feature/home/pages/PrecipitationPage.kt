@@ -22,6 +22,7 @@ import dev.pampa.fluidweather.feature.home.HomeUiState
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 
@@ -127,6 +128,6 @@ internal fun PrecipitationPage(state: HomeUiState) {
       popMax?.let { stringResource(R.string.precip_max_pct, it.toInt()) },
     )
   }
-  StatRow(stringResource(R.string.precip_total), units.precipitation(total), stringResource(R.string.common_days_count, byDay.size))
+  StatRow(stringResource(R.string.precip_total), units.precipitation(total), pluralStringResource(R.plurals.common_days_count, byDay.size, byDay.size))
   PageNote(stringResource(R.string.precip_method_note))
 }

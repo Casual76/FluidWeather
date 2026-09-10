@@ -1235,11 +1235,24 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
   /** I fiocchi nella pioggia mista: il nevischio non e' pioggia sottile, e' pioggia con dentro la neve. */
   private val sleetFlakes = if (kind == WeatherKind.SLEET) Layer((40 * scale).toInt(), 0.6f, random) else null
 
-  private val slantBase = when (kind) {
-    WeatherKind.DRIZZLE -> 0.012f
-    WeatherKind.RAIN, WeatherKind.SLEET -> 0.045f
-    WeatherKind.HEAVY_RAIN -> 0.075f
-    WeatherKind.THUNDERSTORM -> 0.09f
+  /**
+   * L'inclinazione: quanto ogni goccia si sposta di lato per ogni pixel che scende. Un rapporto,
+   * non una distanza — cosi' il tratto della goccia e la sua traiettoria hanno la STESSA pendenza.
+   * Prima il tratto era inclinato dal vento ma la goccia scendeva quasi verticale, e l'occhio se
+   * ne accorgeva senza saper dire cosa non andava.
+   */
+  private val slantRatio = when (kind) {
+    WeatherKind.DRIZZLE -> 0.06f
+    WeatherKind.RAIN, WeatherKind.SLEET -> 0.16f
+    WeatherKind.HEAVY_RAIN -> 0.3f
+    WeatherKind.THUNDERSTORM -> 0.38f
+    else -> 0f
+  }
+
+  /** La neve va di traverso col vento, poco: la forte di piu'. */
+  private val snowDrift = when (kind) {
+    WeatherKind.SNOW -> 0.05f
+    WeatherKind.HEAVY_SNOW -> 0.12f
     else -> 0f
   }
 
@@ -1263,7 +1276,7 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
     when (mode) {
       Mode.RAIN -> {
         // Le raffiche: la pendenza respira, non e' un binario.
-        val slant = slantBase * (1f + 0.3f * sin(t * 0.45f)) * width
+        val slant = slantRatio * (1f + 0.3f * sin(t * 0.45f))
         val tint = lerp(Color(0xFFDCE7F3), sky.hazeColor, 0.3f)
         for (layer in layers) {
           val near = layer.depth
@@ -1273,11 +1286,13 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
           val speed = lerp(0.55f, 1f, near)
           for (i in 0 until layer.count) {
             val progress = (layer.phases[i] + t * layer.speeds[i] * speed * 0.9f) % 1.1f
-            val y = progress * height * 1.1f - height * 0.05f
-            val x = layer.xs[i] * width - progress * slant
+            val fallen = progress * height * 1.1f
+            val y = fallen - height * 0.05f
+            // La goccia scorre lungo la propria inclinazione, e rientra dall'altro lato quando esce.
+            val x = ((layer.xs[i] * width - fallen * slant) % width + width) % width
             val drop = length * layer.sizes[i]
-            val head = Offset(x - slant * 0.3f, y + drop)
-            val middle = Offset(x - slant * 0.15f, y + drop * 0.5f)
+            val head = Offset(x - slant * drop, y + drop)
+            val middle = Offset(x - slant * drop * 0.5f, y + drop * 0.5f)
             // La coda sfuma e la testa e' piena: e' la scia di una goccia che cade, non un
             // trattino. Due segmenti invece di un gradiente per goccia, che sarebbe uno shader
             // nuovo a ogni goccia a ogni fotogramma.
@@ -1299,21 +1314,24 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
         }
         sleetFlakes?.let { scope.drawFlakes(it, t, u, width, height, 0.6f) }
       }
-      Mode.SNOW -> for (layer in layers) scope.drawFlakes(layer, t, u, width, height, layer.depth)
+      Mode.SNOW -> for (layer in layers) scope.drawFlakes(layer, t, u, width, height, layer.depth, snowDrift)
       Mode.NONE -> Unit
     }
   }
 
-  private fun DrawScope.drawFlakes(layer: Layer, t: Float, u: Float, width: Float, height: Float, near: Float) {
+  private fun DrawScope.drawFlakes(layer: Layer, t: Float, u: Float, width: Float, height: Float, near: Float, drift: Float = 0f) {
     val radius = u * lerp(1.0f, 3.6f, near)
     val alpha = lerp(0.35f, 0.9f, near)
     val speed = lerp(0.055f, 0.14f, near)
     val swayAmplitude = width * lerp(0.006f, 0.018f, near)
     for (i in 0 until layer.count) {
       val progress = (layer.phases[i] + t * layer.speeds[i] * speed) % 1.1f
-      val y = progress * height * 1.1f - height * 0.05f
+      val fallen = progress * height * 1.1f
+      val y = fallen - height * 0.05f
       val sway = sin(t * layer.speeds[i] * 0.9f + layer.sways[i]) * swayAmplitude
-      val center = Offset(layer.xs[i] * width + sway, y)
+      // Il vento porta i fiocchi di traverso, i vicini piu' dei lontani; e si rientra dall'altro lato.
+      val x = ((layer.xs[i] * width + sway - fallen * drift * (0.5f + near * 0.5f)) % width + width) % width
+      val center = Offset(x, y)
       val r = radius * layer.sizes[i]
       if (near > 0.4f) {
         // I fiocchi vicini sono fuori fuoco: un centro pieno e un bordo che sfuma.

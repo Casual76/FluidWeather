@@ -13,6 +13,11 @@ data class BarometerReadiness(
   val calibrated: Boolean,
   val historyHours: Double,
   val requiredHours: Double,
+  /**
+   * La raffica nominale e' finita ma il tempo fermo non basta: la taratura sta aspettando che il
+   * telefono stia tranquillo. Senza questo flag la barra diceva "1:30 di 5:00" e sembrava rotta.
+   */
+  val calibrationWaiting: Boolean = false,
 ) {
   val calibrationFraction: Float
     get() = when {

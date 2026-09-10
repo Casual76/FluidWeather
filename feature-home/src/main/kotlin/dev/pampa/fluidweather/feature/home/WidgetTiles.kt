@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Dehaze
 import androidx.compose.material.icons.rounded.Grain
@@ -40,7 +42,9 @@ import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.ApparentTemperature
 import dev.pampa.fluidweather.core.model.AqiBand
 import dev.pampa.fluidweather.core.model.Moon
+import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.MoonPhase
+import dev.pampa.fluidweather.core.model.SolarEphemeris
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.core.ui.Charts
@@ -127,7 +131,7 @@ private fun NowcastTile(state: HomeUiState) {
         AlertLevel.SORVEGLIANZA -> stringResource(R.string.tile_level_watch)
         AlertLevel.ALLERTA -> stringResource(R.string.tile_level_alert)
       }
-      rate != null -> stringResource(R.string.nowcast_raining_now_rate, String.format("%.1f", rate))
+      rate != null -> stringResource(R.string.nowcast_raining_now_rate, String.format(Locale.getDefault(), "%.1f", rate))
       else -> stringResource(R.string.nowcast_raining_now)
     },
     style = MaterialTheme.typography.bodyMedium,
@@ -243,7 +247,7 @@ private fun HourlyTile(state: HomeUiState) {
               modifier = Modifier.size(20.dp),
             )
           } else {
-            WeatherKindIcon(hour.kind, size = 20.dp)
+            WeatherKindIcon(hour.kind, size = 20.dp, night = isNightAt(hour.timestampMillis, state.latitude, state.longitude))
           }
         }
       }
@@ -749,10 +753,15 @@ private fun EmptyTileBody(message: String) {
   )
 }
 
-/** Segnaposto Material dichiarato: le Meteocons colorate arrivano con la loro importazione. */
+/**
+ * Segnaposto Material dichiarato: le Meteocons colorate arrivano con la loro importazione.
+ *
+ * [night] sceglie la luna al posto del sole per il sereno e il poco nuvoloso: le righe orarie di
+ * notte disegnavano un sole coi raggi alle due di mattina, lo stesso difetto che aveva il widget.
+ */
 @Composable
-internal fun WeatherKindIcon(kind: WeatherKind?, size: androidx.compose.ui.unit.Dp) {
-  val (icon, tint) = kindIconAndTint(kind)
+internal fun WeatherKindIcon(kind: WeatherKind?, size: androidx.compose.ui.unit.Dp, night: Boolean = false) {
+  val (icon, tint) = kindIconAndTint(kind, night)
   Icon(
     imageVector = icon,
     contentDescription = kind?.labelRes()?.let { stringResource(it) },
@@ -761,10 +770,10 @@ internal fun WeatherKindIcon(kind: WeatherKind?, size: androidx.compose.ui.unit.
   )
 }
 
-private fun kindIconAndTint(kind: WeatherKind?): Pair<ImageVector, Color> = when (kind) {
-  WeatherKind.CLEAR -> Icons.Rounded.WbSunny to Color(0xFFF6C750)
-  WeatherKind.MOSTLY_CLEAR -> Icons.Rounded.WbSunny to Color(0xFFE8C878)
-  WeatherKind.PARTLY_CLOUDY -> Icons.Rounded.WbCloudy to Color(0xFFD8DEE8)
+private fun kindIconAndTint(kind: WeatherKind?, night: Boolean = false): Pair<ImageVector, Color> = when (kind) {
+  WeatherKind.CLEAR -> if (night) Icons.Rounded.Bedtime to Color(0xFFDCE3F2) else Icons.Rounded.WbSunny to Color(0xFFF6C750)
+  WeatherKind.MOSTLY_CLEAR -> if (night) Icons.Rounded.Bedtime to Color(0xFFD0D8EA) else Icons.Rounded.WbSunny to Color(0xFFE8C878)
+  WeatherKind.PARTLY_CLOUDY -> if (night) Icons.Rounded.NightsStay to Color(0xFFCBD3E0) else Icons.Rounded.WbCloudy to Color(0xFFD8DEE8)
   WeatherKind.CLOUDY -> Icons.Rounded.Cloud to Color(0xFFB8C2CE)
   WeatherKind.FOG -> Icons.Rounded.Dehaze to Color(0xFFAEB6C2)
   WeatherKind.DRIZZLE -> Icons.Rounded.Grain to Color(0xFF8FC7F0)
@@ -808,4 +817,16 @@ private fun ProviderPressureBody(state: HomeUiState) {
     style = MaterialTheme.typography.labelMedium,
     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
   )
+}
+
+/**
+ * E' notte a quell'ora, li'? Con le coordinate risponde l'effemeride; senza, l'orologio — la stessa
+ * regola di ripiego del cielo, che non deve mai restare senza risposta.
+ */
+internal fun isNightAt(timestampMillis: Long, latitude: Double?, longitude: Double?): Boolean {
+  if (latitude != null && longitude != null) {
+    return SolarEphemeris.phaseAt(timestampMillis, latitude, longitude) == DayPhase.NIGHT
+  }
+  val hour = java.time.Instant.ofEpochMilli(timestampMillis).atZone(java.time.ZoneId.systemDefault()).hour
+  return hour >= 21 || hour < 6
 }

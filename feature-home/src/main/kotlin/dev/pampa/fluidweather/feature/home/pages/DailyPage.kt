@@ -26,6 +26,7 @@ import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.ui.Charts
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import dev.pampa.fluidweather.feature.home.WeatherKindIcon
+import dev.pampa.fluidweather.feature.home.isNightAt
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -139,7 +140,7 @@ internal fun DailyPage(state: HomeUiState) {
         hours.forEach { hour ->
           Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
             Text(fmtHour(hour.timestampMillis), style = MaterialTheme.typography.bodySmall, color = Dim, modifier = Modifier.width(34.dp))
-            WeatherKindIcon(hour.kind, size = 14.dp)
+            WeatherKindIcon(hour.kind, size = 14.dp, night = isNightAt(hour.timestampMillis, state.latitude, state.longitude))
             Spacer(Modifier.width(8.dp))
             Text(
               hour.values[FusionVariables.TEMPERATURE]?.value?.let { units.degrees(it) } ?: "—",

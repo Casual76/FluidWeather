@@ -330,6 +330,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
             calibrationRunning = progress != null,
             calibrationCompletedSeconds = progress?.completedSeconds ?: 0,
             calibrationTotalSeconds = progress?.totalSeconds ?: CalibrationBurst.DURATION_SECONDS,
+            calibrationWaiting = progress?.waitingForStillness == true,
             calibrated = calibrated,
           ),
         )

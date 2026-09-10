@@ -74,6 +74,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import dev.pampa.fluidweather.strings.R
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.featureLabelRes
@@ -493,7 +494,7 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
               meta = when {
                 fetch.bundle != null && weight != null ->
                   stringResource(R.string.diag_hours_weight, fetch.bundle!!.hourly.size, (weight * 100).toInt())
-                fetch.bundle != null -> stringResource(R.string.common_hours_count, fetch.bundle!!.hourly.size)
+                fetch.bundle != null -> pluralStringResource(R.plurals.common_hours_count, fetch.bundle!!.hourly.size, fetch.bundle!!.hourly.size)
                 else -> fetch.error ?: stringResource(R.string.common_error_short)
               },
             )
@@ -502,7 +503,7 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
           FluidListRow(
             title = stringResource(R.string.diag_fused),
             subtitle = stringResource(R.string.diag_fused_desc),
-            meta = stringResource(R.string.common_hours_count, result.fused.hours.size),
+            meta = pluralStringResource(R.plurals.common_hours_count, result.fused.hours.size, result.fused.hours.size),
           )
         }
       }

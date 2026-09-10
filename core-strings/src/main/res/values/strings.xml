@@ -131,7 +131,7 @@
   <string name="bench_use_only">Use only this where supported</string>
   <string name="bench_weight_note">The share is the learned weight (1/(MAE+0.3)², MAE decayed with a 14-day half-life) normalised among those with verifications, averaged over the variables: it is the same maths that drives the fusion.</string>
   <string name="calib_channel">Barometer calibration</string>
-  <string name="calib_channel_desc">Only during the ten minutes of the initial burst.</string>
+  <string name="calib_channel_desc">Only during the initial burst: about ten minutes, longer if the phone keeps moving.</string>
   <string name="calib_no_barometer">This device has no barometer.</string>
   <string name="calib_no_readings">No reading from the barometer.</string>
   <string name="calib_no_reference">Provider reference missing (network?): the burst is on record, retry the estimate.</string>
@@ -157,13 +157,19 @@
   <string name="common_cancel">Cancel</string>
   <string name="common_chosen">Chosen</string>
   <string name="common_close">Close</string>
-  <string name="common_days_count">%1$s days</string>
+  <plurals name="common_days_count">
+    <item quantity="one">%1$d day</item>
+    <item quantity="other">%1$d days</item>
+  </plurals>
   <string name="common_error">error: %1$s</string>
   <string name="common_error_short">error</string>
   <string name="common_feels_like">Feels like</string>
   <string name="common_go">Go</string>
   <string name="common_grant">Allow</string>
-  <string name="common_hours_count">%1$s hours</string>
+  <plurals name="common_hours_count">
+    <item quantity="one">%1$d hour</item>
+    <item quantity="other">%1$d hours</item>
+  </plurals>
   <string name="common_humidity">Humidity</string>
   <string name="common_loading">Checking…</string>
   <string name="common_max_prefix">max</string>
@@ -317,9 +323,9 @@
   <string name="engine_bias_how">How it was estimated</string>
   <string name="engine_bias_how_desc">Local %1$s vs services %2$s at sea level · %3$s readings</string>
   <string name="engine_bias_missing">Bias not estimated yet</string>
-  <string name="engine_bias_missing_desc">The initial burst compares a ten-minute median with the services\' sea-level pressure.</string>
+  <string name="engine_bias_missing_desc">The initial burst compares each still stretch with the services\' sea-level pressure at that place and time.</string>
   <string name="engine_calibrate">Run the calibration</string>
-  <string name="engine_calibrate_desc">Ten minutes in the background: you can use the phone normally.</string>
+  <string name="engine_calibrate_desc">About ten minutes in the background (longer if you keep moving): you can use the phone normally.</string>
   <string name="engine_calibrating">Calibration in progress</string>
   <string name="calib_start_failed_short">The calibration could not start.</string>
   <string name="engine_calibration_segments">%1$s still stretches · spread %2$s</string>
@@ -562,7 +568,10 @@
   <string name="nowcast_history_note">Rain probability at 1-3 hours, as it stood each time the cycle judged.</string>
   <string name="nowcast_history_title">Verdict history, 24 hours</string>
   <string name="nowcast_last_24h">last 24 hours</string>
-  <string name="nowcast_last_hours">in the last %1$s hours</string>
+  <plurals name="nowcast_last_hours">
+    <item quantity="one">in the last hour</item>
+    <item quantity="other">in the last %1$d hours</item>
+  </plurals>
   <string name="nowcast_model_prefix">model</string>
   <string name="nowcast_no_factors">Nothing beyond neutral: climatology is speaking.</string>
   <string name="nowcast_prob_title">Precipitation probability, 0-6 hours</string>
@@ -589,8 +598,8 @@
   <string name="onb_allow_notifications">Allow notifications</string>
   <string name="onb_begin">Begin</string>
   <string name="onb_calibration">Initial calibration</string>
-  <string name="onb_calibration_text">A ten-minute burst at one reading per second starts now: its median, compared with the services\' sea-level pressure, estimates your sensor\'s bias. No need to stay here. Then the engine needs about thirteen hours of history before its first verdict: the bar on the home tells you how far along it is.</string>
-  <string name="onb_calibration_title">Ten minutes, in the background</string>
+  <string name="onb_calibration_text">A burst at one reading per second starts now, about ten minutes: every still stretch, compared with the services\' sea-level pressure at that place, estimates your sensor\'s bias. No need to stay here — if you keep moving it simply waits a little longer. Then the engine needs about thirteen hours of history before its first verdict: the bar on the home tells you how far along it is.</string>
+  <string name="onb_calibration_title">About ten minutes, in the background</string>
   <string name="onb_glass_text">Glass refracts the sky and costs GPU. Pick the level yourself, or let the phone decide; in battery saver it may step down on its own.</string>
   <string name="onb_glass_title">How much glass</string>
   <string name="onb_granted">Granted</string>
@@ -728,6 +737,7 @@
   <string name="radar_play">Play</string>
   <string name="radar_precipitation">Precipitation</string>
   <string name="radar_title">Radar</string>
+  <string name="readiness_burst_waiting">Calibration: waiting for a still moment, %1$s of %2$s useful min</string>
   <string name="readiness_burst">Initial burst: %1$s of %2$s</string>
   <string name="readiness_history_start">Barometric history: just started (%1$s hours needed)</string>
   <string name="readiness_history">Barometric history: %1$s of %2$s hours</string>

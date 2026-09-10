@@ -131,7 +131,7 @@
   <string name="bench_use_only">Usa solo questo dove è supportato</string>
   <string name="bench_weight_note">La quota è il peso appreso (1/(MAE+0,3)², MAE decaduto con dimezzamento a 14 giorni) normalizzato fra chi ha verifiche, mediato sulle variabili: è la stessa matematica che comanda la fusione.</string>
   <string name="calib_channel">Taratura del barometro</string>
-  <string name="calib_channel_desc">Solo durante i dieci minuti della raffica iniziale.</string>
+  <string name="calib_channel_desc">Solo durante la raffica iniziale: circa dieci minuti, di più se il telefono continua a muoversi.</string>
   <string name="calib_no_barometer">Questo dispositivo non ha il barometro.</string>
   <string name="calib_no_readings">Nessuna lettura dal barometro.</string>
   <string name="calib_no_reference">Riferimento dei provider assente (rete?): la raffica è in archivio, riprova la stima.</string>
@@ -157,13 +157,19 @@
   <string name="common_cancel">Annulla</string>
   <string name="common_chosen">Scelto</string>
   <string name="common_close">Chiudi</string>
-  <string name="common_days_count">%1$s giorni</string>
+  <plurals name="common_days_count">
+    <item quantity="one">%1$d giorno</item>
+    <item quantity="other">%1$d giorni</item>
+  </plurals>
   <string name="common_error">errore: %1$s</string>
   <string name="common_error_short">errore</string>
   <string name="common_feels_like">Percepita</string>
   <string name="common_go">Vai</string>
   <string name="common_grant">Concedi</string>
-  <string name="common_hours_count">%1$s ore</string>
+  <plurals name="common_hours_count">
+    <item quantity="one">%1$d ora</item>
+    <item quantity="other">%1$d ore</item>
+  </plurals>
   <string name="common_humidity">Umidità</string>
   <string name="common_loading">Controllo in corso…</string>
   <string name="common_max_prefix">max </string>
@@ -260,7 +266,7 @@
   <string name="diag_hours_weight">%1$s ore · %2$s%%</string>
   <string name="diag_health_title">Campionamento</string>
   <string name="diag_health_scheduled">Lavoro programmato</string>
-  <string name="diag_health_scheduled_on">Il meccanismo di questa modalita è armato</string>
+  <string name="diag_health_scheduled_on">Il meccanismo di questa modalità è armato</string>
   <string name="diag_health_scheduled_off">Non armato: è stato rimesso in piedi</string>
   <string name="diag_health_last_sample">Ultima lettura in archivio</string>
   <string name="diag_health_silent">Nessuna lettura da troppo tempo: il campionamento è stato riprogrammato</string>
@@ -317,9 +323,9 @@
   <string name="engine_bias_how">Come è stato stimato</string>
   <string name="engine_bias_how_desc">Locale %1$s vs servizi %2$s al mare · %3$s letture</string>
   <string name="engine_bias_missing">Bias non ancora stimato</string>
-  <string name="engine_bias_missing_desc">La raffica iniziale confronta la mediana di dieci minuti con la pressione al mare dei servizi.</string>
+  <string name="engine_bias_missing_desc">La raffica iniziale confronta ogni tratto fermo con la pressione al mare dei servizi in quel posto e in quel momento.</string>
   <string name="engine_calibrate">Fai la taratura</string>
-  <string name="engine_calibrate_desc">Dieci minuti in sottofondo: puoi usare il telefono normalmente.</string>
+  <string name="engine_calibrate_desc">Circa dieci minuti in sottofondo (di più se ti muovi): puoi usare il telefono normalmente.</string>
   <string name="engine_calibrating">Taratura in corso</string>
   <string name="calib_start_failed_short">La taratura non è potuta partire.</string>
   <string name="engine_calibration_segments">%1$s tratti fermi · dispersione %2$s</string>
@@ -562,7 +568,10 @@
   <string name="nowcast_history_note">Probabilità di pioggia a 1-3 ore, com\'era ogni volta che il ciclo ha giudicato.</string>
   <string name="nowcast_history_title">Storico dei verdetti, 24 ore</string>
   <string name="nowcast_last_24h">ultime 24 ore</string>
-  <string name="nowcast_last_hours">nelle ultime %1$s ore</string>
+  <plurals name="nowcast_last_hours">
+    <item quantity="one">nell\'ultima ora</item>
+    <item quantity="other">nelle ultime %1$d ore</item>
+  </plurals>
   <string name="nowcast_model_prefix">modello </string>
   <string name="nowcast_no_factors">Niente fuori dal neutro: è la climatologia a parlare.</string>
   <string name="nowcast_prob_title">Probabilità di precipitazione, 0-6 ore</string>
@@ -589,8 +598,8 @@
   <string name="onb_allow_notifications">Consenti le notifiche</string>
   <string name="onb_begin">Inizia</string>
   <string name="onb_calibration">Taratura iniziale</string>
-  <string name="onb_calibration_text">Adesso parte una raffica di dieci minuti a una lettura al secondo: la sua mediana, confrontata con la pressione al mare dei servizi, stima il bias del tuo sensore. Non serve restare qui. Poi al motore servono circa tredici ore di storia prima del primo verdetto: la barra in home ti dice a che punto è.</string>
-  <string name="onb_calibration_title">Dieci minuti, in sottofondo</string>
+  <string name="onb_calibration_text">Adesso parte una raffica a una lettura al secondo, circa dieci minuti: ogni tratto fermo, confrontato con la pressione al mare dei servizi in quel posto, stima il bias del tuo sensore. Non serve restare qui — se continui a muoverti aspetta solo un po\' di più. Poi al motore servono circa tredici ore di storia prima del primo verdetto: la barra in home ti dice a che punto è.</string>
+  <string name="onb_calibration_title">Circa dieci minuti, in sottofondo</string>
   <string name="onb_glass_text">Il vetro rifrange il cielo e costa GPU. Scegli tu il livello, oppure lascia decidere al telefono; in risparmio energia può scendere di un gradino da solo.</string>
   <string name="onb_glass_title">Quanto vetro</string>
   <string name="onb_granted">Concesso</string>
@@ -728,6 +737,7 @@
   <string name="radar_play">Play</string>
   <string name="radar_precipitation">Precipitazioni</string>
   <string name="radar_title">Radar</string>
+  <string name="readiness_burst_waiting">Taratura: in attesa di un momento fermo, %1$s di %2$s min utili</string>
   <string name="readiness_burst">Raffica iniziale: %1$s di %2$s</string>
   <string name="readiness_history_start">Storia barometrica: appena cominciata (servono %1$s ore)</string>
   <string name="readiness_history">Storia barometrica: %1$s di %2$s ore</string>
