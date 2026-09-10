@@ -67,6 +67,8 @@ object SkyScene {
     longitude: Double?,
     nowMillis: Long,
     zone: ZoneId = ZoneId.systemDefault(),
+    /** La fotografia della luna, caricata da chi ha le risorse. */
+    moon: ImageBitmap? = null,
   ): Bitmap {
     val (width, height) = sizeFor(tier)
     val bitmap = ImageBitmap(width, height, ImageBitmapConfig.Argb8888)
@@ -93,6 +95,7 @@ object SkyScene {
         // Il velo sotto il testo: il widget scrive in bianco fisso, e una nevicata o una nebbia
         // portano il cielo verso il grigio chiaro. Vedi ScrimPainter.
         scrim = true,
+        moon = moon,
       )
     }
     return bitmap.asAndroidBitmap()

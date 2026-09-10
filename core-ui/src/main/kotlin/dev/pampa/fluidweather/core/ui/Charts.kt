@@ -6,6 +6,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -217,7 +219,13 @@ object Charts {
     }
   }
 
-  /** Il disco lunare col terminatore: un'ellisse d'ombra che scorre con la fase. */
+  /**
+   * La luna della pagina: la stessa fotografia e la stessa ombra di fase del cielo, cosi' le due
+   * lune sono la stessa. Prima era un cerchio color avorio con due archi di ombra: non sembrava
+   * troppo lunare, e aveva ragione chi lo diceva.
+   *
+   * [moonColor] resta per compatibilita' con chi lo passa: la fotografia ha i suoi colori.
+   */
   @Composable
   fun MoonDisc(
     illuminatedFraction: Double,
@@ -226,51 +234,26 @@ object Charts {
     moonColor: Color = Color(0xFFE8E4D8),
     shadowColor: Color = Color(0xFF11141C),
   ) {
+    val moon = ImageBitmap.imageResource(R.drawable.moon_nearside)
     Canvas(modifier) {
       val radius = minOf(size.width, size.height) / 2f
       val center = Offset(size.width / 2f, size.height / 2f)
-      drawCircle(color = moonColor, radius = radius, center = center)
-
-      // Il terminatore: mezza luna coperta fissa piu' un'ellisse che gonfia o sgonfia l'ombra.
-      val f = illuminatedFraction.coerceIn(0.0, 1.0).toFloat()
-      val shadowSide = if (waxing) -1f else 1f
-      val halfCover = Path().apply {
-        addArc(
-          oval = androidx.compose.ui.geometry.Rect(
-            center.x - radius, center.y - radius, center.x + radius, center.y + radius,
-          ),
-          startAngleDegrees = if (waxing) 90f else -90f,
-          sweepAngleDegrees = 180f,
-        )
-      }
-      val bulge = kotlin.math.abs(1f - 2f * f) * radius
-      val ellipse = Path().apply {
-        addOval(
-          androidx.compose.ui.geometry.Rect(
-            center.x - bulge, center.y - radius, center.x + bulge, center.y + radius,
-          ),
-        )
-      }
-      if (f < 0.5f) {
-        // Falce: mezza ombra piu' l'ellisse d'ombra che invade il lato illuminato.
-        drawPath(halfCover, color = shadowColor)
-        drawPath(ellipse, color = shadowColor)
-      } else {
-        // Gibbosa: mezza ombra, ma l'ellisse RIACCENDE il centro.
-        drawPath(halfCover, color = shadowColor)
-        drawPath(ellipse, color = moonColor)
-      }
+      MoonPainter.disc(
+        scope = this,
+        image = moon,
+        center = center,
+        radius = radius,
+        illuminated = illuminatedFraction.coerceIn(0.0, 1.0).toFloat(),
+        waxing = waxing,
+        shadow = shadowColor,
+      )
       // Un filo di bordo per staccare dal cielo della tessera.
       drawCircle(
-        color = Color.White.copy(alpha = 0.15f),
+        color = Color.White.copy(alpha = 0.12f),
         radius = radius,
         center = center,
         style = Stroke(width = 2f),
       )
-      // Il lato d'ombra dipende dalla fase: crescente illumina a destra (emisfero nord).
-      // shadowSide e' gia' incorporato dallo startAngle dell'arco.
-      @Suppress("UNUSED_EXPRESSION")
-      shadowSide
     }
   }
 }

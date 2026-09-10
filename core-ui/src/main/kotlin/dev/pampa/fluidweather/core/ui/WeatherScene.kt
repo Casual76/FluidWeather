@@ -11,6 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.res.imageResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -92,6 +94,9 @@ fun WeatherScene(
     Celestial.at(System.currentTimeMillis(), state.latitude, state.longitude)
   }
 
+  // La fotografia della luna: `imageResource` la decodifica una volta e la ricorda.
+  val moon = ImageBitmap.imageResource(R.drawable.moon_nearside)
+
   Canvas(modifier) {
     val animatedSky = sky.copy(
       stops = sky.stops.mapIndexed { index, (at, _) -> at to stops[index].value },
@@ -100,7 +105,7 @@ fun WeatherScene(
       cloudShadow = cloudShadow.value,
       hazeColor = haze.value,
     )
-    painter.draw(this, animatedSky, body, if (animated) frameSeconds else 0f)
+    painter.draw(this, animatedSky, body, if (animated) frameSeconds else 0f, moon)
   }
 }
 

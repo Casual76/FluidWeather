@@ -22,6 +22,8 @@
   <string name="about_barometer_desc">The phone\'s sensor, with the formulas of Mass &amp; Madaus, Meeus and Montenbruck</string>
   <string name="about_engine_desc">The shared foundations of the Pampa apps</string>
   <string name="about_maps">Radar base map, Google Maps Platform</string>
+  <string name="about_moon">Moon</string>
+  <string name="about_moon_desc">Near-side image: NASA/GSFC Scientific Visualization Studio, Lunar Reconnaissance Orbiter (public domain)</string>
   <string name="about_notice">Notice</string>
   <string name="about_openmeteo_extra">Open-Meteo Air Quality and Geocoding</string>
   <string name="about_openmeteo_extra_desc">Air quality (CAMS) and place search, CC BY 4.0</string>

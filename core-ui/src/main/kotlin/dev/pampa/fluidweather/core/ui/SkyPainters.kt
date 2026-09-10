@@ -6,6 +6,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -13,6 +15,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.lerp
 import dev.pampa.fluidweather.core.model.WeatherKind
 import java.time.Instant
@@ -75,11 +79,16 @@ class SkyScenePainter(
   private val fog = if (state.kind == WeatherKind.FOG) FogLayer(Random(random.nextLong())) else null
   private val lightning = if (state.kind == WeatherKind.THUNDERSTORM) LightningField(Random(random.nextLong())) else null
 
-  fun draw(scope: DrawScope, sky: SkyPalette.Sky, body: CelestialBody?, t: Float) {
+  /**
+   * [moon] e' la fotografia del lato visibile della luna (NASA/LRO), che chi ha delle risorse
+   * Android carica e passa; senza (il banco senza file, un errore di caricamento) si disegna una
+   * luna procedurale, che e' meno luna ma e' sempre una luna.
+   */
+  fun draw(scope: DrawScope, sky: SkyPalette.Sky, body: CelestialBody?, t: Float, moon: ImageBitmap? = null) {
     SkyGradientPainter.draw(scope, sky)
     if (sky.starAlpha > 0f) stars.draw(scope, t, sky)
     // L'ordine e' il punto: l'astro sta DIETRO le nuvole, come fuori dalla finestra.
-    body?.let { CelestialPainter.draw(scope, it, sky) }
+    body?.let { CelestialPainter.draw(scope, it, sky, moon) }
     clouds.draw(scope, t, sky, body)
     fog?.draw(scope, t, sky)
     lightning?.draw(scope, t)
@@ -108,10 +117,12 @@ object SkyFrame {
     scrim: Boolean = false,
     /** Il tempo della scena in secondi: il widget lo lascia a zero, il banco di anteprima lo muove. */
     t: Float = 0f,
+    /** La fotografia della luna, se chi chiama ce l'ha. */
+    moon: ImageBitmap? = null,
   ) {
     val sky = SkyPalette.sky(state.phase, state.kind, state.cloudCoverPercent)
     val body = Celestial.at(nowMillis, state.latitude, state.longitude, zone)
-    SkyScenePainter(state, quality, SkyVariation.seedFor(nowMillis, zone)).draw(scope, sky, body, t)
+    SkyScenePainter(state, quality, SkyVariation.seedFor(nowMillis, zone)).draw(scope, sky, body, t, moon)
     if (scrim) ScrimPainter.draw(scope, sky)
   }
 }
@@ -318,10 +329,10 @@ internal object SkyGradientPainter {
  */
 internal object CelestialPainter {
 
-  fun draw(scope: DrawScope, body: CelestialBody, sky: SkyPalette.Sky) {
+  fun draw(scope: DrawScope, body: CelestialBody, sky: SkyPalette.Sky, moon: ImageBitmap? = null) {
     when (body.kind) {
       CelestialBody.Kind.SUN -> scope.drawSun(body, sky)
-      CelestialBody.Kind.MOON -> scope.drawMoon(body, sky)
+      CelestialBody.Kind.MOON -> scope.drawMoon(body, sky, moon)
     }
   }
 
@@ -412,7 +423,7 @@ internal object CelestialPainter {
     }
   }
 
-  private fun DrawScope.drawMoon(body: CelestialBody, sky: SkyPalette.Sky) {
+  private fun DrawScope.drawMoon(body: CelestialBody, sky: SkyPalette.Sky, moon: ImageBitmap?) {
     val minSide = minOf(size.width, size.height)
     val center = Offset(body.x * size.width, body.y * size.height)
     val radius = minSide * 0.046f
@@ -426,60 +437,124 @@ internal object CelestialPainter {
       softDisc(center, radius * 5.5f, SkyPalette.MoonHalo, 0.07f * visibility, hardness = 0.35f)
     }
 
-    // Il disco, col limbo appena piu' scuro del centro: una sfera, non un cerchio.
-    drawCircle(
-      brush = Brush.radialGradient(
-        colorStops = arrayOf(
-          0f to SkyPalette.MoonColor.copy(alpha = visibility),
-          0.68f to SkyPalette.MoonColor.copy(alpha = visibility),
-          1f to SkyPalette.MoonLimb.copy(alpha = visibility),
-        ),
-        center = center,
-        radius = radius,
-      ),
-      radius = radius,
+    MoonPainter.disc(
+      scope = this,
+      image = moon,
       center = center,
+      radius = radius,
+      illuminated = lit,
+      waxing = body.waxing,
+      shadow = skyColorAt(sky, body.y),
+      alpha = visibility,
     )
+  }
+}
 
+/**
+ * Il disco della luna: la fotografia vera del lato visibile, con l'ombra della fase sopra.
+ *
+ * E' cosi' che fa Apple, ed e' l'unico modo perche' la luna sembri la luna: i mari e i crateri
+ * non si inventano con quattro macchie. L'immagine e' la mappa LROC della NASA proiettata a disco
+ * (tools/skypreview la carica dal file, l'app dalle risorse). Sopra: il limbo che si scurisce
+ * come su una sfera, l'ombra della fase col bordo morbido, la luce cinerea. Lo usano il cielo e
+ * la pagina della luna, cosi' le due lune sono la stessa.
+ */
+internal object MoonPainter {
+
+  fun disc(
+    scope: DrawScope,
+    image: ImageBitmap?,
+    center: Offset,
+    radius: Float,
+    illuminated: Float,
+    waxing: Boolean,
+    /** Il colore del cielo dietro: la parte in ombra deve sparirci dentro. */
+    shadow: Color,
+    alpha: Float = 1f,
+  ) = with(scope) {
+    val lit = illuminated.coerceIn(0f, 1f)
     val disc = Path().apply { addOval(Rect(center = center, radius = radius)) }
-    clipPath(disc) {
-      // I mari: quattro macchie appena piu' scure, dove stanno davvero grosso modo. Senza, il
-      // disco e' un bottone; con, e' la luna.
-      val maria = listOf(
-        Triple(-0.22f, -0.22f, 0.36f),
-        Triple(0.22f, -0.02f, 0.26f),
-        Triple(-0.06f, 0.30f, 0.22f),
-        Triple(0.32f, 0.30f, 0.16f),
-      )
-      for ((dx, dy, r) in maria) {
-        softDisc(
-          center = Offset(center.x + dx * radius, center.y + dy * radius),
-          radius = r * radius * 1.4f,
-          color = SkyPalette.MoonMaria,
-          alpha = 0.34f * visibility,
-          hardness = 0.35f,
-        )
-      }
 
+    if (image != null) {
+      val side = (radius * 2f).roundToInt().coerceAtLeast(2)
+      drawImage(
+        image = image,
+        dstOffset = IntOffset((center.x - radius).roundToInt(), (center.y - radius).roundToInt()),
+        dstSize = IntSize(side, side),
+        alpha = alpha,
+        filterQuality = FilterQuality.High,
+      )
+    } else {
+      // Senza fotografia: un disco col limbo e quattro macchie, che e' meno luna ma e' una luna.
+      drawCircle(
+        brush = Brush.radialGradient(
+          colorStops = arrayOf(
+            0f to SkyPalette.MoonColor.copy(alpha = alpha),
+            0.68f to SkyPalette.MoonColor.copy(alpha = alpha),
+            1f to SkyPalette.MoonLimb.copy(alpha = alpha),
+          ),
+          center = center,
+          radius = radius,
+        ),
+        radius = radius,
+        center = center,
+      )
+      clipPath(disc) {
+        for ((dx, dy, r) in listOf(Triple(-0.22f, -0.22f, 0.36f), Triple(0.22f, -0.02f, 0.26f), Triple(-0.06f, 0.30f, 0.22f))) {
+          softDisc(Offset(center.x + dx * radius, center.y + dy * radius), r * radius * 1.4f, SkyPalette.MoonMaria, 0.34f * alpha, hardness = 0.35f)
+        }
+      }
+    }
+
+    clipPath(disc) {
+      // Il limbo: una sfera si scurisce verso il bordo, una fotografia piatta no.
+      drawCircle(
+        brush = Brush.radialGradient(
+          colorStops = arrayOf(
+            0f to Color.Transparent,
+            0.72f to Color.Transparent,
+            1f to Color(0xFF1A1E2C).copy(alpha = 0.42f * alpha),
+          ),
+          center = center,
+          radius = radius,
+        ),
+        radius = radius,
+        center = center,
+      )
       // La fase: un secondo disco del colore del cielo che morde il primo, col bordo morbido.
       // Il terminatore vero e' un'ellisse, ma a questi raggi un cerchio spostato e' identico.
       if (lit < 0.985f) {
         val offset = radius * 2f * (1f - lit)
-        val direction = if (body.waxing) -1f else 1f
+        val direction = if (waxing) -1f else 1f
         val shadowCenter = Offset(center.x + direction * offset, center.y)
-        val shadow = skyColorAt(sky, body.y)
         drawCircle(
           brush = Brush.radialGradient(
-            colorStops = arrayOf(0f to shadow, 0.9f to shadow, 1f to shadow.copy(alpha = 0f)),
+            colorStops = arrayOf(0f to shadow, 0.92f to shadow, 1f to shadow.copy(alpha = 0f)),
             center = shadowCenter,
             radius = radius * 1.02f,
           ),
           radius = radius * 1.02f,
           center = shadowCenter,
         )
-        // La luce cinerea: la parte in ombra non e' nera, la Terra la rischiara appena.
-        drawCircle(color = SkyPalette.MoonLimb.copy(alpha = 0.07f * visibility), radius = radius, center = center)
+        // La luce cinerea: la parte in ombra non e' nera, la Terra la rischiara appena, e la
+        // fotografia si intravede.
+        drawImageOrDisc(image, center, radius, 0.07f * alpha)
       }
+    }
+  }
+
+  private fun DrawScope.drawImageOrDisc(image: ImageBitmap?, center: Offset, radius: Float, alpha: Float) {
+    if (image != null) {
+      val side = (radius * 2f).roundToInt().coerceAtLeast(2)
+      drawImage(
+        image = image,
+        dstOffset = IntOffset((center.x - radius).roundToInt(), (center.y - radius).roundToInt()),
+        dstSize = IntSize(side, side),
+        alpha = alpha,
+        filterQuality = FilterQuality.High,
+      )
+    } else {
+      drawCircle(color = SkyPalette.MoonLimb.copy(alpha = alpha), radius = radius, center = center)
     }
   }
 }
@@ -716,24 +791,28 @@ private class Deck(
 private class Filament(val dx: Float, val dy: Float, val length: Float, val thickness: Float, val angle: Float, val alpha: Float)
 
 /**
- * Un cirro: un fascio di filamenti sottili, quasi trasparenti, un po' inclinati, di lunghezze
- * diverse. Non un fuso solo — quello e' la scia di un aereo.
+ * Un velo di cirri: due o tre chiazze larghe, basse e quasi trasparenti, appena inclinate — l'aria
+ * alta che si sbianca, non un disegno.
+ *
+ * Prima erano filamenti sottili e obliqui, e da lontano sembravano un lens flare venuto male, o
+ * scie di aerei: righe dritte nel cielo sereno. Le righe dritte nel cielo non esistono, e il
+ * sereno adesso resta sereno.
  */
 private class Cirrus(val cx: Float, val cy: Float, val filaments: List<Filament>, val alpha: Float) {
   companion object {
     fun random(random: Random, alpha: Float): Cirrus {
-      val angle = random.between(-26f, -8f)
-      val filaments = List(4 + random.nextInt(4)) {
+      val angle = random.between(-7f, -2f)
+      val filaments = List(2 + random.nextInt(2)) {
         Filament(
-          dx = random.between(-0.18f, 0.18f),
-          dy = random.between(-0.035f, 0.035f),
-          length = random.between(0.12f, 0.36f),
-          thickness = random.between(0.004f, 0.009f),
-          angle = angle + random.between(-7f, 7f),
+          dx = random.between(-0.15f, 0.15f),
+          dy = random.between(-0.03f, 0.03f),
+          length = random.between(0.28f, 0.5f),
+          thickness = random.between(0.02f, 0.04f),
+          angle = angle + random.between(-2f, 2f),
           alpha = random.between(0.5f, 1f),
         )
       }
-      return Cirrus(random.nextFloat(), random.between(0.06f, 0.3f), filaments, alpha)
+      return Cirrus(random.nextFloat(), random.between(0.06f, 0.26f), filaments, alpha)
     }
   }
 }
@@ -955,15 +1034,16 @@ internal class CloudLayer private constructor(
               y = if (near) random.between(0.16f, 0.34f) else random.between(0.06f, 0.16f),
             )
           }
-          if (random.nextFloat() < 0.5f) cirrus(0.28f)
         }
         WeatherKind.MOSTLY_CLEAR -> {
-          repeat(1 + random.nextInt(2)) { cirrus(random.between(0.25f, 0.4f)) }
-          if (random.nextFloat() < 0.5f) cumulus(width = random.between(0.18f, 0.28f), y = random.between(0.1f, 0.22f), alpha = 0.9f)
+          // Uno o due cumuli piccoli e lontani, e a volte un velo alto appena percettibile.
+          repeat(1 + random.nextInt(2)) {
+            cumulus(width = random.between(0.16f, 0.26f), y = random.between(0.08f, 0.2f), alpha = 0.9f)
+          }
+          if (random.nextFloat() < 0.4f) cirrus(random.between(0.07f, 0.12f))
         }
-        WeatherKind.CLEAR, WeatherKind.UNKNOWN, null -> {
-          if (cover > 0.03f && random.nextFloat() < 0.6f) cirrus(random.between(0.15f, 0.28f))
-        }
+        // Il sereno e' sereno: niente in cielo oltre al sole o alla luna e alle stelle.
+        WeatherKind.CLEAR, WeatherKind.UNKNOWN, null -> Unit
       }
       // Le vicine si disegnano per ultime, sopra le lontane.
       cumuli.sortBy { it.width }
@@ -1113,7 +1193,7 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
     val xs = FloatArray(count) { random.nextFloat() }
     val phases = FloatArray(count) { random.nextFloat() }
     val speeds = FloatArray(count) { 0.8f + random.nextFloat() * 0.4f }
-    val sizes = FloatArray(count) { 0.7f + random.nextFloat() * 0.6f }
+    val sizes = FloatArray(count) { 0.55f + random.nextFloat() * 0.9f }
     val sways = FloatArray(count) { random.nextFloat() * 6.28f }
   }
 
@@ -1157,8 +1237,8 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
 
   private val slantBase = when (kind) {
     WeatherKind.DRIZZLE -> 0.012f
-    WeatherKind.RAIN, WeatherKind.SLEET -> 0.035f
-    WeatherKind.HEAVY_RAIN -> 0.07f
+    WeatherKind.RAIN, WeatherKind.SLEET -> 0.045f
+    WeatherKind.HEAVY_RAIN -> 0.075f
     WeatherKind.THUNDERSTORM -> 0.09f
     else -> 0f
   }
@@ -1195,10 +1275,23 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
             val progress = (layer.phases[i] + t * layer.speeds[i] * speed * 0.9f) % 1.1f
             val y = progress * height * 1.1f - height * 0.05f
             val x = layer.xs[i] * width - progress * slant
+            val drop = length * layer.sizes[i]
+            val head = Offset(x - slant * 0.3f, y + drop)
+            val middle = Offset(x - slant * 0.15f, y + drop * 0.5f)
+            // La coda sfuma e la testa e' piena: e' la scia di una goccia che cade, non un
+            // trattino. Due segmenti invece di un gradiente per goccia, che sarebbe uno shader
+            // nuovo a ogni goccia a ogni fotogramma.
+            scope.drawLine(
+              color = tint.copy(alpha = alpha * 0.35f * layer.sizes[i]),
+              start = Offset(x, y),
+              end = middle,
+              strokeWidth = stroke * 0.75f,
+              cap = StrokeCap.Round,
+            )
             scope.drawLine(
               color = tint.copy(alpha = alpha * layer.sizes[i]),
-              start = Offset(x, y),
-              end = Offset(x - slant * 0.3f, y + length * layer.sizes[i]),
+              start = middle,
+              end = head,
               strokeWidth = stroke,
               cap = StrokeCap.Round,
             )

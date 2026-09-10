@@ -2,7 +2,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.ImageBitmap as ComposeImage
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import dev.pampa.fluidweather.core.model.DayPhase
@@ -43,6 +45,12 @@ private const val LON = 11.26
 /** La cella di una tavola: proporzioni di un telefono, a densita' 1. */
 private const val CELL_W = 360
 private const val CELL_H = 640
+
+/** La fotografia della luna, dalle risorse dell'app: la stessa che vede il telefono. */
+private val moon: ComposeImage? by lazy {
+  val file = File("../../core-ui/src/main/res/drawable-nodpi/moon_nearside.png")
+  runCatching { ImageIO.read(file).toComposeImageBitmap() }.getOrNull()
+}
 
 private val kinds = listOf(
   WeatherKind.CLEAR, WeatherKind.MOSTLY_CLEAR, WeatherKind.PARTLY_CLOUDY, WeatherKind.CLOUDY,
@@ -188,6 +196,7 @@ private fun render(
       zone = zone,
       scrim = scrim,
       t = t,
+      moon = moon,
     )
   }
   return bitmap.toAwtImage()

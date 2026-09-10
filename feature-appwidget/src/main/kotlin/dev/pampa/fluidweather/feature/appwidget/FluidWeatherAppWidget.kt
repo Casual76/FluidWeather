@@ -3,6 +3,8 @@ package dev.pampa.fluidweather.feature.appwidget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
@@ -84,6 +86,11 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
 
     val now = System.currentTimeMillis()
     val snapshot = place?.second
+    // La fotografia della luna, una volta per aggiornamento: senza, il cielo disegna quella
+    // procedurale, che e' meno luna ma non lascia il widget vuoto.
+    val moon = runCatching {
+      ImageBitmap.imageResource(context.resources, dev.pampa.fluidweather.core.ui.R.drawable.moon_nearside)
+    }.getOrNull()
     // I modelli e i cieli si costruiscono QUI, una volta per taglia, non dentro `provideContent`.
     //
     // Con `SizeMode.Responsive` la composable gira una volta per ogni taglia dichiarata: quello
@@ -105,6 +112,7 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
         latitude = model.latitude,
         longitude = model.longitude,
         nowMillis = now,
+        moon = moon,
       )
     }
 

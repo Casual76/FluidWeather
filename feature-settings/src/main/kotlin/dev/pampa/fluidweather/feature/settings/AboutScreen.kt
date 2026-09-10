@@ -103,6 +103,8 @@ fun AboutScreen(deps: AboutDependencies, onBack: () -> Unit) {
         FluidListDivider()
         FluidListRow(title = "Google Maps", subtitle = stringResource(R.string.about_maps))
         FluidListDivider()
+        FluidListRow(title = stringResource(R.string.about_moon), subtitle = stringResource(R.string.about_moon_desc))
+        FluidListDivider()
         FluidListRow(title = "Meteoalarm / NWS", subtitle = stringResource(R.string.about_alerts))
         FluidListDivider()
         FluidListRow(title = stringResource(R.string.about_openmeteo_extra), subtitle = stringResource(R.string.about_openmeteo_extra_desc))
