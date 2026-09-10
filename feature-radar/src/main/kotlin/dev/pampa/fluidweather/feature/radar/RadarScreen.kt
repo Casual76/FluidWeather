@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.feature.radar
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -53,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -84,6 +86,10 @@ import dev.antigravity.fluidengine.ui.fluid.FluidContextAction
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassIconButton
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
+import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
+import dev.antigravity.fluidengine.ui.fluid.GlassDefaults
+import dev.antigravity.fluidengine.ui.fluid.GlassRole
+import dev.antigravity.fluidengine.ui.fluid.glassSurface
 import dev.antigravity.fluidengine.ui.fluid.rememberGlassBackdrop
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuButton
 import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuHost
@@ -328,7 +334,9 @@ private fun RadarShell(
       properties = MapProperties(
         isMyLocationEnabled = hasLocationPermission,
         minZoomPreference = 3f,
-        maxZoomPreference = 12f,
+        // Era 12, lo zoom nativo del radar: oltre, i tile si ricavano dal padre ingrandito
+        // (OverzoomTileProvider) e nessuno e' piu' obbligato a un livello scelto da noi.
+        maxZoomPreference = 16f,
       ),
       uiSettings = MapUiSettings(
         compassEnabled = false,
@@ -434,7 +442,8 @@ private fun RadarShell(
     // Legenda in basso a sinistra, sopra il logo di Google.
     if (layer == RadarLayer.PRECIPITATION) {
       RadarLegend(
-        Modifier
+        backdrop = chromeBackdrop,
+        modifier = Modifier
           .align(Alignment.BottomStart)
           .padding(start = 12.dp, bottom = navigationBottom + barHeight + 30.dp),
       )
@@ -471,6 +480,7 @@ private fun RadarShell(
       frames = frames,
       index = frameIndex,
       playing = playing,
+      backdrop = chromeBackdrop,
       onTogglePlay = { playing = !playing },
       onScrub = { chosen ->
         playing = false
@@ -496,12 +506,23 @@ private fun layerIcon(layer: RadarLayer): ImageVector = when (layer) {
   RadarLayer.WIND -> Icons.Rounded.Air
 }
 
+/**
+ * L'etichetta di una localita' sulla mappa.
+ *
+ * Un marker e' una bitmap che Google Maps compone da se', quindi il vetro vero — che campiona cio'
+ * che ha dietro — qui non puo' esistere. Si prende allora la stessa pellicola dei controlli di
+ * vetro (il velo e il filo di luce del tema), cosi' l'etichetta somiglia ai tasti accanto e segue
+ * il tema: prima era un nero scritto a mano, e con l'app in chiaro restava l'unica cosa scura.
+ */
 @Composable
 private fun PinLabel(pin: RadarPin) {
+  val shape = ContinuousCornerShape(FluidRadius.Group)
+  val film = GlassDefaults.floatingTint()
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier = Modifier
-      .background(Color(0xE60B0B0E), ContinuousCornerShape(12.dp))
+      .background(Panel, shape)
+      .border(1.dp, film.hairline, shape)
       .padding(horizontal = 10.dp, vertical = 6.dp),
   ) {
     Text(pin.name, style = MaterialTheme.typography.labelMedium, color = White)
@@ -522,12 +543,12 @@ private fun PinLabel(pin: RadarPin) {
 
 /** La legenda: i colori VERI dello schema dei tile (tabella ufficiale RainViewer), dal debole al forte. */
 @Composable
-private fun RadarLegend(modifier: Modifier = Modifier) {
+private fun RadarLegend(backdrop: GlassBackdropState, modifier: Modifier = Modifier) {
   val stops = RainViewerPalette.universalBlue.filter { it.dbz >= 10 }
   Column(
     modifier = modifier
       .width(168.dp)
-      .background(Panel, ContinuousCornerShape(FluidRadius.Group))
+      .radarChrome(backdrop)
       .padding(10.dp),
   ) {
     Text(stringResource(R.string.radar_precipitation), style = MaterialTheme.typography.labelSmall, color = Faint)
@@ -558,6 +579,7 @@ private fun RadarTimelineBar(
   playing: Boolean,
   onTogglePlay: () -> Unit,
   onScrub: (Int) -> Unit,
+  backdrop: GlassBackdropState,
   modifier: Modifier = Modifier,
 ) {
   val haptics = rememberFluidHaptics()
@@ -566,7 +588,7 @@ private fun RadarTimelineBar(
       verticalAlignment = Alignment.CenterVertically,
       modifier = Modifier
         .fillMaxWidth()
-        .background(Panel, ContinuousCornerShape(FluidRadius.Group))
+        .radarChrome(backdrop)
         .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
       IconButton(
@@ -588,6 +610,7 @@ private fun RadarTimelineBar(
       val trackColour = Faint
       val pastColour = Accent
       val markColour = White
+      val nowcastCount = frames?.nowcast?.size ?: 0
       Canvas(
         Modifier
           .weight(1f)
@@ -626,8 +649,26 @@ private fun RadarTimelineBar(
         drawLine(trackColour.copy(alpha = 0.3f), Offset(inset, y), Offset(trackEnd, y), strokeWidth = 4f, cap = StrokeCap.Round)
         if (count > 1) {
           val nowX = inset + RadarTimeline.fractionForIndex(nowIndex, count) * (trackEnd - inset)
-          // Il passato in pieno, il nowcast tratteggiato dopo "adesso".
+          // Il passato in pieno, il nowcast tratteggiato dopo "adesso". Il tratto c'e' solo se il
+          // servizio manda fotogrammi futuri: il JSON pubblico di RainViewer oggi ne manda zero
+          // (`nowcast: []`, verificato il 2026-09-10 — la previsione e' passata al piano a
+          // pagamento), quindi di solito il radar finisce al presente, e la barra non finge.
           drawLine(pastColour.copy(alpha = 0.55f), Offset(inset, y), Offset(nowX, y), strokeWidth = 4f, cap = StrokeCap.Round)
+          if (nowcastCount > 0) {
+            drawLine(
+              pastColour.copy(alpha = 0.55f),
+              Offset(nowX, y),
+              Offset(trackEnd, y),
+              strokeWidth = 4f,
+              cap = StrokeCap.Round,
+              pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f)),
+            )
+            // Una tacca per fotogramma futuro: sono pochi, e ognuno e' dieci minuti.
+            for (step in 1..nowcastCount) {
+              val tickX = inset + RadarTimeline.fractionForIndex(nowIndex + step, count) * (trackEnd - inset)
+              drawLine(trackColour.copy(alpha = 0.6f), Offset(tickX, y - 4f), Offset(tickX, y + 4f), strokeWidth = 2f)
+            }
+          }
           drawLine(markColour, Offset(nowX, y - 9f), Offset(nowX, y + 9f), strokeWidth = 2f)
           val thumbX = inset + RadarTimeline.fractionForIndex(index, count) * (trackEnd - inset)
           drawCircle(markColour, radius = 8f, center = Offset(thumbX, y))
@@ -657,6 +698,20 @@ private fun RadarTimelineBar(
     )
   }
 }
+
+/**
+ * Il vetro dei pannelli del radar (legenda, barra del tempo): lo stesso materiale dei tasti
+ * accanto, cosi' la schermata ha una sola pellicola. La mappa e' una View di sistema e il vetro
+ * non puo' campionarla: resta il velo con il filo di luce e l'ombra, che e' il degrado dichiarato
+ * in [RadarShell] — ma e' lo stesso dei tasti, mentre prima legenda e barra erano pannelli pieni.
+ */
+@Composable
+private fun Modifier.radarChrome(backdrop: GlassBackdropState): Modifier = glassSurface(
+  state = backdrop,
+  tint = GlassDefaults.floatingTint(),
+  shape = ContinuousCornerShape(FluidRadius.Group),
+  role = GlassRole.Floating,
+)
 
 /** "adesso", "−1 h 40 min", "+20 min": la distanza del fotogramma, nella lingua del telefono. */
 @Composable

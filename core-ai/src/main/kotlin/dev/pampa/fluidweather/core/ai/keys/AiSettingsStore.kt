@@ -68,7 +68,11 @@ data class AiSettings(
   val classifierModels: Map<ProviderId, String> = emptyMap(),
   /** Fino a due modelli di riserva che OpenRouter prova da solo se il primario fallisce. */
   val openRouterFallbacks: List<String> = emptyList(),
-  val openRouterAllowDataCollection: Boolean = false,
+  /**
+   * Chiedere a OpenRouter `deny` sull'addestramento a ogni richiesta, piu' stretto dell'account.
+   * Falso di default: vale la politica dell'account, e i modelli `:free` restano raggiungibili.
+   */
+  val openRouterDenyDataCollection: Boolean = false,
   val thinking: ThinkingLevel = ThinkingLevel.MEDIUM,
   val speakReplies: Boolean = false,
   val actionsEnabled: Boolean = false,
@@ -129,7 +133,7 @@ class AiSettingsStore(private val store: DataStore<Preferences>) {
   suspend fun setOpenRouterFallbacks(models: List<String>) =
     edit { it[OpenRouterFallbacks] = models.take(2).joinToString("\n") }
 
-  suspend fun setOpenRouterAllowDataCollection(allow: Boolean) = edit { it[OpenRouterDataCollection] = allow }
+  suspend fun setOpenRouterDenyDataCollection(deny: Boolean) = edit { it[OpenRouterDenyDataCollection] = deny }
   suspend fun setThinking(level: ThinkingLevel) = edit { it[Thinking] = level.name }
   suspend fun setSpeakReplies(speak: Boolean) = edit { it[SpeakReplies] = speak }
   suspend fun setActionsEnabled(enabled: Boolean) = edit { it[ActionsEnabled] = enabled }
@@ -161,7 +165,7 @@ class AiSettingsStore(private val store: DataStore<Preferences>) {
     sttModels = modelsFor("stt_model_"),
     classifierModels = modelsFor("classifier_model_"),
     openRouterFallbacks = this[OpenRouterFallbacks]?.split("\n")?.filter { it.isNotBlank() } ?: emptyList(),
-    openRouterAllowDataCollection = this[OpenRouterDataCollection] ?: false,
+    openRouterDenyDataCollection = this[OpenRouterDenyDataCollection] ?: false,
     thinking = this[Thinking]?.let { name -> ThinkingLevel.entries.firstOrNull { it.name == name } }
       ?: ThinkingLevel.MEDIUM,
     speakReplies = this[SpeakReplies] ?: false,
@@ -183,7 +187,7 @@ class AiSettingsStore(private val store: DataStore<Preferences>) {
     private val ChatOrder = stringPreferencesKey("chat_order")
     private val SttOrder = stringPreferencesKey("stt_order")
     private val OpenRouterFallbacks = stringPreferencesKey("openrouter_fallbacks")
-    private val OpenRouterDataCollection = booleanPreferencesKey("openrouter_data_collection")
+    private val OpenRouterDenyDataCollection = booleanPreferencesKey("openrouter_deny_data_collection")
     private val Thinking = stringPreferencesKey("thinking")
     private val SpeakReplies = booleanPreferencesKey("speak_replies")
     private val ActionsEnabled = booleanPreferencesKey("actions_enabled")

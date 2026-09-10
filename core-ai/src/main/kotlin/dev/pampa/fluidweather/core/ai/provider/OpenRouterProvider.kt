@@ -34,7 +34,17 @@ class OpenRouterProvider(
   private val title: String,
   /** Fino a due modelli che OpenRouter prova da solo se il primario fallisce. */
   private val fallbackModels: List<String> = emptyList(),
-  private val allowDataCollection: Boolean = false,
+  /**
+   * Chiedere a OpenRouter `data_collection: deny` a ogni richiesta.
+   *
+   * L'account ha gia' la sua politica sull'addestramento, scelta dall'utente su openrouter.ai, ed
+   * e' quella che decide a quali endpoint la chiave puo' arrivare. Mandare `deny` da qui non rende
+   * l'app piu' sicura: **sovrascrive con la piu' stretta**, e i modelli `:free` — che esistono
+   * solo perche' chi li offre registra i prompt — restano con zero endpoint: "No endpoints found
+   * matching your data policy", un errore che sembra permanente e non dipende dalla chiave. Era
+   * il default, ed e' quello che fermava l'assistente. Falso: non si dice niente e vale l'account.
+   */
+  private val denyDataCollection: Boolean = false,
 ) : OpenAiCompatProvider(http, BASE_URL, apiKey) {
 
   override val id: ProviderId = ProviderId.OPENROUTER
@@ -48,7 +58,9 @@ class OpenRouterProvider(
     put(
       "provider",
       buildJsonObject {
-        put("data_collection", if (allowDataCollection) "allow" else "deny")
+        // Solo la richiesta piu' stretta si manda: "allow" non serve dirlo (l'account lo dice
+        // gia'), e "deny" imposto sempre e comunque e' quello che lasciava senza endpoint.
+        if (denyDataCollection) put("data_collection", "deny")
         put("sort", "price")
       },
     )

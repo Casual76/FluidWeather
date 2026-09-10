@@ -35,7 +35,7 @@ class ProviderFactory(
         referer = referer,
         title = appTitle,
         fallbackModels = settings.openRouterFallbacks,
-        allowDataCollection = settings.openRouterAllowDataCollection,
+        denyDataCollection = settings.openRouterDenyDataCollection,
       )
     }
     return ReadyProvider(client, chat, settings.sttModel(provider), settings.classifierModel(provider))

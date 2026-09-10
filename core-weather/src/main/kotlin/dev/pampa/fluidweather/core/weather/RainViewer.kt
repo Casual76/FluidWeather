@@ -12,6 +12,10 @@ data class RadarFrame(
  * La mappa dei fotogrammi disponibili: le ultime due ore a passi di dieci minuti (passato) e,
  * quando il servizio li serve, i fotogrammi di previsione a breve (nowcast). Il fotogramma di
  * "adesso" e' l'ultimo del passato.
+ *
+ * Il JSON pubblico oggi manda `nowcast: []` (verificato il 2026-09-10: la previsione a breve e'
+ * passata al piano a pagamento). Il campo resta perche' il formato lo prevede e la barra del tempo
+ * sa disegnarlo; se un giorno tornano fotogrammi futuri, compaiono da soli.
  */
 data class RadarFrames(
   val host: String,
