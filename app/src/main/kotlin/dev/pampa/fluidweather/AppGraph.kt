@@ -16,6 +16,7 @@ import dev.pampa.fluidweather.core.cycle.PlaceContextResolver
 import dev.pampa.fluidweather.core.cycle.SystemNotifier
 import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
+import dev.pampa.fluidweather.core.ai.radar.RadarObservations
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.LearningRepository
 import dev.pampa.fluidweather.core.data.LearningStore
@@ -31,6 +32,7 @@ import dev.pampa.fluidweather.core.data.ObservationRepository
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
+import dev.pampa.fluidweather.core.data.BarometerBaselineStore
 import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
@@ -64,7 +66,8 @@ import java.io.File
 import dev.pampa.fluidweather.core.sensor.ActivityRecognizer
 import dev.pampa.fluidweather.core.sensor.Barometer
 import dev.pampa.fluidweather.core.sensor.CalibrationController
-import dev.pampa.fluidweather.core.sensor.CalibrationReference
+import dev.pampa.fluidweather.core.sensor.SamplingHealth
+import dev.pampa.fluidweather.nowcast.cleaning.CalibrationReferenceSample
 import dev.pampa.fluidweather.core.sensor.ContinuousMonitor
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.sensor.ManualBurstController
@@ -193,14 +196,23 @@ class AppGraph(context: Context) {
   /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */
   val cleaningPipeline = CleaningPipeline()
 
+  /** La memoria lenta del barometro: la quota di casa e la normale a trenta giorni. */
+  val barometerBaselineStore = BarometerBaselineStore(appContext)
+
   /** Gli stadi 1-5 in un punto solo (fase 19): lo usano la home, il ciclo in background e l'assistente. */
-  val nowcastUseCase = NowcastUseCase(
+  val nowcastUseCase: NowcastUseCase = NowcastUseCase(
     pressureRepository = pressureRepository,
     cleaningPipeline = cleaningPipeline,
     calibrationStore = calibrationStore,
     learningRepository = learningRepository,
     learningStore = learningStore,
     nowcastHistory = nowcastHistoryStore,
+    baselineStore = barometerBaselineStore,
+    // Il campionatore del radar nasce dentro l'assistente, che si costruisce piu' in basso: la
+    // lambda lo raggiunge quando serve, cioe' sempre dopo che il grafo e' finito di nascere.
+    radarObservation = { latitude, longitude ->
+      RadarObservations.of(aiAssistant.radarSampler, latitude, longitude)
+    },
   )
 
   val samplingEngine = SamplingEngine(
@@ -211,6 +223,8 @@ class AppGraph(context: Context) {
     settingsStore = samplingSettingsStore,
     surveillance = surveillanceController,
     cleaningPipeline = cleaningPipeline,
+    // La soglia della sorveglianza legge la stessa tendenza del verdetto, non una sua cugina.
+    cleanTrend = { nowcastUseCase.cleanTrend(hours = 3, nowMillis = System.currentTimeMillis()) },
     // Il meteo al ritmo del barometro: dopo ogni passata, il ciclo (costruito qui sotto).
     afterPass = { source ->
       backgroundCycle.run(
@@ -219,6 +233,18 @@ class AppGraph(context: Context) {
     },
   )
   val samplingScheduler = SamplingScheduler(context, samplingSettingsStore)
+
+  /**
+   * Il cane da guardia del campionamento: verifica che il meccanismo sia ancora armato e che
+   * l'archivio riceva ancora qualcosa. Senza, un lavoro periodico cancellato dal sistema fermava
+   * la storia barometrica per sempre e l'unico rimedio era cancellare i dati dell'app.
+   */
+  val samplingHealth = SamplingHealth(
+    context = appContext,
+    settingsStore = samplingSettingsStore,
+    repository = pressureRepository,
+    scheduler = samplingScheduler,
+  )
   val manualBurstController = ManualBurstController(samplingEngine, applicationScope)
   val continuousMonitor = ContinuousMonitor(samplingEngine, samplingSettingsStore)
   val activityRecognizer = ActivityRecognizer(context)
@@ -285,26 +311,43 @@ class AppGraph(context: Context) {
     repository = pressureRepository,
     store = calibrationStore,
     reference = { calibrationReference() },
+    scope = applicationScope,
   )
 
-  /** La pressione al mare dei provider adesso, per il punto del telefono: il riferimento. */
-  private suspend fun calibrationReference(): CalibrationReference? {
+  /**
+   * La pressione al mare dei provider adesso, per il punto del telefono: il riferimento.
+   *
+   * Porta con se' **il suo dove**, non solo il suo quanto: la taratura confronta ogni tratto fermo
+   * col riferimento piu' vicino nel tempo e nello spazio, e senza coordinate non potrebbe.
+   *
+   * Il ramo senza fix GPS aveva un buco: leggeva l'istantanea salvata **senza controllarne ne'
+   * l'eta' ne' la distanza**, e poteva tarare il barometro su un giro di dodici ore prima e
+   * cinquecento chilometri piu' in la'. Adesso l'eta' si controlla sempre, e le coordinate le
+   * fornisce l'istantanea stessa.
+   */
+  private suspend fun calibrationReference(): CalibrationReferenceSample? {
     val now = System.currentTimeMillis()
-    val here = locationProvider.snapshot()
+    val here = runCatching { locationProvider.snapshot() }.getOrNull()
     val snapshot = if (here != null) {
-      snapshotRefresher.fresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude, maxAgeMillis = 3 * 3_600_000L)
+      snapshotRefresher.fresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude, maxAgeMillis = REFERENCE_MAX_AGE_MILLIS)
         ?: runCatching { snapshotRefresher.refresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude) }.getOrNull()
     } else {
-      weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY)
+      weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY)?.takeIf { it.ageMillis(now) <= REFERENCE_MAX_AGE_MILLIS }
     } ?: return null
     val hour = snapshot.fused.nearestHour(now)?.first ?: return null
     if (abs(hour.timestampMillis - now) > 90 * 60_000L) return null
     val msl = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return null
-    return CalibrationReference(msl, hour.values[FusionVariables.TEMPERATURE]?.value)
+    return CalibrationReferenceSample(
+      atMillis = now,
+      mslHpa = msl,
+      temperatureCelsius = hour.values[FusionVariables.TEMPERATURE]?.value,
+      latitude = here?.latitude ?: snapshot.latitude,
+      longitude = here?.longitude ?: snapshot.longitude,
+    )
   }
 
   // L'assistente IA (fase 19): chiavi cifrate, tre provider, tool sui dati, radar numerico, voce.
-  val aiAssistant = AiAssistant(
+  val aiAssistant: AiAssistant = AiAssistant(
     context = appContext,
     scope = applicationScope,
     engineHttp = engineHttp,
@@ -353,6 +396,7 @@ class AppGraph(context: Context) {
     nowcastHistoryStore.clear()
     observationRepository.clear()
     calibrationStore.clear()
+    barometerBaselineStore.clear()
     learningRepository.clear()
     learningStore.clear()
     notificationLedgerStore.update { NotificationLedger() }
@@ -370,5 +414,13 @@ class AppGraph(context: Context) {
     } else {
       DailySummaryAlarm.cancel(appContext)
     }
+  }
+
+  private companion object {
+    /**
+     * Oltre tre ore un'istantanea non e' piu' un riferimento per tarare un barometro: la pressione
+     * al mare si muove piano, ma non e' immobile, e un bias sbagliato resta sbagliato per giorni.
+     */
+    const val REFERENCE_MAX_AGE_MILLIS = 3 * 3_600_000L
   }
 }

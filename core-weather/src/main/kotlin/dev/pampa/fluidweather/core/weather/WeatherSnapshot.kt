@@ -6,6 +6,7 @@ import dev.pampa.fluidweather.core.model.FusedForecast
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusedValue
 import dev.pampa.fluidweather.core.model.HourlyPoint
+import dev.pampa.fluidweather.core.model.MinutePoint
 import dev.pampa.fluidweather.core.model.WeatherKind
 import java.io.File
 import kotlin.math.asin
@@ -265,6 +266,25 @@ object WeatherSnapshotCodec {
         }
       },
     )
+    // Chiave opzionale come le altre: un'istantanea scritta prima che il quarto d'ora esistesse
+    // si legge lo stesso, e una scritta adesso si legge anche da una build vecchia. Alzare la
+    // versione avrebbe svuotato la home di tutti all'aggiornamento.
+    if (bundle.minutely.isNotEmpty()) {
+      put(
+        "minutely",
+        buildJsonArray {
+          bundle.minutely.forEach { m ->
+            add(
+              buildJsonObject {
+                put("t", m.timestampMillis)
+                putNullable("pr", m.precipitationMm)
+                putNullable("pop", m.precipitationProbabilityPercent)
+              },
+            )
+          }
+        },
+      )
+    }
   }
 
   private fun decodeBundle(element: JsonElement): ForecastBundle? {
@@ -288,12 +308,20 @@ object WeatherSnapshotCodec {
         kind = p["kind"].string()?.let { name -> WeatherKind.entries.firstOrNull { it.name == name } },
       )
     }
+    val minutes = element["minutely"].asArray().mapNotNull { m ->
+      MinutePoint(
+        timestampMillis = m["t"].double()?.toLong() ?: return@mapNotNull null,
+        precipitationMm = m["pr"].double(),
+        precipitationProbabilityPercent = m["pop"].double(),
+      )
+    }
     return ForecastBundle(
       providerId = providerId,
       fetchedAtMillis = element["fetchedAtMillis"].double()?.toLong() ?: 0L,
       latitude = element["latitude"].double() ?: 0.0,
       longitude = element["longitude"].double() ?: 0.0,
       hourly = points,
+      minutely = minutes,
     )
   }
 
@@ -373,6 +401,17 @@ class WeatherSnapshotRefresher(
   private val store: WeatherSnapshotStore,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
+
+  /**
+   * L'ultima istantanea salvata per quel posto, **senza condizioni**.
+   *
+   * [fresh] risponde a una domanda diversa: "posso saltare il giro di rete?". Confonderle e' stato
+   * il difetto dell'offline — una sola funzione decideva sia se rinunciare alla rete sia se
+   * mostrare qualcosa, quindi quattro chilometri di spostamento o dodici ore di aereo svuotavano
+   * la schermata mentre sul disco c'era un'istantanea perfettamente leggibile. Cosa vale la pena
+   * mostrare lo decide l'eta' dichiarata, non un taglio muto.
+   */
+  suspend fun lastKnown(placeKey: String): WeatherSnapshot? = store.read(placeKey)
 
   /** L'istantanea se e' abbastanza recente e abbastanza vicina; altrimenti null. */
   suspend fun fresh(

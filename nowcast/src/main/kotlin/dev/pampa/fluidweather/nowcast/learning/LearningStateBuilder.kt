@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.nowcast.learning
 import dev.pampa.fluidweather.core.model.NowcastIssueRecord
 import dev.pampa.fluidweather.core.model.NowcastOutcomeRecord
 import dev.pampa.fluidweather.core.model.PlattParamsRecord
+import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 
 /**
  * Dall'archivio (verdetti iscritti, esiti, mappe salvate) allo stato che il motore consuma.
@@ -17,13 +18,18 @@ object LearningStateBuilder {
     outcomes: List<NowcastOutcomeRecord>,
   ): LearningState {
     val outcomesByIssue = outcomes.groupBy { it.issuedAtMillis }
-    val cases = issues.map { issue ->
-      AnalogCase(
-        issuedAtMillis = issue.issuedAtMillis,
-        features = issue.features.toDoubleArray(),
-        outcomes = outcomesByIssue[issue.issuedAtMillis].orEmpty().associate { it.window to it.rained },
-      )
-    }
+    // I vettori di una versione precedente del contratto hanno un'altra lunghezza: confrontarli
+    // con quelli di adesso vorrebbe dire misurare distanze fra grandezze diverse. Si ignorano,
+    // e l'archivio si ripopola da solo nei giorni successivi.
+    val cases = issues
+      .filter { it.features.size == FeatureExtractor.names.size }
+      .map { issue ->
+        AnalogCase(
+          issuedAtMillis = issue.issuedAtMillis,
+          features = issue.features.toDoubleArray(),
+          outcomes = outcomesByIssue[issue.issuedAtMillis].orEmpty().associate { it.window to it.rained },
+        )
+      }
     return LearningState(
       platt = platt.mapValues { (_, record) -> PlattParams(record.a, record.b) },
       cases = cases,

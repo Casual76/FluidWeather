@@ -14,8 +14,11 @@ import dev.pampa.fluidweather.core.model.DataFreshness
  *
  * - **Fresco non dice niente** (null). Una riga "aggiornato" sarebbe rumore nel 95% dei casi, e
  *   insegnerebbe a non leggerla proprio il giorno che conta. L'assenza *e'* lo stato fresco.
- * - **Mentre carica non dice niente.** Altrimenti ogni avvio a freddo lampeggerebbe "nessuna
- *   previsione" per un istante, che e' falso e allarma.
+ * - **Mentre carica tace solo se non c'e' niente in scena.** Il motivo di quella regola era che
+ *   un avvio a freddo lampeggiasse "nessuna previsione", che e' falso e allarma. Ma se
+ *   un'istantanea c'e' — ed e' il caso normale, perche' la home la mette in scena prima ancora di
+ *   chiedere la posizione — tacere sull'eta' mentre il giro nuovo e' in corso significa mostrare
+ *   dati di ieri senza dirlo, che e' molto peggio.
  * - **Relativo fino a sei ore, orario oltre.** "9 ore fa" costringe a fare i conti; "09:20" no. E
  *   passate alcune ore chi guarda vuole sapere di *quale momento* si parla, non da quanto aspetta.
  */
@@ -25,7 +28,7 @@ fun dataAgeLabel(
   nowMillis: Long,
   loading: Boolean = false,
 ): String? {
-  if (loading) return null
+  if (loading && dataAtMillis == null) return null
   return when (DataAge.of(dataAtMillis, nowMillis)) {
     DataFreshness.FRESH -> null
     DataFreshness.NONE -> resources.getString(R.string.home_age_none)

@@ -27,6 +27,10 @@ class RetentionTest {
     override suspend fun samplesSince(sinceMillis: Long): List<PressureSampleEntity> = emptyList()
     override fun latest(limit: Int): Flow<List<PressureSampleEntity>> = flowOf(emptyList())
     override fun count(): Flow<Long> = flowOf(0L)
+    override suspend fun averageHourlyPressureSince(sinceMillis: Long): Double? = null
+    override suspend fun oldestTimestamp(): Long? = null
+    override suspend fun newestTimestamp(): Long? = null
+    override suspend fun samplesOfBurst(burstId: String): List<PressureSampleEntity> = emptyList()
     override suspend fun deleteOlderThan(beforeMillis: Long) {
       tagliatoPrimaDi = beforeMillis
     }

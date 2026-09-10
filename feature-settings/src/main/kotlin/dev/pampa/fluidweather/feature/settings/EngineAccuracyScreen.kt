@@ -50,9 +50,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import dev.pampa.fluidweather.strings.R
+import dev.pampa.fluidweather.strings.messageRes
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.ui.stageText
+import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.strings.TimeFormats
 
 /** Tutto quello che la categoria "Motore e accuratezza" tocca. */
@@ -62,7 +64,7 @@ class EngineAccuracyDependencies(
   val calibrationStore: CalibrationStore,
   val calibrationController: CalibrationController,
   val pressureRepository: PressureRepository,
-  val cleaningPipeline: CleaningPipeline,
+  val nowcast: NowcastUseCase,
   val learningStore: LearningStore,
   val learningRepository: LearningRepository,
 )
@@ -81,13 +83,12 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
   val calibration by deps.calibrationStore.record.collectAsState(initial = null)
   val progress by deps.calibrationController.progress.collectAsState()
   val outcome by deps.calibrationController.lastOutcome.collectAsState()
+  val pendingBurst by deps.calibrationStore.pendingBurst.collectAsState(initial = null)
   val units = rememberUnitFormatter()
   val historyHours by produceState(initialValue = 0.0) {
     val now = System.currentTimeMillis()
-    val samples = runCatching { deps.pressureRepository.samplesSince(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
     value = withContext(Dispatchers.Default) {
-      val filtered = runCatching { deps.cleaningPipeline.process(samples).filtered }.getOrDefault(emptyList())
-      if (filtered.size >= 2) (filtered.last().timestampMillis - filtered.first().timestampMillis) / 3_600_000.0 else 0.0
+      deps.nowcast.clean(now - 24 * 3_600_000L)?.historyHours ?: 0.0
     }
   }
   val readiness = NowcastReadiness.of(
@@ -140,15 +141,59 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
             subtitle = stringResource(R.string.engine_bias_how_desc, units.pressure(record.localMslHpa, 1), units.pressure(record.referenceMslHpa, 1), record.sampleCount) + (record.altitudeMeters?.let { stringResource(R.string.engine_altitude_suffix, fmt0(it)) } ?: stringResource(R.string.engine_altitude_unknown)),
             meta = fmtDayTime(record.calibratedAtMillis),
           )
+          FluidListDivider()
+          // Da quanti tratti fermi indipendenti viene il numero, e quanto sono d'accordo fra loro.
+          // E' la parte che rende la taratura discutibile: tre tratti a tre quote che dicono lo
+          // stesso bias sono una verifica, dieci minuti in salotto sono una misura sola.
+          FluidListRow(
+            title = stringResource(R.string.engine_calibration_title),
+            subtitle = if (record.segmentCount <= 1) {
+              stringResource(R.string.engine_calibration_one_segment)
+            } else {
+              stringResource(
+                R.string.engine_calibration_segments,
+                record.segmentCount,
+                units.pressureDelta(record.spreadHpa, 2),
+              )
+            },
+          )
         }
         FluidListDivider()
         val running = progress
         if (running == null) {
           FluidListRow(
             title = if (record == null) stringResource(R.string.engine_calibrate) else stringResource(R.string.engine_recalibrate),
-            subtitle = outcome ?: stringResource(R.string.engine_calibrate_desc),
+            subtitle = outcome?.messageRes()?.let { stringResource(it) } ?: stringResource(R.string.engine_calibrate_desc),
             badge = {
               FluidButton(text = stringResource(R.string.common_start), style = FluidButtonStyle.Tinted, onClick = { deps.calibrationController.start() })
+            },
+          )
+          // La raffica c'e' gia' e le e' mancato solo il riferimento: chiedere altri dieci minuti
+          // sarebbe assurdo, e la frase dell'esito lo promette da sempre.
+          if (pendingBurst != null) {
+            FluidListDivider()
+            FluidListRow(
+              title = stringResource(R.string.engine_retry_estimate),
+              subtitle = stringResource(R.string.engine_retry_estimate_desc),
+              badge = {
+                FluidButton(
+                  text = stringResource(R.string.common_start),
+                  style = FluidButtonStyle.Plain,
+                  onClick = { scope.launch { deps.calibrationController.retryPendingEstimate() } },
+                )
+              },
+            )
+          }
+        } else if (running.waitingForStillness) {
+          FluidListRow(
+            title = stringResource(R.string.engine_calibrating),
+            subtitle = stringResource(
+              R.string.engine_calibration_waiting,
+              running.completedSeconds / 60,
+              running.totalSeconds / 60,
+            ),
+            badge = {
+              FluidButton(text = stringResource(R.string.common_cancel), style = FluidButtonStyle.Plain, onClick = { deps.calibrationController.cancel() })
             },
           )
         } else {

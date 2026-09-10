@@ -40,13 +40,18 @@ class RecordContext(private val dataset: StationDataset) {
       windDirectionDeg3hAgo = threeAgo?.windDirectionDeg,
       rainLastHourMm = now.precipitationMm,
       rainLast3hMm = rain3,
+      pressureMslHpa = now.pressureMslHpa,
+      pressureMsl3hAgoHpa = threeAgo?.pressureMslHpa,
     )
   }
 
   /**
    * La normale del punto: media della MSL sui 30 giorni precedenti, mai il futuro. Nei primi
-   * 15 giorni di archivio non esiste — null, e la feature resta neutra. Sul telefono la fara'
-   * l'archivio locale (fase 16).
+   * 15 giorni di archivio non esiste — null, e la feature resta neutra.
+   *
+   * Sul telefono la stessa definizione la produce PressureNormal dall'archivio locale, che di
+   * giorni ne tiene trenta esatti: e' cosi' che questa feature smette di essere addestrata qui
+   * e assente la'. Se le due definizioni divergono, diverge il modello.
    */
   fun normal(nowMillis: Long): Double? {
     val fromIndex = indexAtOrAfter(nowMillis - 30L * 86_400_000L)

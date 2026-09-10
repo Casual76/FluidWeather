@@ -32,7 +32,8 @@ import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationUrgency
-import dev.pampa.fluidweather.core.ui.HomeWidget
+import dev.pampa.fluidweather.core.ui.AppDeepLink
+import dev.pampa.fluidweather.core.ui.AppRequest
 import dev.pampa.fluidweather.core.ui.LocalTutorialController
 import dev.pampa.fluidweather.core.ui.TutorialSurface
 import dev.pampa.fluidweather.feature.settings.AppUpdatePrompt
@@ -49,35 +50,40 @@ class MainActivity : ComponentActivity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
-    widgetOf(intent)?.let { openWidget.value = it }
+    requestOf(intent)?.let { openRequest.value = it }
   }
 
   /**
-   * Quale pagina chiede questo intent.
+   * Cosa chiede questo intent, letto col vocabolario condiviso ([AppDeepLink]).
    *
-   * I bersagli del widget si distinguono per **Uri**, non per extra: l'uguaglianza dei
-   * `PendingIntent` ignora gli extra, quindi due destinazioni che differissero solo per quelli
-   * collasserebbero in una e si aprirebbe sempre la prima registrata.
+   * Prima qui c'era una mappa a mano di due sole parole, e il widget di sistema era l'unico a
+   * parlarla: ogni "apri" dell'assistente federato — che scriveva gli id italiani di `OpenTarget`
+   * — finiva sulla home nuda senza che nessuno se ne accorgesse.
    */
-  private fun widgetOf(intent: Intent?): HomeWidget? = when (intent?.data?.lastPathSegment) {
-    "nowcast" -> HomeWidget.NOWCAST
-    "hourly" -> HomeWidget.HOURLY
-    else -> null
-  }
+  private fun requestOf(intent: Intent?): AppRequest? =
+    AppDeepLink.parse(intent?.data)?.let { AppRequest(it, ++requestSerial) }
 
   /**
-   * La pagina chiesta dall'ultimo intent.
+   * La destinazione chiesta dall'ultimo intent.
    *
    * E' uno stato e non una lettura secca di `intent` perche' un tocco sul widget mentre l'app e'
    * gia' viva arriva a [onNewIntent], non a [onCreate]: leggendo solo qui, il secondo tocco non
    * farebbe niente e sembrerebbe un widget rotto.
+   *
+   * E si **azzera quando e' stata servita**: finche' restava scritta, bastava andare sul Radar e
+   * tornare indietro perche' la home la rileggesse e riaprisse da sola il pannello di mezz'ora
+   * prima. Un baco che il vecchio launchMode teneva nascosto, perche' `onNewIntent` non veniva
+   * mai chiamato e la destinazione la scriveva solo `onCreate`.
    */
-  private val openWidget = mutableStateOf<HomeWidget?>(null)
+  private val openRequest = mutableStateOf<AppRequest?>(null)
+
+  /** Il numero di serie delle richieste: vedi [AppRequest]. */
+  private var requestSerial = 0L
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
-    openWidget.value = widgetOf(intent)
+    openRequest.value = requestOf(intent)
     val graph = graph
     setContent {
       val accent by graph.weatherAccent.collectAsState()
@@ -110,7 +116,12 @@ class MainActivity : ComponentActivity() {
             // I suggerimenti stanno sopra la navigazione ma sotto i banner: un'allerta ha sempre
             // la precedenza su una spiegazione.
             TutorialSurface {
-              FluidWeatherNavHost(graph, startAtOnboarding = !done, openWidget = openWidget.value)
+              FluidWeatherNavHost(
+                graph = graph,
+                startAtOnboarding = !done,
+                request = openRequest.value,
+                onRequestConsumed = { openRequest.value = null },
+              )
               FluidNotificationHost(
                 state = notificationHost,
                 modifier = Modifier.align(Alignment.TopCenter),

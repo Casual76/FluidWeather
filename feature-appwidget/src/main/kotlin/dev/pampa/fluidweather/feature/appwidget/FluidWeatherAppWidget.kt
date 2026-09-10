@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
@@ -38,8 +37,10 @@ import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.strings.windowLabelRes
 import kotlinx.coroutines.flow.first
 import androidx.glance.unit.ColorProvider
-import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.pampa.fluidweather.core.model.DataFreshness
+import dev.pampa.fluidweather.core.ui.AppDeepLink
+import dev.pampa.fluidweather.core.ui.AppDestination
+import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.TimeFormats
@@ -53,10 +54,12 @@ import androidx.compose.ui.graphics.Color as ComposeColor
  * Non va in rete e non chiede il GPS: disegna quello che il ciclo ha gia' scritto su disco. E' cio'
  * che lo rende gratis da aggiornare, e garantisce che non possa mai contraddire l'app.
  *
- * Lo sfondo e' il **cielo dipinto della home**, con il meteo di adesso: Glance non ha una tela,
- * quindi il gradiente diventa una bitmap piccola stirata (vedi [SkyBitmap]). Sopra si scrive in
- * bianco con la struttura del kit dell'engine — sul cielo notturno i colori del tema chiaro
- * sarebbero illeggibili, e questo widget deve somigliare all'app, non al launcher.
+ * Lo sfondo e' la **scena dipinta della home**, con il meteo di adesso: il sole o la luna (con la
+ * sua fase vera) dove stanno davvero, le nuvole secondo la copertura, la pioggia e la neve. Glance
+ * non ha una tela, quindi la scena si rasterizza in una bitmap piccola (vedi [SkyScene]) — ma e'
+ * la stessa funzione che dipinge il cielo dell'app, non una copia. Sopra si scrive in bianco: sul
+ * cielo notturno i colori del tema chiaro sarebbero illeggibili, e questo widget deve somigliare
+ * all'app, non al launcher.
  */
 class FluidWeatherAppWidget : GlanceAppWidget() {
 
@@ -72,18 +75,43 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     val place = resolvePlace(runtime)
     val verdict = runCatching { runtime.nowcastHistory.since(0L).lastOrNull() }.getOrNull()
     val units = runtime.unitPreferences.value
-    val target = Intent(Intent.ACTION_VIEW).setComponent(runtime.mainActivity)
+    // FLAG_ACTIVITY_SINGLE_TOP e' la cintura di sicurezza: la cinghia e' il launchMode
+    // `singleTask` dichiarato nel manifest, ma un intent che dice esplicitamente "non impilarti"
+    // costa niente e resta giusto se un domani quella riga del manifest cambia.
+    val target = Intent(Intent.ACTION_VIEW)
+      .setComponent(runtime.mainActivity)
+      .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
-    provideContent {
-      val now = System.currentTimeMillis()
+    val now = System.currentTimeMillis()
+    val snapshot = place?.second
+    // I modelli e i cieli si costruiscono QUI, una volta per taglia, non dentro `provideContent`.
+    //
+    // Con `SizeMode.Responsive` la composable gira una volta per ogni taglia dichiarata: quello
+    // che nasce li' dentro nasce tre volte. Con il vecchio gradiente da 8 KB non si notava; con
+    // una scena vera sarebbero tre bitmap invece di tre riferimenti alla stessa, e il budget di
+    // `RemoteViews` (circa un megabyte e mezzo per aggiornamento) non lo regge.
+    val scenes = AppWidgetTier.entries.associateWith { tier ->
       val model = AppWidgetModelBuilder.of(
-        snapshot = place?.second,
+        snapshot = snapshot,
         placeName = place?.first,
         verdict = verdict,
         nowMillis = now,
-        tier = tierFor(LocalSize.current),
+        tier = tier,
       )
-      Body(model, tierFor(LocalSize.current), UnitFormatter(LocalContext.current.resources, units), now, target)
+      model to SkyScene.of(
+        tier = tier,
+        kind = model.kind,
+        cloudCoverPercent = model.cloudCover,
+        latitude = model.latitude,
+        longitude = model.longitude,
+        nowMillis = now,
+      )
+    }
+
+    provideContent {
+      val tier = tierFor(LocalSize.current)
+      val (model, sky) = scenes.getValue(tier)
+      Body(model, tier, UnitFormatter(LocalContext.current.resources, units), now, target, sky)
     }
   }
 
@@ -110,18 +138,19 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     units: UnitFormatter,
     nowMillis: Long,
     target: Intent,
+    sky: android.graphics.Bitmap,
   ) {
     val resources = LocalContext.current.resources
-    val sky = ImageProvider(
-      SkyBitmap.of(model.kind, model.cloudCover, model.latitude, model.longitude, nowMillis),
-    )
     val onSky = ColorProvider(ComposeColor.White)
     val dim = ColorProvider(ComposeColor.White.copy(alpha = 0.75f))
 
     Column(
       modifier = GlanceModifier
         .fillMaxSize()
-        .background(sky)
+        // `Crop` e non il `FillBounds` implicito: la bitmap ha le proporzioni della taglia
+        // dichiarata, non quelle della cella che il launcher assegna davvero, e stirandola il
+        // disco del sole diventerebbe un'ellisse.
+        .background(ImageProvider(sky), contentScale = ContentScale.Crop)
         .padding(if (tier == AppWidgetTier.SMALL) 12.dp else 14.dp)
         .clickable(actionStartActivity(target)),
       verticalAlignment = Alignment.Vertical.Top,
@@ -255,11 +284,15 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     val window = model.verdictWindow?.let { resources.getString(windowLabelRes(it)) }.orEmpty()
     val percent = model.verdictProbabilityPercent
     Row(
-      modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity(nowcastIntent(target))),
+      modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))),
       verticalAlignment = Alignment.Vertical.CenterVertically,
     ) {
       Text(
-        text = resources.getString(levelLabel(model.verdictLevel)),
+        text = if (model.rainingNow) {
+          resources.getString(R.string.nowcast_raining_now)
+        } else {
+          resources.getString(levelLabel(model.verdictLevel))
+        },
         style = TextStyle(color = onSky, fontSize = 13.sp, fontWeight = FontWeight.Medium),
         maxLines = 1,
         modifier = GlanceModifier.defaultWeight(),
@@ -285,7 +318,7 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     // Una riga sola con quattro colonne, non quattro righe: alla taglia grande il budget
     // dell'engine lascia spazio a due righe in tutto, e la testata ne ha gia' presa una.
     Row(
-      modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity(hourlyIntent(target))),
+      modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity(widgetIntent(target, HomeWidget.HOURLY))),
       horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
     ) {
       model.hours.forEach { hour ->
@@ -323,10 +356,12 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
      * L'uguaglianza dei `PendingIntent` ignora gli extra: due destinazioni che differiscono solo
      * per un extra collassano in una e il sistema consegna sempre la prima registrata. Con dati
      * diversi invece sono due intent diversi davvero.
+     *
+     * L'Uri lo scrive [AppDeepLink], che e' anche chi lo rilegge in `MainActivity`: prima il
+     * widget si inventava il proprio dialetto e l'app ne conosceva due parole.
      */
-    fun nowcastIntent(base: Intent) = Intent(base).setData("fluidweather://widget/nowcast".toUri())
-
-    fun hourlyIntent(base: Intent) = Intent(base).setData("fluidweather://widget/hourly".toUri())
+    fun widgetIntent(base: Intent, widget: HomeWidget) =
+      Intent(base).setData(AppDeepLink.uri(AppDestination.Widget(widget)))
 
     fun levelLabel(level: AlertLevel?) = when (level) {
       AlertLevel.ALLERTA -> R.string.level_alert

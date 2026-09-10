@@ -2,8 +2,10 @@ package dev.pampa.fluidweather.core.ai.keys
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -17,7 +19,13 @@ data class KeyState(val present: Boolean, val verifiedAtMillis: Long?) {
   val verified: Boolean get() = present && verifiedAtMillis != null
 }
 
-private val Context.aiKeysStore: DataStore<Preferences> by preferencesDataStore(name = "ai_keys")
+private val Context.aiKeysStore: DataStore<Preferences> by preferencesDataStore(
+  name = "ai_keys",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * Le chiavi dei provider IA, cifrate col Keystore e in un file DataStore tutto loro (come

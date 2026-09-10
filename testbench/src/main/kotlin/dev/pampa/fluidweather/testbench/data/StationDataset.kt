@@ -18,6 +18,14 @@ data class HourlyRecord(
   val cloudCoverPercent: Double?,
   val windSpeedKmh: Double?,
   val windDirectionDeg: Double?,
+  /**
+   * Energia potenziale convettiva. **Sempre null in pratica**: l'archivio ERA5 accetta la
+   * variabile, restituisce la colonna, e la riempie di NaN per tutte e dieci le localita' su
+   * quattro anni (verificato 2026-09-10). Resta chiesta e parsata perche' il giorno in cui
+   * l'archivio la riempira' bastera' rimetterla fra le feature — ma finche' e' vuota, addestrarci
+   * sopra vorrebbe dire spedire un coefficiente stimato sul nulla.
+   */
+  val capeJkg: Double? = null,
 )
 
 /** Una localita' del banco: nome, coordinate richieste, e il file su cui vive. */
@@ -101,6 +109,7 @@ class StationDataset(
             cloudCoverPercent = cells.numberAt(7),
             windSpeedKmh = cells.numberAt(8),
             windDirectionDeg = cells.numberAt(9),
+            capeJkg = cells.numberAt(10),
           )
         }
       return StationDataset(location, elevation, records)

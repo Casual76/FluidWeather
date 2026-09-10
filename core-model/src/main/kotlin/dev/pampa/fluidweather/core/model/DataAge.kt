@@ -51,6 +51,21 @@ object DataAge {
    */
   const val VERY_STALE_AFTER_MILLIS: Long = 6 * 3_600_000L
 
+  /**
+   * Oltre quanto un'istantanea non si mostra nemmeno come ripiego: **sette giorni**.
+   *
+   * Era dodici ore, scritta due volte (la home e il ciclo in background) e privata in tutte e due:
+   * un giorno senza rete e l'app non mostrava piu' niente, proprio l'app che nasce per funzionare
+   * senza rete. Ma un taglio muto e' la cosa sbagliata da fare in ogni caso: qui c'e' gia' una
+   * macchina che dichiara l'eta' — [of], e la frase che ne esce — ed e' quella che deve decidere
+   * cosa vale la pena guardare, non una soglia che fa sparire tutto senza spiegare.
+   *
+   * Sette giorni e non "mai" perche' una previsione oraria della settimana scorsa non descrive
+   * piu' niente: le ore che conteneva sono tutte passate, e la testata non avrebbe nemmeno un
+   * "adesso" da mostrare.
+   */
+  const val SHOWABLE_AGE_MILLIS: Long = 7 * 24 * 3_600_000L
+
   fun of(dataAtMillis: Long?, nowMillis: Long): DataFreshness {
     val age = ageMillis(dataAtMillis, nowMillis) ?: return DataFreshness.NONE
     return when {

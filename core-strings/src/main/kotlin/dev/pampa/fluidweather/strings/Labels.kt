@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.strings
 import android.content.res.Resources
 import androidx.annotation.StringRes
 import dev.pampa.fluidweather.core.model.AqiBand
+import dev.pampa.fluidweather.core.model.CalibrationOutcome
 import dev.pampa.fluidweather.core.model.GlassLevel
 import dev.pampa.fluidweather.core.model.MoonPhase
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
@@ -18,6 +19,24 @@ import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
  * portano enum e identificativi, e qui ogni valore trova la sua risorsa. Chi mostra un'etichetta
  * passa di qui, cosi' testata, notifiche e impostazioni dicono la stessa cosa nella stessa lingua.
  */
+
+/**
+ * Perche' l'ultima taratura e' andata come e' andata.
+ *
+ * L'esito viaggia come enum e vive su disco: le parole le mette qui chi le mostra, cosi'
+ * sopravvive al riavvio e resta traducibile. `OK` non ha frase — quando e' andata bene non c'e'
+ * niente da spiegare.
+ */
+@StringRes
+fun CalibrationOutcome.messageRes(): Int? = when (this) {
+  CalibrationOutcome.OK -> null
+  CalibrationOutcome.NO_BAROMETER -> R.string.calib_no_barometer
+  CalibrationOutcome.START_FAILED -> R.string.calib_start_failed_short
+  CalibrationOutcome.NO_READINGS -> R.string.calib_no_readings
+  CalibrationOutcome.NO_REFERENCE -> R.string.calib_no_reference
+  CalibrationOutcome.TOO_FEW -> R.string.calib_too_few
+  CalibrationOutcome.TOO_MUCH_MOVEMENT -> R.string.calib_too_much_movement
+}
 
 @StringRes
 fun WeatherKind.labelRes(): Int? = when (this) {
@@ -190,14 +209,18 @@ fun featureLabelRes(name: String): Int = when (name) {
   "tendenza-12h" -> R.string.feature_trend_12h
   "accelerazione-3h" -> R.string.feature_acceleration_3h
   "anomalia-livello" -> R.string.feature_level_anomaly
-  "incertezza-tendenza" -> R.string.feature_trend_uncertainty
-  "umidita'" -> R.string.feature_humidity
+  "caduta-3h" -> R.string.feature_fall_3h
+  "caduta-con-aria-umida" -> R.string.feature_fall_moist_air
+  "umidita" -> R.string.feature_humidity
   "spread-rugiada" -> R.string.feature_dew_spread
   "copertura" -> R.string.feature_cloud_cover
+  "cielo-coperto" -> R.string.feature_overcast
+  "aria-satura" -> R.string.feature_saturated_air
   "vento" -> R.string.feature_wind
   "rotazione-vento-3h" -> R.string.feature_wind_rotation_3h
   "pioggia-ultima-ora" -> R.string.feature_rain_last_hour
   "pioggia-ultime-3h" -> R.string.feature_rain_last_3h
+  "tendenza-provider-3h" -> R.string.feature_provider_trend_3h
   "ora-sin", "ora-cos" -> R.string.feature_hour
   else -> R.string.feature_unknown
 }

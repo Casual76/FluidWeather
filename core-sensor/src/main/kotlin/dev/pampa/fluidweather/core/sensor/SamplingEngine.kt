@@ -11,6 +11,8 @@ import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import java.util.UUID
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -32,6 +34,13 @@ class SamplingEngine(
    * non tocca il campionamento, che e' gia' in archivio.
    */
   private val afterPass: suspend (SampleSource) -> Unit = {},
+  /**
+   * La tendenza pulita di chi la sa calcolare come si deve — con la taratura e la quota di casa.
+   * Il default resta il calcolo locale, che pero' usa i valori di default della pipeline: era il
+   * terzo dei tre segnali puliti diversi che l'app teneva in giro, e la soglia della sorveglianza
+   * ci si accendeva sopra.
+   */
+  private val cleanTrend: (suspend () -> Double?)? = null,
 ) {
 
   /** Senza sensore niente raffiche: chi vuole tarare lo sa prima di partire. */
@@ -63,36 +72,72 @@ class SamplingEngine(
    * Registra letture per [durationSeconds] (0 = una sola) e restituisce quante ne ha archiviate.
    * Ogni lettura e' inserita appena arriva: una raffica interrotta a meta' lascia in archivio
    * la meta' che esiste.
+   *
+   * [burstId] si passa da fuori quando piu' chiamate devono comporre **una sola** raffica: e' il
+   * caso della taratura, che puo' allungarsi a tratti finche' non ha abbastanza tempo fermo e poi
+   * deve poter ritrovare tutti i propri campioni con una query sola.
+   *
+   * [contextRefreshSeconds] rilegge posizione e attivita' *dentro* la raffica. Vedi il commento
+   * sul contesto qui sotto: e' l'eccezione, non la regola.
    */
   suspend fun collect(
     source: SampleSource,
     durationSeconds: Int,
+    burstId: String? = null,
+    contextRefreshSeconds: Int? = null,
     onProgress: ((completedSeconds: Int, totalSeconds: Int) -> Unit)? = null,
   ): Int = coroutineScope {
     if (!barometer.isAvailable) return@coroutineScope 0
     val locationDeferred = async { locationProvider.snapshot() }
-    val activity = freshActivity()
+    var context = BurstContext(location = null, activity = freshActivity())
     var stored = 0
     if (durationSeconds <= 0) {
       val reading = barometer.single() ?: return@coroutineScope 0
       val location = locationDeferred.await()
-      repository.record(listOf(reading.toSample(source, burstId = null, location, activity)))
+      repository.record(listOf(reading.toSample(source, burstId = null, location, context.activity)))
       stored = 1
     } else {
-      val burstId = UUID.randomUUID().toString()
+      val id = burstId ?: UUID.randomUUID().toString()
       // La posizione prima della raffica: costa qualche secondo di attesa, ma tutti i campioni
       // della raffica condividono lo stesso contesto invece di un contesto arrivato a meta'.
-      val location = locationDeferred.await()
-      withTimeoutOrNull((durationSeconds + BURST_GRACE_SECONDS) * 1_000L) {
-        barometer.burst(durationSeconds).collect { reading ->
-          repository.record(listOf(reading.toSample(source, burstId, location, activity)))
-          stored++
-          onProgress?.invoke(stored, durationSeconds)
+      //
+      // **Vale finche' la raffica dura venti secondi.** Per i dieci minuti della taratura no: chi
+      // cammina, o guida, in quei minuti cambia quota e paese, e ogni campione finirebbe in
+      // archivio alla quota di partenza. Non un dato impreciso — un dato *falso*, e nessuna
+      // matematica a valle puo' rimediare a un contesto che non e' mai stato registrato.
+      context = context.copy(location = locationDeferred.await())
+      val refresher = contextRefreshSeconds?.takeIf { it > 0 }?.let { seconds ->
+        launch {
+          while (true) {
+            delay(seconds * 1_000L)
+            context = BurstContext(
+              location = runCatching { locationProvider.snapshot() }.getOrNull() ?: context.location,
+              activity = freshActivity(),
+            )
+          }
         }
+      }
+      try {
+        withTimeoutOrNull((durationSeconds + BURST_GRACE_SECONDS) * 1_000L) {
+          barometer.burst(durationSeconds).collect { reading ->
+            val now = context
+            repository.record(listOf(reading.toSample(source, id, now.location, now.activity)))
+            stored++
+            onProgress?.invoke(stored, durationSeconds)
+          }
+        }
+      } finally {
+        refresher?.cancel()
       }
     }
     stored
   }
+
+  /** Posizione e attivita' di questo momento della raffica. */
+  private data class BurstContext(
+    val location: LocationSnapshot?,
+    val activity: Pair<ActivityKind, Int?>,
+  )
 
   /**
    * La tendenza *pulita* delle ultime tre ore: gli stadi 1-2 mangiano ascensori, viaggi e
@@ -100,6 +145,7 @@ class SamplingEngine(
    * finestra su cui parlano le soglie della letteratura (1,6 e 3-4 hPa/3h).
    */
   suspend fun currentTrend(): Double? {
+    cleanTrend?.let { return runCatching { it() }.getOrNull() }
     val samples = repository.samplesSince(System.currentTimeMillis() - TREND_WINDOW_MILLIS)
     return cleaningPipeline.process(samples).latest?.trendHpaPerHour
   }

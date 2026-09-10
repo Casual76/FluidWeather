@@ -62,15 +62,35 @@ class SampleScreener(
     return ScreeningResult(accepted, rejected)
   }
 
-  private fun AggregatedPoint.isInTransit(): Boolean {
-    val confident = (activityConfidence ?: 0) >= minActivityConfidence
-    return confident && (activity == ActivityKind.IN_VEHICLE || activity == ActivityKind.ON_BICYCLE)
-  }
+  private fun AggregatedPoint.isInTransit(): Boolean =
+    TransitRule.isInTransit(activity, activityConfidence, minActivityConfidence)
 
   private fun AggregatedPoint.movedVertically(previous: AggregatedPoint?): Boolean {
     val here = altitudeMeters ?: return false
     val there = previous?.altitudeMeters ?: return false
     val recent = timestampMillis - previous.timestampMillis <= altitudeWindowMillis
     return recent && abs(here - there) > maxAltitudeDeltaMeters
+  }
+}
+
+/**
+ * "Questa lettura e' nata mentre il telefono viaggiava."
+ *
+ * Vive fuori da [SampleScreener] perche' la stessa domanda serve alla taratura, che lavora sui
+ * campioni grezzi invece che sui punti aggregati: due copie della stessa soglia sono due soglie
+ * che prima o poi divergono.
+ */
+object TransitRule {
+
+  /** Sotto questa confidenza il riconoscimento attivita' e' un'ipotesi, non un fatto. */
+  const val MIN_ACTIVITY_CONFIDENCE: Int = 50
+
+  fun isInTransit(
+    activity: ActivityKind,
+    activityConfidence: Int?,
+    minConfidence: Int = MIN_ACTIVITY_CONFIDENCE,
+  ): Boolean {
+    val confident = (activityConfidence ?: 0) >= minConfidence
+    return confident && (activity == ActivityKind.IN_VEHICLE || activity == ActivityKind.ON_BICYCLE)
   }
 }

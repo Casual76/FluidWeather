@@ -1,6 +1,7 @@
 package dev.pampa.fluidweather.core.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -72,6 +73,33 @@ class DataAgeTest {
 
     assertEquals(ore, DataAge.hoursForDecisions(ore, adesso - DataAge.STALE_AFTER_MILLIS + 1, adesso))
     assertEquals(emptyList<FusedHour>(), DataAge.hoursForDecisions(ore, adesso - DataAge.STALE_AFTER_MILLIS, adesso))
+  }
+
+  @Test
+  fun `un dato di ieri si mostra ancora, dichiarandolo`() {
+    // La soglia era dodici ore, scritta due volte e privata in tutte e due: un giorno senza rete e
+    // l'app non mostrava piu' niente, proprio l'app che nasce per funzionare senza rete. Oltre le
+    // sei ore la frase diventa un orario, che e' il modo giusto di dire "questi dati sono di ieri".
+    val ieri = adesso - 30 * 3_600_000L
+
+    assertTrue("un giorno sta dentro la finestra mostrabile", ieri > adesso - DataAge.SHOWABLE_AGE_MILLIS)
+    assertEquals(DataFreshness.VERY_STALE, DataAge.of(ieri, adesso))
+  }
+
+  @Test
+  fun `oltre la settimana non si mostra piu`() {
+    // Non "mai": una previsione oraria della settimana scorsa non ha piu' nemmeno un'ora che possa
+    // dirsi "adesso", quindi la testata non avrebbe niente da mostrare.
+    val vecchissimo = adesso - DataAge.SHOWABLE_AGE_MILLIS - 1
+    assertTrue(DataAge.ageMillis(vecchissimo, adesso)!! > DataAge.SHOWABLE_AGE_MILLIS)
+  }
+
+  @Test
+  fun `le due soglie della frase stanno dentro quella del mostrare`() {
+    // Se un giorno qualcuno abbassasse la finestra sotto le sei ore, la fascia VERY_STALE
+    // diventerebbe irraggiungibile e la frase con l'orario non si vedrebbe mai.
+    assertTrue(DataAge.STALE_AFTER_MILLIS < DataAge.VERY_STALE_AFTER_MILLIS)
+    assertTrue(DataAge.VERY_STALE_AFTER_MILLIS < DataAge.SHOWABLE_AGE_MILLIS)
   }
 
   @Test

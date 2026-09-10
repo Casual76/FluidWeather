@@ -36,7 +36,7 @@ class NowcastModelTest {
 
   @Test
   fun `le feature mancanti sono neutre e non compaiono fra i fattori`() {
-    val m = model(weights(0.0, "tendenza-3h" to -2.0, "umidita'" to 1.5))
+    val m = model(weights(0.0, "tendenza-3h" to -2.0, "umidita" to 1.5))
     val features = DoubleArray(featureCount) { Double.NaN } // tutto mancante
 
     val verdict = m.verdict(features).forWindow("1-3h")!!
@@ -46,15 +46,15 @@ class NowcastModelTest {
 
   @Test
   fun `i fattori sono ordinati per peso e nominati`() {
-    val m = model(weights(0.0, "tendenza-3h" to -2.0, "umidita'" to 0.5))
+    val m = model(weights(0.0, "tendenza-3h" to -2.0, "umidita" to 0.5))
     val features = DoubleArray(featureCount) { Double.NaN }
     features[FeatureExtractor.names.indexOf("tendenza-3h")] = -1.5
-    features[FeatureExtractor.names.indexOf("umidita'")] = 1.0
+    features[FeatureExtractor.names.indexOf("umidita")] = 1.0
 
     val factors = m.verdict(features).forWindow("1-3h")!!.topFactors
     assertEquals("tendenza-3h", factors.first().name)
     assertEquals(3.0, factors.first().contribution, 1e-9)
-    assertEquals("umidita'", factors[1].name)
+    assertEquals("umidita", factors[1].name)
   }
 
   @Test

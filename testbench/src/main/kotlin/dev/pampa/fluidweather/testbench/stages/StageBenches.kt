@@ -10,7 +10,10 @@ import dev.pampa.fluidweather.nowcast.tide.ClimatologicalTide
 import dev.pampa.fluidweather.nowcast.tide.FittedTide
 import dev.pampa.fluidweather.nowcast.tide.HarmonicFitter
 import dev.pampa.fluidweather.testbench.data.StationDataset
+import dev.pampa.fluidweather.testbench.events.EventWindow
+import dev.pampa.fluidweather.testbench.events.PrecipitationEvents
 import dev.pampa.fluidweather.testbench.replay.SampleSynthesizer
+import dev.pampa.fluidweather.testbench.replay.SamplingProfile
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.sqrt
@@ -50,6 +53,134 @@ object StageBenches {
       maeRealTemperatureHpa = realSum / count,
       maeStandardTemperatureHpa = standardSum / count,
     )
+  }
+
+  // ------------------------------------------------------- la persistenza, misurata (stadio 5b)
+
+  data class PersistenceReport(val cases: Int, val byWindow: Map<String, Double>)
+
+  /**
+   * **Dato che sta piovendo adesso, quanto e' probabile che piova in ciascuna finestra?**
+   *
+   * Non e' curiosita': e' il numero che autorizza il pavimento dell'osservazione. Se il quarto
+   * d'ora o il radar dicono che sta piovendo, il verdetto non puo' stare sotto questa frequenza —
+   * e la frequenza va misurata sugli archivi, non scelta a occhio.
+   */
+  fun persistence(dataset: StationDataset): PersistenceReport {
+    val events = PrecipitationEvents(dataset.records)
+    val wet = mutableMapOf<String, Int>()
+    val total = mutableMapOf<String, Int>()
+    var cases = 0
+    for (record in dataset.records) {
+      val now = record.timestampMillis
+      if (events.rainingAt(now) != true) continue
+      cases++
+      for (window in EventWindow.Standard) {
+        val occurred = events.occurred(now, window) ?: continue
+        total[window.label] = (total[window.label] ?: 0) + 1
+        if (occurred) wet[window.label] = (wet[window.label] ?: 0) + 1
+      }
+    }
+    return PersistenceReport(
+      cases = cases,
+      byWindow = total.mapValues { (label, count) -> (wet[label] ?: 0).toDouble() / count },
+    )
+  }
+
+  // --------------------------------------------------------- il rumore della quota (stadio 2b)
+
+  data class AltitudeNoiseReport(
+    val evaluations: Int,
+    /** Scarto medio della tendenza a 3 ore fra GPS che balla e GPS perfetto (hPa/h). */
+    val trendMaeHpaPerHour: Double,
+    /** Il peggiore dei due mondi: la differenza massima vista. */
+    val trendMaxHpaPerHour: Double,
+    /** Ruvidita' del livello filtrato: media di |L(i) - L(i-1)| (hPa). */
+    val roughnessJitterHpa: Double,
+    val roughnessCleanHpa: Double,
+    /** Le stesse due misure con la pipeline di prima: quota del singolo campione, sempre. */
+    val legacyTrendMaeHpaPerHour: Double,
+    val legacyRoughnessHpa: Double,
+  )
+
+  /**
+   * La pipeline com'era prima della traccia di quota: finestra della mediana a zero e nessuna
+   * isteresi vuol dire "ogni punto si riduce con la propria quota GPS", che e' esattamente il
+   * comportamento vecchio. Serve solo al confronto: nessuno la usa per davvero.
+   */
+  private fun legacyPipeline() = CleaningPipeline(
+    altitudeStepMeters = 0.0,
+    altitudeMedianWindowMillis = 0L,
+  )
+
+  /**
+   * La domanda a cui questo stadio risponde: **quanto della tendenza che leggiamo e' meteo, e
+   * quanto e' il GPS?**
+   *
+   * Si rigioca lo stesso telefono due volte, sugli stessi identici istanti e con lo stesso
+   * rumore di sensore: una volta con l errore verticale del fused provider, una volta con un GPS
+   * che non sbaglia mai. Se la traccia di quota fa il suo mestiere le due tendenze coincidono; se
+   * non lo facesse, dieci metri di ballonzolamento varrebbero 1,2 hPa e la differenza si
+   * vedrebbe a occhio nudo.
+   */
+  fun altitudeNoise(
+    dataset: StationDataset,
+    pipeline: CleaningPipeline = CleaningPipeline(),
+    days: Int = 30,
+  ): AltitudeNoiseReport {
+    val jittery = SampleSynthesizer(dataset, SamplingProfile.TELEFONO)
+    val clean = SampleSynthesizer(dataset, SamplingProfile.TELEFONO, altitudeSigmaMeters = 0.0)
+    val first = dataset.records.first().timestampMillis + 24 * 3_600_000L
+    val last = minOf(dataset.records.last().timestampMillis, first + days * 86_400_000L)
+
+    val legacy = legacyPipeline()
+    var sum = 0.0
+    var worst = 0.0
+    var legacySum = 0.0
+    var roughJitter = 0.0
+    var roughClean = 0.0
+    var roughLegacy = 0.0
+    var count = 0
+    var now = first
+    while (now <= last) {
+      val from = now - 24 * 3_600_000L
+      val jitterySamples = jittery.samplesBetween(from, now)
+      val a = pipeline.process(jitterySamples, referenceAltitudeMeters = dataset.elevationMeters)
+      val b = pipeline.process(clean.samplesBetween(from, now), referenceAltitudeMeters = dataset.elevationMeters)
+      val old = legacy.process(jitterySamples, referenceAltitudeMeters = dataset.elevationMeters)
+      val ta = a.latest?.trendHpaPerHour
+      val tb = b.latest?.trendHpaPerHour
+      if (ta != null && tb != null) {
+        val delta = abs(ta - tb)
+        sum += delta
+        if (delta > worst) worst = delta
+        old.latest?.let { legacySum += abs(it.trendHpaPerHour - tb) }
+        roughJitter += roughness(a.filtered.map { it.levelHpa })
+        roughClean += roughness(b.filtered.map { it.levelHpa })
+        roughLegacy += roughness(old.filtered.map { it.levelHpa })
+        count++
+      }
+      now += 3 * 3_600_000L
+    }
+    if (count == 0) {
+      return AltitudeNoiseReport(0, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN)
+    }
+    return AltitudeNoiseReport(
+      evaluations = count,
+      trendMaeHpaPerHour = sum / count,
+      trendMaxHpaPerHour = worst,
+      roughnessJitterHpa = roughJitter / count,
+      roughnessCleanHpa = roughClean / count,
+      legacyTrendMaeHpaPerHour = legacySum / count,
+      legacyRoughnessHpa = roughLegacy / count,
+    )
+  }
+
+  private fun roughness(levels: List<Double>): Double {
+    if (levels.size < 2) return 0.0
+    var sum = 0.0
+    for (i in 1 until levels.size) sum += abs(levels[i] - levels[i - 1])
+    return sum / (levels.size - 1)
   }
 
   // ------------------------------------------------------------------- marea residua (stadio 3)

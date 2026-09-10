@@ -1,14 +1,20 @@
 package dev.pampa.fluidweather.pampai
 
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
-import android.net.Uri
 import dev.pampa.fluidweather.FluidWeatherApp
+import dev.pampa.fluidweather.MainActivity
 import dev.pampa.fluidweather.core.ai.tools.ActionOutcome
 import dev.pampa.fluidweather.core.ai.tools.ActionSink
 import dev.pampa.fluidweather.core.ai.tools.AssistantAction
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
+import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolGroup
+import dev.pampa.fluidweather.core.ui.AppDeepLink
+import dev.pampa.fluidweather.core.ui.AppDestination
+import dev.pampa.fluidweather.core.ui.AppScreen
+import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.strings.UnitFormatter
 import dev.antigravity.fluidengine.ai.bridge.AiToolHostProvider
 import dev.antigravity.fluidengine.ai.bridge.ReadyState
@@ -130,17 +136,46 @@ class WeatherToolHostProvider : AiToolHostProvider<ToolContext>() {
   override fun partsAuthority(): String? = null
 }
 
+/**
+ * Dove porta ogni bersaglio dell'assistente, nel vocabolario che l'app legge davvero.
+ *
+ * Prima l'Uri si costruiva dall'id di [OpenTarget], che e' **italiano** (`orario`, `pressione`,
+ * `luna`), mentre `MainActivity` conosceva solo `"nowcast"` e `"hourly"`: ogni "apri" di Aria
+ * tranne il nowcast portava l'app davanti sulla home nuda, senza che niente segnalasse l'errore.
+ */
+private fun OpenTarget.destination(): AppDestination = when (this) {
+  OpenTarget.RADAR -> AppDestination.Screen(AppScreen.RADAR)
+  OpenTarget.BENCHMARK -> AppDestination.Screen(AppScreen.BENCHMARK)
+  OpenTarget.REPORT -> AppDestination.Screen(AppScreen.REPORT)
+  OpenTarget.SETTINGS -> AppDestination.Screen(AppScreen.SETTINGS)
+  OpenTarget.AI_SETTINGS -> AppDestination.Screen(AppScreen.AI_SETTINGS)
+  OpenTarget.NOWCAST -> AppDestination.Widget(HomeWidget.NOWCAST)
+  OpenTarget.HOURLY -> AppDestination.Widget(HomeWidget.HOURLY)
+  OpenTarget.DAILY -> AppDestination.Widget(HomeWidget.DAILY)
+  OpenTarget.PRECIPITATION -> AppDestination.Widget(HomeWidget.PRECIPITATION)
+  OpenTarget.PRESSURE -> AppDestination.Widget(HomeWidget.PRESSURE)
+  OpenTarget.AIR_QUALITY -> AppDestination.Widget(HomeWidget.AIR_QUALITY)
+  OpenTarget.SUN -> AppDestination.Widget(HomeWidget.SUN)
+  OpenTarget.MOON -> AppDestination.Widget(HomeWidget.MOON)
+  OpenTarget.DETAILS -> AppDestination.Widget(HomeWidget.DETAILS)
+}
+
 /** Le azioni chieste da fuori: gia' confermate. "Apri" porta anche l'app davanti. */
 private class BridgeActionSink(private val app: FluidWeatherApp, private val context: Context) : ActionSink {
   override suspend fun perform(action: AssistantAction): ActionOutcome {
     val outcome = app.graph.aiAssistant.session.performPreConfirmed(action)
     if (action is AssistantAction.Open) {
-      // Aprire qualcosa che resta dietro non e' aprire niente: si porta l'app davanti con l'Uri
-      // che `MainActivity` gia' legge per i widget (l'ultimo segmento e' la pagina).
-      val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        ?.setData(Uri.parse("fluidweather://open/${action.target.id}"))
-        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      runCatching { intent?.let { context.startActivity(it) } }
+      // Aprire qualcosa che resta dietro non e' aprire niente: si porta l'app davanti con lo
+      // stesso Uri che scrive il widget e che `MainActivity` rilegge.
+      //
+      // Componente esplicito e non `getLaunchIntentForPackage`: mettere un `setData` sull'intent
+      // del launcher ne rompe la corrispondenza con la radice del task, ed era la seconda strada
+      // per ritrovarsi due home impilate.
+      val intent = Intent(Intent.ACTION_VIEW)
+        .setComponent(ComponentName(context, MainActivity::class.java))
+        .setData(AppDeepLink.uri(action.target.destination()))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+      runCatching { context.startActivity(intent) }
     }
     return outcome
   }

@@ -56,7 +56,12 @@ class WeatherRepository(
   }
 }
 
-/** Da un bundle orario al contesto del nowcast: adesso, tre ore fa, e la pioggia recente. */
+/**
+ * Da un bundle orario al contesto del nowcast: adesso, tre ore fa, e la pioggia recente.
+ *
+ * La pioggia dell'ultima ora prende il quarto d'ora quando il provider lo offre, riportato a
+ * millimetri all'ora. E' la differenza fra sapere che sta piovendo e scoprirlo alla fine dell'ora.
+ */
 fun ForecastBundle.toContext(nowMillis: Long): NowcastContext? {
   val now = at(nowMillis) ?: return null
   val threeAgo = at(nowMillis - 3 * 3_600_000L)
@@ -75,8 +80,14 @@ fun ForecastBundle.toContext(nowMillis: Long): NowcastContext? {
     windSpeedKmh = now.windSpeedKmh,
     windDirectionDeg = now.windDirectionDeg,
     windDirectionDeg3hAgo = threeAgo?.windDirectionDeg,
-    rainLastHourMm = now.precipitationMm,
+    // Il quarto d'ora vince sull'ora quando c'e', ma come accumulo dell'ora appena passata, non
+    // come tasso istantaneo: e' la grandezza su cui il modello e' stato addestrato. Il vantaggio
+    // non e' la scala, e' la freschezza — la riga oraria del provider e' vecchia fino a novanta
+    // minuti, i quattro quarti d'ora arrivano fino ad adesso.
+    rainLastHourMm = rainLastHourMm(nowMillis) ?: now.precipitationMm,
     rainLast3hMm = rainLast3,
+    pressureMslHpa = now.pressureMslHpa,
+    pressureMsl3hAgoHpa = threeAgo?.pressureMslHpa,
   )
 }
 

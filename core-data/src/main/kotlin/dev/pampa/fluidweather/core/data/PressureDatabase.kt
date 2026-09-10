@@ -48,6 +48,29 @@ interface PressureDao {
   @Query("SELECT COUNT(*) FROM pressure_samples")
   fun count(): Flow<Long>
 
+  /**
+   * La media oraria della pressione di stazione su una finestra: la materia prima della normale.
+   *
+   * Media *delle medie orarie*, non media dei campioni: in sorveglianza il telefono legge ogni
+   * minuto e in modalita' minima ogni venti, quindi una media grezza peserebbe le ore agitate
+   * dieci volte piu' di quelle tranquille — e la normale racconterebbe il campionamento invece
+   * del clima.
+   */
+  @Query(
+    "SELECT AVG(oraria) FROM (SELECT AVG(pressureHpa) AS oraria FROM pressure_samples " +
+      "WHERE timestampMillis >= :sinceMillis GROUP BY timestampMillis / 3600000)",
+  )
+  suspend fun averageHourlyPressureSince(sinceMillis: Long): Double?
+
+  @Query("SELECT MIN(timestampMillis) FROM pressure_samples")
+  suspend fun oldestTimestamp(): Long?
+
+  @Query("SELECT MAX(timestampMillis) FROM pressure_samples")
+  suspend fun newestTimestamp(): Long?
+
+  @Query("SELECT * FROM pressure_samples WHERE burstId = :burstId ORDER BY timestampMillis ASC")
+  suspend fun samplesOfBurst(burstId: String): List<PressureSampleEntity>
+
   @Query("DELETE FROM pressure_samples WHERE timestampMillis < :beforeMillis")
   suspend fun deleteOlderThan(beforeMillis: Long)
 }
@@ -89,6 +112,11 @@ abstract class FluidWeatherDatabase : RoomDatabase() {
       // dov'e' non tocca nessuna installazione esistente: Room chiede una migrazione solo quando
       // il numero cambia.
       Room.databaseBuilder(context, FluidWeatherDatabase::class.java, "fluidweather.db")
+        // Il declassamento e' l'unico caso in cui cancellare e' l'unica cosa che si puo' fare:
+        // uno schema del futuro non si riporta indietro, e chi installa un APK piu' vecchio dal
+        // Pampa Store si troverebbe altrimenti un'app che non apre nemmeno il database — e ogni
+        // chiamata che fallisce dentro un runCatching, cioe' un'app viva che non sa piu' niente.
+        .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
         .build()
   }
 }

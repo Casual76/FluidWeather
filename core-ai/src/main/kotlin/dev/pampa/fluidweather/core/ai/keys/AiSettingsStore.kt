@@ -2,10 +2,12 @@ package dev.pampa.fluidweather.core.ai.keys
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -81,7 +83,13 @@ data class AiSettings(
     classifierModels[provider] ?: AiDefaults.classifierModel(provider)
 }
 
-private val Context.aiSettingsStore: DataStore<Preferences> by preferencesDataStore(name = "ai")
+private val Context.aiSettingsStore: DataStore<Preferences> by preferencesDataStore(
+  name = "ai",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * Le preferenze dell'assistente (fase 19), tutte in un file DataStore `ai`. Le chiavi stanno

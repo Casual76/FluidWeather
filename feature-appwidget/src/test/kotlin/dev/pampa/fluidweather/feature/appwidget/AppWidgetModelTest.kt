@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.feature.appwidget
 
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.DataAge
 import dev.pampa.fluidweather.core.model.DataFreshness
 import dev.pampa.fluidweather.core.model.FusedForecast
@@ -255,6 +256,30 @@ class AppWidgetModelTest {
     val model = AppWidgetModelBuilder.of(istantanea(adesso - 2 * ora), null, null, adesso, AppWidgetTier.MEDIUM)
 
     assertEquals(DataAge.of(adesso - 2 * ora, adesso), model.freshness)
+  }
+
+  @Test
+  fun `di notte il sereno prende la luna, non il sole`() {
+    // Il baco piu' visibile del widget: alle due di notte, con il cielo sereno, disegnava un sole
+    // coi raggi. La mappa conosceva solo la condizione e non l'ora.
+    val giorno = WeatherKind.CLEAR.appWidgetIconRes(DayPhase.DAY)
+    val notte = WeatherKind.CLEAR.appWidgetIconRes(DayPhase.NIGHT)
+
+    assertNotEquals("sereno di notte e sereno di giorno non sono lo stesso disegno", giorno, notte)
+    assertEquals(giorno, WeatherKind.CLEAR.appWidgetIconRes(DayPhase.DUSK))
+    assertNotEquals(
+      WeatherKind.PARTLY_CLOUDY.appWidgetIconRes(DayPhase.DAY),
+      WeatherKind.PARTLY_CLOUDY.appWidgetIconRes(DayPhase.NIGHT),
+    )
+  }
+
+  @Test
+  fun `sotto una coltre non cambia niente fra giorno e notte`() {
+    // Nel nuvoloso, nella nebbia, nella neve il cielo non si vede: due disegni sarebbero due modi
+    // di dire la stessa cosa, e uno dei due sarebbe sbagliato per meta' delle ore.
+    listOf(WeatherKind.CLOUDY, WeatherKind.FOG, WeatherKind.SNOW, WeatherKind.RAIN).forEach {
+      assertEquals("$it", it.appWidgetIconRes(DayPhase.DAY), it.appWidgetIconRes(DayPhase.NIGHT))
+    }
   }
 
   private fun assertNotNull(value: Any?) = assertTrue(value != null)

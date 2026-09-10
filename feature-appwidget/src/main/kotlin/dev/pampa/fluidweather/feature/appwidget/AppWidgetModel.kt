@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import dev.pampa.fluidweather.core.model.DataAge
+import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.DataFreshness
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
@@ -12,8 +13,10 @@ import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.core.model.rainProbabilityPercent
 import dev.pampa.fluidweather.core.model.todayRange
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
+import dev.pampa.fluidweather.nowcast.learning.RainObservation
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
+import java.time.ZoneId
 
 /** Quanto spazio ha il widget, e quindi quanto ha da dire. */
 enum class AppWidgetTier { SMALL, MEDIUM, LARGE }
@@ -48,12 +51,20 @@ data class AppWidgetModel(
   @DrawableRes val iconRes: Int,
   val latitude: Double?,
   val longitude: Double?,
+  /** Che ora e' in cielo: decide il disegno notturno e lo sfondo. */
+  val dayPhase: DayPhase,
   /** Quando risale il giro dei provider: null se non c'e' niente da mostrare. */
   val dataAtMillis: Long?,
   val freshness: DataFreshness,
   val verdictLevel: AlertLevel?,
   val verdictProbabilityPercent: Int?,
   val verdictWindow: String?,
+  /**
+   * Sta piovendo *adesso*, secondo il quarto d'ora dell'istantanea. Il widget lo dice al posto
+   * della finestra piu' probabile: con la pioggia in corso, "fra 1 e 3 ore" e' l'unica frase che
+   * non si puo' leggere senza arrabbiarsi.
+   */
+  val rainingNow: Boolean,
   /** Minima e massima di oggi, e la pioggia piu' probabile in vista: la riga in fondo al compatto. */
   val minC: Double?,
   val maxC: Double?,
@@ -77,24 +88,36 @@ object AppWidgetModelBuilder {
   /** Quante ore mostra la taglia grande: quattro colonne stanno in una riga senza stringersi. */
   const val STRIP_HOURS = 4
 
+  /**
+   * Il widget non ha rete: legge l'istantanea che il ciclo ha gia' scritto. Da quando
+   * l'istantanea porta anche il quarto d'ora, sa rispondere anche alla domanda del presente.
+   */
+  private fun rainingNow(snapshot: WeatherSnapshot?, nowMillis: Long): Boolean {
+    val quarter = snapshot?.context?.rainNowMm(nowMillis) ?: return false
+    return quarter * 4.0 >= RainObservation.RAINING_FROM_MM_PER_HOUR
+  }
+
   fun of(
     snapshot: WeatherSnapshot?,
     placeName: String?,
     verdict: NowcastVerdictRecord?,
     nowMillis: Long,
     tier: AppWidgetTier,
+    zone: ZoneId = ZoneId.systemDefault(),
   ): AppWidgetModel {
     val current = snapshot?.fused?.hours?.nearestHour(nowMillis)?.first
     val kind = current?.kind
     val range = snapshot?.fused?.hours?.todayRange(nowMillis) ?: (null to null)
+    val phase = SkyScene.phaseOf(snapshot?.latitude, snapshot?.longitude, nowMillis, zone)
     return AppWidgetModel(
       placeName = placeName,
       temperatureC = current?.values?.get(FusionVariables.TEMPERATURE)?.value,
       kind = kind,
       cloudCover = current?.values?.get(FusionVariables.CLOUD_COVER)?.value,
-      iconRes = kind.appWidgetIconRes(),
+      iconRes = kind.appWidgetIconRes(phase),
       latitude = snapshot?.latitude,
       longitude = snapshot?.longitude,
+      dayPhase = phase,
       dataAtMillis = snapshot?.fetchedAtMillis,
       freshness = DataAge.of(snapshot?.fetchedAtMillis, nowMillis),
       // Il verdetto e' un fatto del barometro, non della taglia: si legge sempre, ma le taglie
@@ -103,6 +126,7 @@ object AppWidgetModelBuilder {
       verdictProbabilityPercent = verdict?.strongest()?.let { (it.second * 100).toInt() }
         ?.takeIf { tier != AppWidgetTier.SMALL },
       verdictWindow = verdict?.strongest()?.first?.takeIf { tier != AppWidgetTier.SMALL },
+      rainingNow = tier != AppWidgetTier.SMALL && rainingNow(snapshot, nowMillis),
       // Massima, minima e pioggia riempiono lo spazio che restava in fondo alle due taglie
       // compatte. Nella grande no: li' sotto ci sono gia' le prossime ore, che dicono di piu'.
       minC = if (tier == AppWidgetTier.LARGE) null else range.first,
@@ -114,7 +138,11 @@ object AppWidgetModelBuilder {
       },
       // Le ore si calcolano solo se qualcuno le disegnera': un widget piccolo non deve pagare
       // una lista che non entra da nessuna parte.
-      hours = if (tier == AppWidgetTier.LARGE) stripOf(snapshot?.fused?.hours.orEmpty(), nowMillis) else emptyList(),
+      hours = if (tier == AppWidgetTier.LARGE) {
+        stripOf(snapshot?.fused?.hours.orEmpty(), nowMillis, snapshot?.latitude, snapshot?.longitude, zone)
+      } else {
+        emptyList()
+      },
     )
   }
 
@@ -135,37 +163,57 @@ object AppWidgetModelBuilder {
   private fun NowcastVerdictRecord.levelOrNull(): AlertLevel? =
     AlertLevel.entries.firstOrNull { it.name == level }
 
-  private fun stripOf(hours: List<FusedHour>, nowMillis: Long): List<AppWidgetHour> = hours
+  /**
+   * Ogni ora ha la **sua** fase, non quella di adesso: alle 18 la striscia arriva alle 22, e
+   * mostrare quattro soli di fila per una notte serena sarebbe la stessa bugia in piccolo.
+   */
+  private fun stripOf(
+    hours: List<FusedHour>,
+    nowMillis: Long,
+    latitude: Double?,
+    longitude: Double?,
+    zone: ZoneId,
+  ): List<AppWidgetHour> = hours
     .filter { it.timestampMillis > nowMillis }
     .take(STRIP_HOURS)
     .map {
       AppWidgetHour(
         timestampMillis = it.timestampMillis,
         temperatureC = it.values[FusionVariables.TEMPERATURE]?.value,
-        iconRes = it.kind.appWidgetIconRes(),
+        iconRes = it.kind.appWidgetIconRes(SkyScene.phaseOf(latitude, longitude, it.timestampMillis, zone)),
       )
     }
 }
 
 /**
- * Il disegno per un tipo di tempo.
+ * Il disegno per un tipo di tempo, **all'ora giusta**.
  *
- * Nove vettori per tredici tipi, e non e' pigrizia: a 17 dp (14 quando il widget e' compatto) la
+ * Undici vettori per tredici tipi, e non e' pigrizia: a 17 dp (14 quando il widget e' compatto) la
  * differenza fra "pioggia" e "pioggia forte" sono un paio di gocce che la griglia di pixel non
  * rende. La distinzione fine la porta la **tinta**, come gia' fa la tessera dentro l'app.
+ *
+ * La [phase] invece cambia il disegno, e prima non arrivava fin qui: un cielo sereno alle due di
+ * notte prendeva `ic_weather_clear`, che e' un sole con i raggi. Solo le condizioni in cui si vede
+ * il cielo hanno una versione notturna — sotto una coltre, nella nebbia o nella neve non si vede
+ * ne' sole ne' luna, e due disegni sarebbero due modi di dire la stessa cosa.
  *
  * `when` esaustivo senza `else`: un quattordicesimo [WeatherKind] deve essere un errore di
  * compilazione, non un widget che disegna un punto interrogativo senza che nessuno se ne accorga.
  */
 @DrawableRes
-fun WeatherKind?.appWidgetIconRes(): Int = when (this) {
-  WeatherKind.CLEAR, WeatherKind.MOSTLY_CLEAR -> R.drawable.ic_weather_clear
-  WeatherKind.PARTLY_CLOUDY -> R.drawable.ic_weather_partly_cloudy
-  WeatherKind.CLOUDY -> R.drawable.ic_weather_cloudy
-  WeatherKind.FOG -> R.drawable.ic_weather_fog
-  WeatherKind.DRIZZLE, WeatherKind.RAIN, WeatherKind.HEAVY_RAIN -> R.drawable.ic_weather_rain
-  WeatherKind.SLEET -> R.drawable.ic_weather_sleet
-  WeatherKind.SNOW, WeatherKind.HEAVY_SNOW -> R.drawable.ic_weather_snow
-  WeatherKind.THUNDERSTORM -> R.drawable.ic_weather_thunderstorm
-  WeatherKind.UNKNOWN, null -> R.drawable.ic_weather_unknown
+fun WeatherKind?.appWidgetIconRes(phase: DayPhase = DayPhase.DAY): Int {
+  val night = phase == DayPhase.NIGHT
+  return when (this) {
+    WeatherKind.CLEAR, WeatherKind.MOSTLY_CLEAR ->
+      if (night) R.drawable.ic_weather_clear_night else R.drawable.ic_weather_clear
+    WeatherKind.PARTLY_CLOUDY ->
+      if (night) R.drawable.ic_weather_partly_cloudy_night else R.drawable.ic_weather_partly_cloudy
+    WeatherKind.CLOUDY -> R.drawable.ic_weather_cloudy
+    WeatherKind.FOG -> R.drawable.ic_weather_fog
+    WeatherKind.DRIZZLE, WeatherKind.RAIN, WeatherKind.HEAVY_RAIN -> R.drawable.ic_weather_rain
+    WeatherKind.SLEET -> R.drawable.ic_weather_sleet
+    WeatherKind.SNOW, WeatherKind.HEAVY_SNOW -> R.drawable.ic_weather_snow
+    WeatherKind.THUNDERSTORM -> R.drawable.ic_weather_thunderstorm
+    WeatherKind.UNKNOWN, null -> R.drawable.ic_weather_unknown
+  }
 }

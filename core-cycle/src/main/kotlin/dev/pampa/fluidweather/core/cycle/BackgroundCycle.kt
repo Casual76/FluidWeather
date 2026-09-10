@@ -178,7 +178,7 @@ class BackgroundCycle(
     // (vedi RefreshBudget), cosi' vale anche per i chiamanti che non esistono ancora.
     val cadenceMillis = samplingSettings.current().mode.cadenceMinutes * 60_000L
     val enough = RefreshBudget.enoughMillis(trigger, cadenceMillis)
-    val cached = refresher.fresh(key, latitude, longitude, maxAgeMillis = SHOWABLE_AGE_MILLIS)
+    val cached = refresher.fresh(key, latitude, longitude, maxAgeMillis = DataAge.SHOWABLE_AGE_MILLIS)
     val snapshot = when {
       cached != null && cached.ageMillis(now) <= enough -> cached
       // Senza nemmeno un trasporto acceso il giro fallirebbe dopo dieci timeout in parallelo.
@@ -255,6 +255,8 @@ class BackgroundCycle(
         // nessuno — ed e' proprio quando manca la rete che serve di piu'.
         fusedHours = DataAge.hoursForDecisions(snapshot?.fused?.hours.orEmpty(), snapshot?.fetchedAtMillis, now),
         officialAlerts = alerts,
+        // Chi sta gia' prendendo la pioggia non ha bisogno che il telefono gliela annunci.
+        rainingNow = nowcast?.observation?.rainingNow == true,
       ),
     )
     val delivered = decision.notifications.filter { deliver(it) }.toMutableList()
@@ -342,11 +344,22 @@ class BackgroundCycle(
     }
   }
 
-  /** Un confronto l'ora fra locale corretto e riferimento: il bias insegue, la fiducia sale. */
+  /**
+   * Un confronto l'ora fra locale corretto e riferimento: il bias insegue, la fiducia sale.
+   *
+   * Si controlla l'eta' dell'**istantanea**, non solo quella dell'ora prevista dentro: guardare
+   * `hourAround` e basta lasciava passare un giro di dodici ore prima, perche' una previsione
+   * vecchia contiene comunque un'ora vicina ad adesso. Offline il bias inseguiva cosi' un
+   * riferimento che non descriveva piu' niente, un ventesimo di residuo per volta, per giorni.
+   *
+   * Meglio non limare che limare storto: una taratura non aggiornata resta valida, una taratura
+   * spostata verso un riferimento sbagliato no, e nessuno se ne accorge.
+   */
   private suspend fun refineCalibration(cleaning: dev.pampa.fluidweather.nowcast.cleaning.CleaningResult?, snapshot: WeatherSnapshot?, now: Long) {
     val record = runCatching { calibrationStore.current() }.getOrNull() ?: return
     val local = cleaning?.cleaned?.lastOrNull()?.takeIf { abs(it.timestampMillis - now) <= 30 * 60_000L } ?: return
-    val hour = snapshot?.fused?.hourAround(now) ?: return
+    val fresh = snapshot?.takeIf { it.ageMillis(now) <= REFINE_MAX_SNAPSHOT_AGE_MILLIS } ?: return
+    val hour = fresh.fused.hourAround(now) ?: return
     val reference = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return
     runCatching { calibrationStore.save(CalibrationMath.refine(record, local.seaLevelPressureHpa, reference, now)) }
   }
@@ -371,8 +384,13 @@ class BackgroundCycle(
   }
 
   private companion object {
+    /**
+     * Oltre tre ore un giro non e' piu' un riferimento con cui correggere un barometro: e' lo
+     * stesso numero che usa la taratura iniziale, e per la stessa ragione.
+     */
+    const val REFINE_MAX_SNAPSHOT_AGE_MILLIS = 3 * 3_600_000L
+
     /** Un'istantanea piu' vecchia di cosi' non si mostra nemmeno come ripiego. */
-    const val SHOWABLE_AGE_MILLIS = 12 * 3_600_000L
 
     const val LOCATION_TIMEOUT_MILLIS = 15_000L
 

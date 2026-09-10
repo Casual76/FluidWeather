@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.ai.tools
 
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.pampa.fluidweather.core.model.CalibrationOutcome
 import dev.pampa.fluidweather.core.model.DistanceUnit
 import dev.pampa.fluidweather.core.model.PrecipitationUnit
 import dev.pampa.fluidweather.core.model.PressureUnit
@@ -171,7 +172,18 @@ class CalibrationStateTool : AiTool {
       line("quando", TimeFormats.dayTime(record.calibratedAtMillis, ctx.zone, ctx.locale))
       line("letture usate", record.sampleCount)
       record.altitudeMeters?.let { line("quota stimata", "${it.roundToInt()} m") }
-      ctx.sources.calibrationController.lastOutcome.value?.let { line("ultimo esito", it) }
+      // I tratti fermi che hanno votato il bias, e quanto sono d'accordo: e' la risposta alla
+      // domanda "quanto mi posso fidare" molto piu' del numero di letture.
+      if (record.segmentCount > 1) {
+        line("tratti fermi", record.segmentCount)
+        line("dispersione fra i tratti", String.format(Locale.ROOT, "%.2f hPa", record.spreadHpa))
+      }
+      ctx.sources.calibrationController.lastOutcome.value
+        ?.takeIf { it != CalibrationOutcome.OK }
+        ?.let { line("ultimo esito", it.name.lowercase().replace('_', ' ')) }
+      ctx.sources.calibrationStore.pendingBurst.first()?.let {
+        line("in sospeso", "una raffica e' in archivio e aspetta il riferimento dei provider")
+      }
     }
   }
 }

@@ -23,6 +23,10 @@ data class NowcastExplanation(
   val analogs: Map<String, AnalogSummary>,
   /** Le finestre la cui probabilita' e' passata dalla ricalibrazione personale. */
   val recalibrated: Set<String>,
+  /** Cosa si vedeva davvero fuori, se qualcuno l'ha guardato. */
+  val observation: RainObservation? = null,
+  /** Le finestre in cui l'osservazione ha alzato la probabilita' del modello. */
+  val observed: Set<String> = emptySet(),
 )
 
 /**
@@ -37,7 +41,12 @@ class NowcastEngine(
   private val featureSds: DoubleArray,
 ) {
 
-  fun evaluate(features: DoubleArray, learning: LearningState): NowcastExplanation {
+  fun evaluate(
+    features: DoubleArray,
+    learning: LearningState,
+    /** Cio' che si vede dalla finestra: puo' alzare il verdetto, mai abbassarlo. */
+    observation: RainObservation? = null,
+  ): NowcastExplanation {
     val raw = model.verdict(features)
     val neighbours = if (learning.cases.isEmpty()) {
       emptyList()
@@ -68,11 +77,33 @@ class NowcastEngine(
         probabilityHigh = (calibrated.probabilityHigh + shift).coerceIn(0.0, 1.0),
       )
     }
-    val verdict = NowcastVerdict(windows = windows, level = alertLevelOf(windows))
-    return NowcastExplanation(verdict, raw, analogs, recalibrated)
+
+    // Il pavimento dell'osservazione, per ultimo: dopo il modello, dopo la ricalibrazione, dopo
+    // gli analoghi. Alza e basta — quello che si vede non puo' essere argomentato al ribasso da
+    // una statistica, e quello che non si vede non autorizza nessuno a dire che non c'e'.
+    val observed = mutableSetOf<String>()
+    val floored = windows.map { window ->
+      val floor = observation?.floorFor(window.window) ?: 0.0
+      if (floor <= window.probability) {
+        window
+      } else {
+        observed += window.window
+        window.copy(
+          probability = floor,
+          probabilityHigh = maxOf(window.probabilityHigh, floor),
+          probabilityLow = maxOf(window.probabilityLow, floor * LOW_BAND_SHARE),
+        )
+      }
+    }
+
+    val verdict = NowcastVerdict(windows = floored, level = alertLevelOf(floored))
+    return NowcastExplanation(verdict, raw, analogs, recalibrated, observation, observed)
   }
 
   companion object {
+    /** La banda bassa quando comanda l'osservazione: incerti sul quanto, non sul se. */
+    private const val LOW_BAND_SHARE = 0.8
+
     fun trained(): NowcastEngine = NowcastEngine(
       model = NowcastModel.trained(),
       featureMeans = dev.pampa.fluidweather.nowcast.verdict.TrainedNowcastV1.means,

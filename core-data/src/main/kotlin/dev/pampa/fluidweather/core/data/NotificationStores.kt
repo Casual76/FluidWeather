@@ -2,11 +2,13 @@ package dev.pampa.fluidweather.core.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -18,7 +20,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.notificationStore: DataStore<Preferences> by preferencesDataStore(name = "notifications")
+private val Context.notificationStore: DataStore<Preferences> by preferencesDataStore(
+  name = "notifications",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /** Le scelte sui canali; i default sono quelli di [NotificationChannelKind]. */
 class NotificationSettingsStore(private val context: Context) {

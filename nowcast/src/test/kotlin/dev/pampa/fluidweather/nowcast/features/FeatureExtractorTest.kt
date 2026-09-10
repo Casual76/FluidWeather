@@ -53,7 +53,7 @@ class FeatureExtractorTest {
     val cleaning = pipeline.process(series(24) { 1013.0 })
     val features = FeatureExtractor.extract(cleaning, null, null, start + 24 * 3_600_000L)!!
 
-    assertTrue(features[index("umidita'")].isNaN())
+    assertTrue(features[index("umidita")].isNaN())
     assertTrue(features[index("pioggia-ultima-ora")].isNaN())
     assertTrue(features[index("anomalia-livello")].isNaN())
   }
@@ -71,7 +71,7 @@ class FeatureExtractorTest {
     val features =
       FeatureExtractor.extract(cleaning, context, normalHpa = 1015.0, nowMillis = start + 24 * 3_600_000L)!!
 
-    assertEquals(85.0, features[index("umidita'")], 1e-9)
+    assertEquals(85.0, features[index("umidita")], 1e-9)
     // La rotazione avvolge i 360: da 350 a 10 sono +20 gradi, non -340.
     assertEquals(20.0, features[index("rotazione-vento-3h")], 1e-9)
     assertEquals(-2.0, features[index("anomalia-livello")], 0.1)

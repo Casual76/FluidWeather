@@ -19,6 +19,9 @@ import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkDependencies
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
+import dev.pampa.fluidweather.core.ui.AppDestination
+import dev.pampa.fluidweather.core.ui.AppRequest
+import dev.pampa.fluidweather.core.ui.AppScreen
 import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.feature.assistant.AiSettingsDependencies
 import dev.pampa.fluidweather.feature.assistant.AiSettingsScreen
@@ -100,8 +103,10 @@ private const val CoveredParallax = 0.25f
 fun FluidWeatherNavHost(
   graph: AppGraph,
   startAtOnboarding: Boolean,
-  /** La pagina chiesta da fuori: oggi il widget di sistema, domani chiunque altro. */
-  openWidget: HomeWidget? = null,
+  /** Cosa chiede chi arriva da fuori: il widget di sistema, l'assistente federato, un link. */
+  request: AppRequest? = null,
+  /** Chiamata quando la richiesta e' stata servita: da li' in poi non deve piu' esistere. */
+  onRequestConsumed: () -> Unit = {},
 ) {
   val navController = rememberNavController()
   // Le unita' dell'utente (fase 17), lette una volta qui e disponibili a ogni schermata.
@@ -109,7 +114,7 @@ fun FluidWeatherNavHost(
     initial = UnitPreferences.forCountry(Locale.getDefault().country),
   )
   CompositionLocalProvider(LocalUnits provides units) {
-    FluidWeatherRoutes(graph, navController, startAtOnboarding, openWidget)
+    FluidWeatherRoutes(graph, navController, startAtOnboarding, request, onRequestConsumed)
   }
 }
 
@@ -118,8 +123,28 @@ private fun FluidWeatherRoutes(
   graph: AppGraph,
   navController: androidx.navigation.NavHostController,
   startAtOnboarding: Boolean,
-  openWidget: HomeWidget?,
+  request: AppRequest?,
+  onRequestConsumed: () -> Unit,
 ) {
+  // Le richieste che sono ROTTE si servono qui, dove c'e' il `NavController`. Le altre due
+  // (benchmark e segnalazione) non sono rotte ma fogli neri, e le serve la home che ne possiede
+  // lo stato; una tessera pretende comunque di passare dalla home, quindi se siamo altrove si
+  // torna li' prima — un tocco sul widget mentre l'app e' aperta sulle Impostazioni non deve
+  // limitarsi a portare avanti le Impostazioni.
+  LaunchedEffect(request) {
+    when (val destination = request?.destination ?: return@LaunchedEffect) {
+      is AppDestination.Widget ->
+        if (navController.currentDestination?.route != Routes.Home) {
+          navController.popBackStack(Routes.Home, inclusive = false)
+        }
+      is AppDestination.Screen -> when (destination.screen) {
+        AppScreen.RADAR -> { navController.navigate(Routes.Radar); onRequestConsumed() }
+        AppScreen.SETTINGS -> { navController.navigate(Routes.Settings); onRequestConsumed() }
+        AppScreen.AI_SETTINGS -> { navController.navigate(Routes.Ai); onRequestConsumed() }
+        AppScreen.BENCHMARK, AppScreen.REPORT -> Unit
+      }
+    }
+  }
   NavHost(
     navController = navController,
     startDestination = if (startAtOnboarding) Routes.Onboarding else Routes.Home,
@@ -182,7 +207,6 @@ private fun FluidWeatherRoutes(
           calibrationController = graph.calibrationController,
           learningRepository = graph.learningRepository,
           learningStore = graph.learningStore,
-          cleaningPipeline = graph.cleaningPipeline,
           nowcast = graph.nowcastUseCase,
           airQualityClient = graph.airQualityClient,
           appearanceStore = graph.appearanceSettingsStore,
@@ -195,10 +219,22 @@ private fun FluidWeatherRoutes(
       }
       var benchmarkOpen by remember { mutableStateOf(false) }
       var reportOpen by remember { mutableStateOf(false) }
-      var requestedWidget by remember { mutableStateOf(openWidget) }
-      // Un tocco sul widget di sistema mentre l'app e' gia' aperta arriva come intent nuovo, non
-      // come avvio: `openWidget` cambia valore e la pagina si apre lo stesso.
-      LaunchedEffect(openWidget) { if (openWidget != null) requestedWidget = openWidget }
+      // Parte da null e la richiesta arriva dall'effetto, non dal valore iniziale: inizializzarla
+      // con la richiesta significava riaprire da sola la stessa pagina ogni volta che la home
+      // veniva ricomposta (Radar e indietro basta). Chi consuma la richiesta la spegne anche in
+      // `MainActivity`, cosi' la ricomposizione successiva non ha piu' niente da leggere.
+      var requestedWidget by remember { mutableStateOf<HomeWidget?>(null) }
+      LaunchedEffect(request) {
+        when (val destination = request?.destination) {
+          is AppDestination.Widget -> requestedWidget = destination.widget
+          is AppDestination.Screen -> when (destination.screen) {
+            AppScreen.BENCHMARK -> { benchmarkOpen = true; onRequestConsumed() }
+            AppScreen.REPORT -> { reportOpen = true; onRequestConsumed() }
+            else -> Unit
+          }
+          null -> Unit
+        }
+      }
       // L'assistente (fase 19): il tasto nella barra, l'overlay sopra la home, i deep link.
       val assistant = graph.aiAssistant
       val assistantEnabled by assistant.enabled.collectAsState(initial = false)
@@ -250,7 +286,7 @@ private fun FluidWeatherRoutes(
           onBounds = { overlayState.originBounds = it },
         ),
         requestedWidget = requestedWidget,
-        onWidgetConsumed = { requestedWidget = null },
+        onWidgetConsumed = { requestedWidget = null; onRequestConsumed() },
         overlay = { chrome ->
           if (assistantEnabled || overlayState.mode != OverlayMode.HIDDEN) {
             AssistantOverlay(assistant = assistant, overlay = overlayState, backdrop = chrome, navigator = navigator)
@@ -309,7 +345,7 @@ private fun FluidWeatherRoutes(
           calibrationStore = graph.calibrationStore,
           calibrationController = graph.calibrationController,
           pressureRepository = graph.pressureRepository,
-          cleaningPipeline = graph.cleaningPipeline,
+          nowcast = graph.nowcastUseCase,
           learningStore = graph.learningStore,
           learningRepository = graph.learningRepository,
         )
@@ -358,8 +394,9 @@ private fun FluidWeatherRoutes(
           repository = graph.pressureRepository,
           burstController = graph.manualBurstController,
           scheduler = graph.samplingScheduler,
+          samplingHealth = graph.samplingHealth,
           activityRecognizer = graph.activityRecognizer,
-          cleaningPipeline = graph.cleaningPipeline,
+          nowcast = graph.nowcastUseCase,
           fusionCoordinator = graph.fusionCoordinator,
           locationProvider = graph.locationProvider,
           assistant = graph.aiAssistant,

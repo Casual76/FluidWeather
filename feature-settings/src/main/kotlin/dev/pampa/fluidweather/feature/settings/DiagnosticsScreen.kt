@@ -53,8 +53,10 @@ import dev.pampa.fluidweather.core.sensor.Barometer
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.sensor.ManualBurstController
 import dev.pampa.fluidweather.core.sensor.MaximaAlarm
+import dev.pampa.fluidweather.core.sensor.SamplingHealth
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
+import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.core.weather.WeatherRound
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
@@ -85,8 +87,11 @@ class DiagnosticsDependencies(
   val repository: PressureRepository,
   val burstController: ManualBurstController,
   val scheduler: SamplingScheduler,
+  /** Il cane da guardia: la sola pagina da cui si vede se il campionamento e' ancora vivo. */
+  val samplingHealth: SamplingHealth,
   val activityRecognizer: ActivityRecognizer,
-  val cleaningPipeline: CleaningPipeline,
+  /** Gli stadi 1-5 in un punto solo: e' da li' che esce anche il segnale pulito di questa pagina. */
+  val nowcast: NowcastUseCase,
   val fusionCoordinator: FusionCoordinator,
   val locationProvider: LocationProvider,
   /** La sezione dell'assistente (fase 19): ultime richieste, token, quote. */
@@ -127,9 +132,8 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
   // Il segnale pulito si ricalcola quando l'archivio cresce: 12 ore di storia negli stadi 1-2.
   val cleaning by produceState<CleaningResult?>(initialValue = null, sampleCount) {
     value = withContext(Dispatchers.Default) {
-      deps.cleaningPipeline.process(
-        deps.repository.samplesSince(System.currentTimeMillis() - 24 * 60 * 60_000L),
-      )
+      // Lo stesso segnale del verdetto, non un terzo diverso da tutti gli altri.
+      deps.nowcast.clean(System.currentTimeMillis() - 24 * 60 * 60_000L)
     }
   }
 
@@ -179,6 +183,57 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
           title = stringResource(R.string.diag_samples),
           subtitle = stringResource(R.string.diag_samples_desc),
           meta = sampleCount.toString(),
+        )
+      }
+    }
+
+    // Il cane da guardia del campionamento.
+    //
+    // E' la pagina che risponde alla domanda "perche' la barra e' ferma a zero": se il lavoro
+    // programmato non c'e' piu' o l'archivio non riceve niente da giorni, il nowcast non ha
+    // materia prima, e per anni l'unico modo di accorgersene era cancellare i dati dell'app.
+    item { FluidSectionHeader(title = stringResource(R.string.diag_health_title)) }
+    item {
+      val health by deps.samplingHealth.last.collectAsState()
+      LaunchedEffect(Unit) { deps.samplingHealth.check() }
+      FluidListGroup {
+        val report = health
+        FluidListRow(
+          title = stringResource(R.string.diag_health_scheduled),
+          subtitle = when {
+            report?.failure != null -> stringResource(R.string.diag_health_failed, report.failure.orEmpty())
+            report?.scheduled == true -> stringResource(R.string.diag_health_scheduled_on)
+            report != null -> stringResource(R.string.diag_health_scheduled_off)
+            else -> stringResource(R.string.common_loading)
+          },
+          badge = {
+            if (report?.scheduled == true && report.failure == null) {
+              Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
+          },
+        )
+        FluidListDivider()
+        FluidListRow(
+          title = stringResource(R.string.diag_health_last_sample),
+          subtitle = when {
+            report?.silent == true -> stringResource(R.string.diag_health_silent)
+            report?.lastSampleAtMillis == null -> stringResource(R.string.diag_health_never)
+            else -> stringResource(R.string.diag_samples_desc)
+          },
+          meta = report?.lastSampleAtMillis?.let { TimeFormats.dayTime(it) } ?: "—",
+        )
+        FluidListDivider()
+        FluidListRow(
+          title = stringResource(R.string.diag_health_check),
+          subtitle = stringResource(R.string.diag_health_check_desc),
+          badge = {
+            FluidButton(
+              text = stringResource(R.string.common_start),
+              style = FluidButtonStyle.Plain,
+              size = FluidButtonSize.Small,
+              onClick = { scope.launch { deps.samplingHealth.check() } },
+            )
+          },
         )
       }
     }

@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.model.ForecastBundle
 import dev.pampa.fluidweather.core.model.HourlyPoint
+import dev.pampa.fluidweather.core.model.MinutePoint
 import dev.pampa.fluidweather.core.model.WeatherKind
 
 /**
@@ -25,6 +26,11 @@ class OpenMeteoClient(
       append("&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,pressure_msl,")
       append("precipitation,precipitation_probability,cloud_cover,wind_speed_10m,")
       append("wind_direction_10m,wind_gusts_10m,cape,uv_index,visibility,weather_code")
+      // Il quarto d'ora: due giorni bastano e avanzano — serve a sapere cosa sta succedendo
+      // adesso e nell'ora che viene, non a fare previsioni lunghe. `past_minutely_15` porta
+      // l'ultima ora e mezza gia' accaduta, che e' la parte che risponde a "sta piovendo?".
+      append("&minutely_15=precipitation,precipitation_probability")
+      append("&past_minutely_15=8&forecast_minutely_15=8")
       append("&past_hours=6&forecast_days=${(descriptor.horizonHours + 23) / 24}")
       append("&timeformat=unixtime&timezone=UTC&wind_speed_unit=kmh")
       if (model != null) append("&models=$model")
@@ -77,7 +83,30 @@ class OpenMeteoClient(
       latitude = latitude,
       longitude = longitude,
       hourly = points,
+      minutely = minutelyPoints(root),
     )
+  }
+
+  /**
+   * Il blocco a quindici minuti, quando c'e'. Non tutti i modelli di Open-Meteo lo espongono e
+   * non tutte le localita' lo hanno: un blocco mancante e' una lista vuota, non un errore — il
+   * verdetto deve continuare a esistere anche senza.
+   */
+  private fun minutelyPoints(root: kotlinx.serialization.json.JsonElement): List<MinutePoint> {
+    val block = runCatching { root["minutely_15"] }.getOrNull() ?: return emptyList()
+    val times = runCatching { block["time"].asArray() }.getOrNull() ?: return emptyList()
+    fun series(name: String): List<Double?> =
+      runCatching { block[name].asArray().map { it.double() } }.getOrDefault(emptyList())
+    val precipitation = series("precipitation")
+    val probability = series("precipitation_probability")
+    return times.mapIndexedNotNull { i, time ->
+      val timestamp = time.double()?.toLong()?.times(1_000) ?: return@mapIndexedNotNull null
+      MinutePoint(
+        timestampMillis = timestamp,
+        precipitationMm = precipitation.getOrNull(i),
+        precipitationProbabilityPercent = probability.getOrNull(i),
+      )
+    }
   }
 
   companion object {

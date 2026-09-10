@@ -23,6 +23,15 @@ object SkyPalette {
     val gloom: Float,
   )
 
+  /**
+   * Il disco del sole. Caldo ma non arancione: l'arancione e' il colore del sole **al tramonto**,
+   * e a mezzogiorno su un cielo azzurro leggerebbe come un pianeta.
+   */
+  val SunColor: Color = Color(0xFFFFE9A8)
+
+  /** Il disco della luna: freddo, appena azzurrato, mai bianco puro (che sembra un buco). */
+  val MoonColor: Color = Color(0xFFE8EDF7)
+
   fun sky(phase: DayPhase, kind: WeatherKind?, cloudCoverPercent: Double?): Sky {
     val base = baseGradient(phase)
     val gloom = gloomOf(kind, cloudCoverPercent)

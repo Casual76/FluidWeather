@@ -122,8 +122,14 @@ internal fun NowcastPage(state: HomeUiState) {
           append(stringResource(R.string.nowcast_model_prefix) + ((raw?.probability ?: 0.0) * 100).toInt() + "%")
           if (recalibrated) append(stringResource(R.string.nowcast_recalibrated))
           if (analogs != null) append(stringResource(R.string.nowcast_analogs, analogs.rained, analogs.neighbours))
+          // Il quarto passaggio: cio' che si vede fuori. La pagina mostra tutti i passaggi, e
+          // questo e' l'unico che non e' una statistica — quindi va detto per quello che e'.
+          if (window.window in explanation.observed) append(stringResource(R.string.nowcast_observed))
         },
       )
+    }
+    explanation.observation?.takeIf { it.rainingNow }?.let { observation ->
+      PageNote(stringResource(R.string.nowcast_seen_by, observation.source))
     }
     PageNote(
       if (explanation.recalibrated.isEmpty() && explanation.analogs.isEmpty()) {

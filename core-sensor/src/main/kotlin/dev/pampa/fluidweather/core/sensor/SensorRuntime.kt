@@ -11,6 +11,7 @@ import dev.pampa.fluidweather.core.data.LatestActivityStore
 interface SensorRuntime {
   val samplingEngine: SamplingEngine
   val samplingScheduler: SamplingScheduler
+  val samplingHealth: SamplingHealth
   val latestActivityStore: LatestActivityStore
   val calibrationController: CalibrationController
 }

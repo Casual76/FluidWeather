@@ -164,7 +164,18 @@ private val Accent: Color @Composable get() = LocalRadarPalette.current.accent
 @Composable
 fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
   val context = LocalContext.current
-  val status = remember { MapsAvailability.check(context) }
+  val preflight = remember { MapsAvailability.check(context) }
+  // La mappa ha disegnato almeno una volta? Finche' non lo fa, e oltre un certo tempo, si smette
+  // di aspettare in silenzio: e' l'unico modo che l'SDK lascia per accorgersi di una chiave
+  // rifiutata invece che assente.
+  var mapLoaded by remember { mutableStateOf(false) }
+  var waitedTooLong by remember { mutableStateOf(false) }
+  LaunchedEffect(preflight) {
+    if (preflight != MapsStatus.READY) return@LaunchedEffect
+    delay(MapsAvailability.LOAD_TIMEOUT_MILLIS)
+    waitedTooLong = !mapLoaded
+  }
+  val status = if (preflight == MapsStatus.READY && waitedTooLong) MapsStatus.KEY_REFUSED else preflight
   if (status != MapsStatus.READY) {
     RadarUnavailable(status, onBack)
     return
@@ -183,7 +194,7 @@ fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
     brand = WeatherAccent.presetFor(null, if (dark) DayPhase.NIGHT else DayPhase.DAY),
   ) {
     CompositionLocalProvider(LocalRadarPalette provides RadarPalette(dark)) {
-      RadarShell(deps, onBack, dark)
+      RadarShell(deps, onBack, dark, onMapLoaded = { mapLoaded = true })
     }
   }
 }
@@ -202,6 +213,10 @@ private fun RadarUnavailable(status: MapsStatus, onBack: () -> Unit) {
             title = stringResource(R.string.radar_no_key),
             subtitle = stringResource(R.string.radar_no_key_desc),
           )
+          MapsStatus.KEY_REFUSED -> FluidListRow(
+            title = stringResource(R.string.radar_key_refused),
+            subtitle = stringResource(R.string.radar_key_refused_desc),
+          )
           MapsStatus.READY -> Unit
         }
       }
@@ -210,7 +225,12 @@ private fun RadarUnavailable(status: MapsStatus, onBack: () -> Unit) {
 }
 
 @Composable
-private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit, dark: Boolean) {
+private fun RadarShell(
+  deps: RadarDependencies,
+  onBack: () -> Unit,
+  dark: Boolean,
+  onMapLoaded: () -> Unit,
+) {
   val scope = rememberCoroutineScope()
   // La mappa e' una View di sistema: il vetro non puo' registrarla. Il backdrop resta vuoto e i
   // controlli mostrano la loro pellicola: e' il degrado dichiarato, non un errore.
@@ -324,6 +344,7 @@ private fun RadarShell(deps: RadarDependencies, onBack: () -> Unit, dark: Boolea
       mapColorScheme = if (dark) ComposeMapColorScheme.DARK else ComposeMapColorScheme.LIGHT,
       // Il logo di Google resta visibile sopra la barra del tempo: e' la sua condizione d'uso.
       contentPadding = PaddingValues(top = 72.dp, bottom = navigationBottom + barHeight),
+      onMapLoaded = onMapLoaded,
     ) {
       val available = frames
       if (layer == RadarLayer.PRECIPITATION && available != null) {

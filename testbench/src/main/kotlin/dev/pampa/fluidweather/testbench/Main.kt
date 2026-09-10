@@ -7,6 +7,7 @@ import dev.pampa.fluidweather.testbench.metrics.Contingency
 import dev.pampa.fluidweather.testbench.metrics.Probabilistic
 import dev.pampa.fluidweather.testbench.metrics.Verification
 import dev.pampa.fluidweather.testbench.replay.Replayer
+import dev.pampa.fluidweather.testbench.replay.SamplingProfile
 import dev.pampa.fluidweather.testbench.replay.TaggedVerification
 import dev.pampa.fluidweather.testbench.stages.StageBenches
 import dev.pampa.fluidweather.testbench.train.TrainCommand
@@ -27,17 +28,20 @@ fun main(args: Array<String>) {
   when (args.firstOrNull() ?: "all") {
     "fetch" -> OpenMeteoFetcher().fetchAll()
     "replay" -> replay()
+    // Lo stesso replay sull'archivio liscio: serve solo a misurare quanto costa essere un
+    // telefono invece di una stazione. Non e' il voto, e' il termine di paragone.
+    "replay-ideale" -> replay(profile = SamplingProfile.IDEALE)
     "stages" -> stages()
     "train" -> TrainCommand.run(fetchedDatasets())
     // La resa dei conti: il modello addestrato contro le baseline, solo sul periodo che
-    // l'addestramento non ha mai visto (dal 2025-01-01 in poi).
+    // l'addestramento non ha mai visto (dal 2025-09-01 in poi).
     "replay-oos" -> replay(evaluateFromMillis = TrainCommand.CUTOFF_MILLIS, withNowcast = true)
     "all" -> {
       OpenMeteoFetcher().fetchAll()
       replay()
       stages()
     }
-    else -> println("comandi: fetch | replay | stages | train | replay-oos | all")
+    else -> println("comandi: fetch | replay | replay-ideale | stages | train | replay-oos | all")
   }
 }
 
@@ -50,13 +54,21 @@ private fun fetchedDatasets(): List<StationDataset> {
   return available.map { StationDataset.load(it) }
 }
 
-private fun replay(evaluateFromMillis: Long? = null, withNowcast: Boolean = false) {
+private fun replay(
+  evaluateFromMillis: Long? = null,
+  withNowcast: Boolean = false,
+  profile: SamplingProfile = SamplingProfile.TELEFONO,
+) {
   val datasets = fetchedDatasets()
   if (datasets.isEmpty()) return
-  val replayer = Replayer()
+  val replayer = Replayer(profile = profile)
   val report = StringBuilder()
 
-  val title = if (withNowcast) "REPLAY OUT-OF-SAMPLE (dal 2025-01-01) — nowcast-v1 in classifica" else "REPLAY"
+  val title = if (withNowcast) {
+    "REPLAY OUT-OF-SAMPLE (dal 2025-09-01) — nowcast-v1 in classifica, profilo $profile"
+  } else {
+    "REPLAY — profilo $profile"
+  }
   report.appendLine("=== $title — POD/FAR/CSI a soglia 0,5 · Brier/BSS · per predittore e finestra ===")
   report.appendLine()
 
@@ -87,7 +99,12 @@ private fun replay(evaluateFromMillis: Long? = null, withNowcast: Boolean = fals
     report.appendLine("  $window: $line")
   }
 
-  emit(report.toString(), if (withNowcast) "replay-oos.txt" else "replay.txt")
+  val name = when {
+    withNowcast -> "replay-oos.txt"
+    profile == SamplingProfile.IDEALE -> "replay-ideale.txt"
+    else -> "replay.txt"
+  }
+  emit(report.toString(), name)
 }
 
 private fun table(cells: Map<String, out Map<String, out List<TaggedVerification>>>): String {
@@ -138,6 +155,54 @@ private fun stages() {
       String.format(
         Locale.ROOT, "  %-18s %10s %14s",
         dataset.location.name, format(r.maeRealTemperatureHpa), format(r.maeStandardTemperatureHpa),
+      ),
+    )
+  }
+
+  report.appendLine()
+  report.appendLine("--- Persistenza: dato che piove ADESSO, quanto piove poi (il pavimento dell'osservazione)")
+  report.appendLine(String.format(Locale.ROOT, "  %-18s %8s %8s %8s %8s", "localita'", "casi", "0-1h", "1-3h", "3-6h"))
+  val persistenceTotals = mutableMapOf<String, MutableList<Double>>()
+  for (dataset in datasets) {
+    val p = StageBenches.persistence(dataset)
+    p.byWindow.forEach { (window, rate) -> persistenceTotals.getOrPut(window) { mutableListOf() } += rate }
+    report.appendLine(
+      String.format(
+        Locale.ROOT, "  %-18s %8d %8s %8s %8s",
+        dataset.location.name, p.cases,
+        format(p.byWindow["0-1h"] ?: Double.NaN),
+        format(p.byWindow["1-3h"] ?: Double.NaN),
+        format(p.byWindow["3-6h"] ?: Double.NaN),
+      ),
+    )
+  }
+  report.appendLine(
+    String.format(
+      Locale.ROOT, "  %-18s %8s %8s %8s %8s", "MEDIA", "",
+      format(persistenceTotals["0-1h"]?.average() ?: Double.NaN),
+      format(persistenceTotals["1-3h"]?.average() ?: Double.NaN),
+      format(persistenceTotals["3-6h"]?.average() ?: Double.NaN),
+    ),
+  )
+
+  report.appendLine()
+  report.appendLine("--- Quota: quanto della tendenza e' meteo e quanto e' il GPS")
+  report.appendLine("    (riferimento: lo stesso telefono con un GPS che non sbaglia mai)")
+  report.appendLine(
+    String.format(
+      Locale.ROOT, "  %-18s %9s %9s | %9s %9s | %9s %9s",
+      "localita'", "MAE ora", "MAE prima", "peggiore", "-", "ruvid.ora", "ruvid.prima",
+    ),
+  )
+  for (dataset in datasets) {
+    val a = StageBenches.altitudeNoise(dataset)
+    report.appendLine(
+      String.format(
+        Locale.ROOT, "  %-18s %9s %9s | %9s %9s | %9s %9s",
+        dataset.location.name,
+        format(a.trendMaeHpaPerHour), format(a.legacyTrendMaeHpaPerHour),
+        format(a.trendMaxHpaPerHour), "",
+        format(a.roughnessJitterHpa), format(a.legacyRoughnessHpa),
       ),
     )
   }

@@ -2,8 +2,10 @@ package dev.pampa.fluidweather.core.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.pampa.fluidweather.core.model.DistanceUnit
@@ -22,7 +24,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-private val Context.unitsStore: DataStore<Preferences> by preferencesDataStore(name = "units")
+private val Context.unitsStore: DataStore<Preferences> by preferencesDataStore(
+  name = "units",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * Le unita' scelte dall'utente, una famiglia per volta; assente = dal paese del telefono.

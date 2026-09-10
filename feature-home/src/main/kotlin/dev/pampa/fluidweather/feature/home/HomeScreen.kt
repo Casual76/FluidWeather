@@ -296,7 +296,7 @@ private fun HomeShell(
 
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
-      state = SkyState(state.phase, state.kind, state.cloudCover),
+      state = SkyState(state.phase, state.kind, state.cloudCover, state.latitude, state.longitude),
       quality = glassLevel.toSceneQuality(),
       running = !covered,
       modifier = Modifier

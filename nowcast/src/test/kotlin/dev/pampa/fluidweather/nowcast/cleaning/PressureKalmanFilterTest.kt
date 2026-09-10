@@ -50,13 +50,56 @@ class PressureKalmanFilterTest {
 
   @Test
   fun `un punto rumoroso pesa meno di uno pulito`() {
-    // Stessa serie, stesso outlier finale: una volta dichiarato rumoroso, una volta pulito.
+    // Stessa serie, stesso scostamento finale — dentro al cancello, cosi' si misura il peso e
+    // non il cancello: una volta dichiarato rumoroso, una volta pulito.
     val base = (0..8).map { i -> measurement(i * 15, 1013.0) }
     val outlierAt = start + 9 * 15 * 60_000L
-    val trusted = filter.filter(base + Measurement(outlierAt, 1014.0, 0.0)).last()
-    val distrusted = filter.filter(base + Measurement(outlierAt, 1014.0, 0.5)).last()
+    val trusted = filter.filter(base + Measurement(outlierAt, 1013.4, 0.0)).last()
+    val distrusted = filter.filter(base + Measurement(outlierAt, 1013.4, 0.5)).last()
 
     assertTrue(abs(distrusted.levelHpa - 1013.0) < abs(trusted.levelHpa - 1013.0))
+  }
+
+  @Test
+  fun `un punto isolato fuori dal cancello non sposta il livello`() {
+    val base = (0..8).map { i -> measurement(i * 15, 1013.0 + zigzag(i)) }
+    val spike = measurement(9 * 15, 1014.5)
+    val back = measurement(10 * 15, 1013.0)
+
+    val output = filter.filter(base + spike + back)
+
+    // Il picco e' entrato nella serie ma non nello stato: il livello resta dov'era.
+    assertTrue(output[9].gated)
+    assertEquals(1013.0, output[9].levelHpa, 0.1)
+    assertEquals(1013.0, output.last().levelHpa, 0.1)
+    assertTrue(abs(output.last().trendHpaPerHour) < 0.3)
+  }
+
+  @Test
+  fun `due punti che insistono sono il mondo che cambia, non rumore`() {
+    val base = (0..8).map { i -> measurement(i * 15, 1013.0 + zigzag(i)) }
+    // Un gradino vero: da qui in avanti la serie vive un hPa e mezzo piu' in basso.
+    val after = (9..12).map { i -> measurement(i * 15, 1011.5 + zigzag(i)) }
+
+    val output = filter.filter(base + after)
+
+    assertTrue(output[9].gated)
+    // Il decimo punto insiste: il cancello si apre e il filtro ci salta sopra.
+    assertEquals(1011.5, output.last().levelHpa, 0.2)
+  }
+
+  @Test
+  fun `un gradino annunciato non diventa una tendenza`() {
+    val base = (0..8).map { i -> measurement(i * 15, 1013.0 + zigzag(i)) }
+    val stepped = (9..14).map { i ->
+      Measurement(start + i * 15 * 60_000L, 1010.0 + zigzag(i), 0.0, levelStep = i == 9)
+    }
+
+    val last = filter.filter(base + stepped).last()
+
+    assertEquals(1010.0, last.levelHpa, 0.2)
+    // Tre hPa di gradino su un quarto d'ora sarebbero -12 hPa/h letti come tendenza.
+    assertTrue("tendenza dopo il gradino: ${last.trendHpaPerHour}", abs(last.trendHpaPerHour) < 1.0)
   }
 
   @Test

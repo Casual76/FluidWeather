@@ -48,6 +48,10 @@ class SnapshotAndAlertsTest {
         HourlyPoint(now - 3_600_000L, temperatureC = 19.0, relativeHumidityPercent = 70.0, precipitationMm = 0.0, windDirectionDeg = 200.0),
         HourlyPoint(now, temperatureC = 20.0, dewPointC = 12.0, cloudCoverPercent = 40.0, windSpeedKmh = 12.0, kind = WeatherKind.CLEAR),
       ),
+      minutely = listOf(
+        dev.pampa.fluidweather.core.model.MinutePoint(now - 15 * 60_000L, precipitationMm = 0.4, precipitationProbabilityPercent = 80.0),
+        dev.pampa.fluidweather.core.model.MinutePoint(now, precipitationMm = 0.1),
+      ),
     )
     return WeatherSnapshot(
       placeKey = WeatherSnapshot.GPS_KEY,
@@ -69,6 +73,24 @@ class SnapshotAndAlertsTest {
     assertEquals(1, decoded.providersResponding)
     assertTrue(decoded.distanceKmTo(43.832, 11.199) < 0.001)
     assertTrue(decoded.distanceKmTo(43.90, 11.199) > 7.0)
+  }
+
+  @Test
+  fun `il quarto d'ora sopravvive al giro, e la sua assenza non rompe niente`() {
+    val original = snapshot()
+    val decoded = WeatherSnapshotCodec.decode(WeatherSnapshotCodec.encode(original))!!
+    assertEquals(2, decoded.context!!.minutely.size)
+    // Il punto marca la FINE del suo quarto d'ora: quello stampato "adesso" copre gli ultimi
+    // quindici minuti, ed e' l'unica riga della risposta che parla del presente.
+    assertEquals(0.1, decoded.context!!.rainNowMm(now)!!, 1e-9)
+
+    // Un'istantanea scritta prima che il quarto d'ora esistesse: si legge lo stesso, e la chiave
+    // semplicemente non c'e'. E' il motivo per cui non e' stata alzata la versione del formato:
+    // alzarla avrebbe svuotato la home di tutti all'aggiornamento.
+    val old = original.copy(context = original.context!!.copy(minutely = emptyList()))
+    val text = WeatherSnapshotCodec.encode(old)
+    assertFalse("la chiave non si scrive quando non c'e' niente da scrivere", text.contains("minutely"))
+    assertEquals(old, WeatherSnapshotCodec.decode(text))
   }
 
   @Test

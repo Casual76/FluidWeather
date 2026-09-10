@@ -2,9 +2,11 @@ package dev.pampa.fluidweather.core.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -117,7 +119,13 @@ class LearningRepository(private val dao: LearningDao) {
   }
 }
 
-private val Context.learningStore: DataStore<Preferences> by preferencesDataStore(name = "learning")
+private val Context.learningStore: DataStore<Preferences> by preferencesDataStore(
+  name = "learning",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /** Le mappe di ricalibrazione per finestra, e quando sono state stimate. */
 class LearningStore(private val context: Context) {

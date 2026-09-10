@@ -15,7 +15,15 @@ fun BarometerReadiness.stageText(): String = when (stage) {
     "${calibrationCompletedSeconds / 60}:${String.format(Locale.ROOT, "%02d", calibrationCompletedSeconds % 60)}",
     "${calibrationTotalSeconds / 60}:00",
   )
-  ReadinessStage.HISTORY -> stringResource(R.string.readiness_history, hoursText(historyHours), hoursText(requiredHours))
+  // Zero ore esatte e' aritmeticamente giusto — subito dopo la raffica i seicento campioni sono
+  // **un solo** punto aggregato, quindi non c'e' ancora nessuna ampiezza da misurare — ma "0 di 13
+  // ore" si legge come un contatore inchiodato. E' letteralmente la frase che ha fatto pensare a
+  // un'app rotta, quindi quando e' zero si dice cos'e': un inizio.
+  ReadinessStage.HISTORY -> if (historyHours <= 0.0) {
+    stringResource(R.string.readiness_history_start, hoursText(requiredHours))
+  } else {
+    stringResource(R.string.readiness_history, hoursText(historyHours), hoursText(requiredHours))
+  }
   ReadinessStage.READY -> stringResource(R.string.readiness_ready)
 }
 

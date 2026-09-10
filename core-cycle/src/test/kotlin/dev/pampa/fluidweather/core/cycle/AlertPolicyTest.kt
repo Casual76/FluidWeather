@@ -61,9 +61,35 @@ class AlertPolicyTest {
     settings: NotificationSettings = NotificationSettings(officialAlerts = true),
     ledger: NotificationLedger = NotificationLedger(),
     at: Long = now,
-  ) = AlertInputs(at, zone, settings, ledger, verdict, hours, alerts)
+    rainingNow: Boolean = false,
+  ) = AlertInputs(at, zone, settings, ledger, verdict, hours, alerts, rainingNow)
 
   // ---------------------------------------------------------------- allerta del barometro
+
+  @Test
+  fun `a chi sta gia' prendendo la pioggia non si annuncia la pioggia`() {
+    // Il caso visto sul telefono: pioveva da due ore, e la notifica avrebbe detto "probabile".
+    val decision = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.72), rainingNow = true))
+
+    assertTrue(decision.notifications.isEmpty())
+    assertFalse(decision.ledger.nowcastAlertActive)
+  }
+
+  @Test
+  fun `se i provider hanno gia' detto l'ora esatta, il barometro non ripete`() {
+    // "Pioggia alle 14:00" e' piu' utile di "probabile fra una e tre ore": e' la stessa notizia,
+    // e la prima porta un'informazione che il barometro non ha.
+    val ledger = NotificationLedger(precipitationOnsetMillis = now + 2 * 3_600_000L)
+    val settings = NotificationSettings(officialAlerts = true, precipitation = true)
+
+    val quiet = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.72), settings = settings, ledger = ledger))
+    assertTrue(quiet.notifications.none { it.channel == NotificationChannelKind.NOWCAST_ALERT })
+
+    // Un annuncio per dopodomani non copre la finestra del verdetto: li' il barometro parla.
+    val far = ledger.copy(precipitationOnsetMillis = now + 30 * 3_600_000L)
+    val loud = decide(inputs(verdict = verdict(AlertLevel.ALLERTA, 0.72), settings = settings, ledger = far))
+    assertTrue(loud.notifications.any { it.channel == NotificationChannelKind.NOWCAST_ALERT })
+  }
 
   @Test
   fun `l'allerta del barometro esce solo al livello Allerta`() {

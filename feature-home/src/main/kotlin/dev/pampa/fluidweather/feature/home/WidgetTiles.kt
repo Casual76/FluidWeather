@@ -116,11 +116,19 @@ private fun NowcastTile(state: HomeUiState) {
     )
     return
   }
+  // Quello che si vede batte quello che si prevede. Con la pioggia in corso, la tessera lo dice
+  // e basta: il verdetto resta sotto, nelle tre finestre, dove serve a sapere quanto durera'.
+  val observation = state.nowcastExplanation?.observation?.takeIf { it.rainingNow }
+  val rate = observation?.intensityMmPerHour
   Text(
-    text = when (verdict.level) {
-      AlertLevel.QUIETE -> stringResource(R.string.tile_level_quiet)
-      AlertLevel.SORVEGLIANZA -> stringResource(R.string.tile_level_watch)
-      AlertLevel.ALLERTA -> stringResource(R.string.tile_level_alert)
+    text = when {
+      observation == null -> when (verdict.level) {
+        AlertLevel.QUIETE -> stringResource(R.string.tile_level_quiet)
+        AlertLevel.SORVEGLIANZA -> stringResource(R.string.tile_level_watch)
+        AlertLevel.ALLERTA -> stringResource(R.string.tile_level_alert)
+      }
+      rate != null -> stringResource(R.string.nowcast_raining_now_rate, String.format("%.1f", rate))
+      else -> stringResource(R.string.nowcast_raining_now)
     },
     style = MaterialTheme.typography.bodyMedium,
     color = MaterialTheme.colorScheme.onSurface,
@@ -152,7 +160,14 @@ private fun NowcastTile(state: HomeUiState) {
     }
   }
   val topFactor = verdict.windows.firstOrNull { it.window == "1-3h" }?.topFactors?.firstOrNull()
-  if (topFactor != null) {
+  if (observation != null) {
+    Spacer(Modifier.height(8.dp))
+    Text(
+      text = stringResource(R.string.nowcast_seen_by, observation.source),
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+    )
+  } else if (topFactor != null) {
     Spacer(Modifier.height(8.dp))
     Text(
       text = stringResource(R.string.tile_top_factor, stringResource(featureLabelRes(topFactor.name))),

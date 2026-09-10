@@ -13,9 +13,23 @@
     <meta-data
         android:name="com.google.android.geo.API_KEY"
         android:value="${mapsApiKey}" />
+    <!--
+        launchMode="singleTask" e' cio' che impedisce la seconda home.
+
+        Il widget lancia un ACTION_VIEW con un uri (i bersagli si distinguono per Uri, non per
+        extra), e Glance ci aggiunge FLAG_ACTIVITY_NEW_TASK. Con il launchMode di default il
+        sistema riusa il task ma **impila una seconda MainActivity**, perche' quell'intent non
+        combacia con l'intent di radice (ACTION_MAIN/CATEGORY_LAUNCHER): due setContent, due
+        NavHost, due home, e il tasto indietro che scopre quella di prima.
+
+        singleTask e non singleTop: singleTop riusa l'istanza solo se e' gia' IN CIMA, e con l'app
+        aperta su Radar o Impostazioni non lo e'. Da qui in poi il secondo tocco arriva a
+        onNewIntent, che era gia' scritto e non poteva essere chiamato.
+    -->
     <activity
         android:name=".MainActivity"
         android:exported="true"
+        android:launchMode="singleTask"
         android:theme="@style/Theme.FluidWeather">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />

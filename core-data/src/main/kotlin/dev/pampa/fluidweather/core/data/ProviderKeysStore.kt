@@ -2,8 +2,10 @@ package dev.pampa.fluidweather.core.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -15,7 +17,13 @@ import kotlinx.coroutines.flow.map
  * nell'APK, nessun segreto nel repo, nessun segreto mescolato alle preferenze — e un domani
  * l'export dei dati puo' escludere questo file e nient'altro.
  */
-private val Context.providerKeysStore: DataStore<Preferences> by preferencesDataStore(name = "provider_keys")
+private val Context.providerKeysStore: DataStore<Preferences> by preferencesDataStore(
+  name = "provider_keys",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 class ProviderKeysStore(private val context: Context) {
 

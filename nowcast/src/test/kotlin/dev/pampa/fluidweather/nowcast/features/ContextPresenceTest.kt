@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * Riconoscere un verdetto nato senza il contesto dei provider.
  *
- * Serve a non mescolare due popolazioni nella taratura di Platt: senza contesto sette feature su
+ * Serve a non mescolare due popolazioni nella taratura di Platt: senza contesto otto feature su
  * sedici sono NaN e il modello le imputa alla media, quindi la probabilita' grezza che ne esce ha
  * una distribuzione sua. La marcatura c'era gia' nell'archivio (i NaN si scrivono e si rileggono
  * come tali) e mancava solo chi la leggesse.
@@ -29,28 +29,29 @@ class ContextPresenceTest {
   @Test
   fun `basta una delle tre feature del contesto`() {
     // Umidita', copertura, vento: le tre che arrivano SEMPRE insieme quando il bundle c'e'.
-    assertTrue(FeatureExtractor.hasContext(vettore(7)))
-    assertTrue(FeatureExtractor.hasContext(vettore(9)))
+    assertTrue(FeatureExtractor.hasContext(vettore(8)))
     assertTrue(FeatureExtractor.hasContext(vettore(10)))
+    assertTrue(FeatureExtractor.hasContext(vettore(13)))
   }
 
   @Test
   fun `il solo barometro non conta come contesto`() {
-    // Le tendenze (0-4) e l'incertezza (6) ci sono anche senza rete: se contassero, ogni verdetto
-    // sembrerebbe completo e la partizione non servirebbe a niente.
-    assertFalse(FeatureExtractor.hasContext(vettore(0, 1, 2, 3, 4, 6)))
+    // Le tendenze (0-4) e l'anomalia di livello (5) ci sono anche senza rete: se contassero, ogni
+    // verdetto sembrerebbe completo e la partizione non servirebbe a niente.
+    assertFalse(FeatureExtractor.hasContext(vettore(0, 1, 2, 3, 4, 5, 6)))
   }
 
   @Test
   fun `la rotazione del vento da sola non basta`() {
-    // L'indice 11 e' NaN anche COL contesto, quando manca il punto di tre ore fa: guardarlo
+    // L'indice 14 e' NaN anche COL contesto, quando manca il punto di tre ore fa: guardarlo
     // farebbe scambiare per "senza contesto" dei verdetti che il contesto ce l'avevano.
-    assertFalse(FeatureExtractor.hasContext(vettore(11)))
+    assertFalse(FeatureExtractor.hasContext(vettore(14)))
   }
 
   @Test
-  fun `l'anomalia di livello non e' un indizio, e' sempre assente`() {
-    // L'indice 5 e' NaN sempre: nessuno passa ancora la normale climatica.
+  fun `l'anomalia di livello e' barica, non contesto`() {
+    // L'indice 5 lo produce l'archivio locale del telefono, non i provider: se contasse come
+    // contesto, un verdetto offline sembrerebbe completo.
     assertFalse(FeatureExtractor.hasContext(vettore(5)))
   }
 
@@ -64,8 +65,8 @@ class ContextPresenceTest {
   @Test
   fun `gli indici guardati sono davvero quelli del contesto`() {
     // Se qualcuno riordina `names`, questo test lo dice prima che la partizione diventi casuale.
-    assertEquals("umidita'", FeatureExtractor.names[7])
-    assertEquals("copertura", FeatureExtractor.names[9])
-    assertEquals("vento", FeatureExtractor.names[10])
+    assertEquals("umidita", FeatureExtractor.names[8])
+    assertEquals("copertura", FeatureExtractor.names[10])
+    assertEquals("vento", FeatureExtractor.names[13])
   }
 }

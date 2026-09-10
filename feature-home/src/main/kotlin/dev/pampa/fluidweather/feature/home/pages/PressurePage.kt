@@ -65,11 +65,11 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
       state.cleaning
     } else {
       val now = System.currentTimeMillis()
-      val samples = runCatching {
-        deps.pressureRepository.samplesSince(now - PeriodHours[period] * 3_600_000L)
-      }.getOrDefault(emptyList())
       withContext(Dispatchers.Default) {
-        runCatching { deps.cleaningPipeline.process(samples, temperatureCelsius = state.temperatureC) }.getOrNull()
+        // Dallo stesso posto da cui passa il verdetto: taratura, temperatura, quota di casa.
+        // Prima questa pagina ricalcolava con i valori di default, e cambiare periodo spostava
+        // il livello di tutta la curva senza che nei dati fosse cambiato niente.
+        deps.nowcast.clean(now - PeriodHours[period] * 3_600_000L, state.temperatureC)
       }
     }
   }

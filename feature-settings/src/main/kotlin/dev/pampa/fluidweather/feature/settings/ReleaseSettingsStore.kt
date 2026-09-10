@@ -2,8 +2,10 @@ package dev.pampa.fluidweather.feature.settings
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.antigravity.fluidengine.foundation.UpdateChannel
@@ -11,7 +13,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.releaseStore: DataStore<Preferences> by preferencesDataStore(name = "release")
+private val Context.releaseStore: DataStore<Preferences> by preferencesDataStore(
+  name = "release",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * Le scelte sull'aggiornamento (fase 18): il canale seguito e la versione che l'utente ha

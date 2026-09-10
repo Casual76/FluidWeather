@@ -37,7 +37,7 @@ class TrainersTest {
       labels += random.nextDouble() < 1.0 / (1.0 + kotlin.math.exp(2.0 * informative))
     }
 
-    val weights = LogisticTrainer().fit(features, labels)
+    val weights = LogisticTrainer().fit(features, labels).weights
     assertTrue("peso informativo ${weights[1]}", weights[1] < -1.0)
     assertTrue("peso rumore ${weights[2]}", abs(weights[2]) < 0.2)
   }
@@ -50,8 +50,10 @@ class TrainersTest {
 
     val bags = LogisticTrainer().fitBagged(features, labels)
     assertEquals(5, bags.size)
-    assertTrue(bags.all { it[1] > 0.5 })
-    assertTrue(bags.map { it[1] }.toSet().size > 1)
+    assertTrue(bags.all { it.weights[1] > 0.5 })
+    assertTrue(bags.map { it.weights[1] }.toSet().size > 1)
+    // Newton su un problema cosi' semplice deve arrivare, non avvicinarsi.
+    assertTrue(bags.all { it.converged })
   }
 
   @Test
@@ -66,7 +68,7 @@ class TrainersTest {
       (gbm.predict(features[i]) >= 0.5) == labels[i]
     }.toDouble() / features.size
 
-    val logistic = LogisticTrainer().fit(features, labels)
+    val logistic = LogisticTrainer().fit(features, labels).weights
     val logisticAccuracy = features.indices.count { i ->
       val score = logistic[0] + logistic[1] * features[i][0] + logistic[2] * features[i][1]
       (score >= 0.0) == labels[i]

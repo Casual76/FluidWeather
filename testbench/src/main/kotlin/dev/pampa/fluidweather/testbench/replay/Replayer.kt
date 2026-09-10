@@ -33,7 +33,13 @@ class ReplayOutcome(
  */
 class Replayer(
   private val pipeline: CleaningPipeline = CleaningPipeline(),
-  private val historyHours: Int = 72,
+  /** Il profilo di campionamento: IDEALE e' l'archivio, TELEFONO e' quello che l'app vedra'. */
+  private val profile: SamplingProfile = SamplingProfile.TELEFONO,
+  /**
+   * Ventiquattro ore, le stesse che il telefono tiene in finestra (NowcastUseCase). Erano
+   * settantadue: il banco giudicava una storia che in produzione non esiste.
+   */
+  private val historyHours: Int = 24,
   private val stepHours: Int = 3,
   private val windows: List<EventWindow> = EventWindow.Standard,
   private val predictors: List<Predictor> = listOf(
@@ -50,7 +56,7 @@ class Replayer(
     /** Costruisce anche le feature dello stadio 4 e mette in classifica il nowcast. */
     withNowcast: Boolean = false,
   ): ReplayOutcome {
-    val synthesizer = SampleSynthesizer(dataset)
+    val synthesizer = SampleSynthesizer(dataset, profile)
     val events = PrecipitationEvents(dataset.records)
     val climatologyRates = climatologyRates(dataset, events)
     val recordContext = if (withNowcast) RecordContext(dataset) else null
@@ -73,7 +79,11 @@ class Replayer(
         val temperature = dataset.records
           .lastOrNull { it.timestampMillis <= now && it.temperatureC != null }
           ?.temperatureC
-        val cleaning = pipeline.process(samples, temperatureCelsius = temperature)
+        val cleaning = pipeline.process(
+          samples,
+          temperatureCelsius = temperature,
+          referenceAltitudeMeters = dataset.elevationMeters,
+        )
         val rawFeatures = recordContext?.let { context ->
           FeatureExtractor.extract(
             cleaning = cleaning,

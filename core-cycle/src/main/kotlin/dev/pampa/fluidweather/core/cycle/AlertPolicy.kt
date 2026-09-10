@@ -21,6 +21,8 @@ data class AlertInputs(
   val verdict: NowcastVerdict?,
   val fusedHours: List<FusedHour>,
   val officialAlerts: List<OfficialAlert>,
+  /** Sta piovendo adesso, secondo cio' che si e' visto (quarto d'ora, radar). */
+  val rainingNow: Boolean = false,
 )
 
 /** Cosa consegnare, cosa ritirare, e la memoria aggiornata da scrivere. */
@@ -40,7 +42,10 @@ data class AlertDecision(
  * Le regole anti-rumore, tutte dichiarate:
  *  - allerta del barometro: solo al livello ALLERTA (decisione 2026-09-02); si ripete solo se
  *    sono passate [NOWCAST_REPEAT_MILLIS] o se la probabilita' e' salita di [NOWCAST_ESCALATION];
- *    quando il livello rientra, la notifica si ritira;
+ *    quando il livello rientra, la notifica si ritira. E tace del tutto in due casi: quando sta
+ *    gia' piovendo — annunciare pioggia a chi la sta prendendo e' rumore, non un servizio — e
+ *    quando la notifica di inizio precipitazione ha gia' detto la stessa cosa per lo stesso
+ *    periodo, con in piu' l'ora esatta che il barometro non sa;
  *  - inizio/fine precipitazione: un evento si annuncia una volta; un altro evento e' tale se
  *    dista piu' di [EVENT_DISTINCT_MILLIS] da quello gia' annunciato;
  *  - allerte ufficiali: ogni identificativo una volta sola, al massimo [MAX_OFFICIAL_PER_ROUND]
@@ -51,12 +56,28 @@ object AlertPolicy {
   const val NOWCAST_REPEAT_MILLIS: Long = 3 * 3_600_000L
   const val NOWCAST_ESCALATION: Double = 0.20
   const val EVENT_DISTINCT_MILLIS: Long = 2 * 3_600_000L
+
+  /** L'orizzonte del verdetto: oltre le sei ore le due notifiche non parlano piu' della stessa cosa. */
+  const val NOWCAST_HORIZON_MILLIS: Long = 6 * 3_600_000L
   const val MAX_OFFICIAL_PER_ROUND: Int = 3
 
   const val NOWCAST_ID = 100
   const val PRECIPITATION_ID = 200
   const val OFFICIAL_ID_BASE = 300
   const val SUMMARY_ID = 400
+
+  /**
+   * Il canale delle precipitazioni ha gia' annunciato l'inizio di questa pioggia?
+   *
+   * I provider dicono "pioggia alle 16:40", il barometro dice "probabile fra una e tre ore":
+   * sono la stessa notizia, e la prima e' piu' utile. Se e' gia' partita per un momento che cade
+   * dentro l'orizzonte del verdetto, il barometro non la ripete.
+   */
+  private fun alreadyAnnounced(inputs: AlertInputs): Boolean {
+    if (!inputs.settings.precipitation) return false
+    val onset = inputs.ledger.precipitationOnsetMillis ?: return false
+    return onset in inputs.nowMillis..(inputs.nowMillis + NOWCAST_HORIZON_MILLIS)
+  }
 
   fun decide(inputs: AlertInputs, texts: NotificationTexts): AlertDecision {
     val notifications = mutableListOf<AppNotification>()
@@ -66,7 +87,7 @@ object AlertPolicy {
     // ------------------------------------------------------------- allerta del barometro
     val verdict = inputs.verdict
     if (inputs.settings.nowcastAlert) {
-      if (verdict != null && verdict.level == AlertLevel.ALLERTA) {
+      if (verdict != null && verdict.level == AlertLevel.ALLERTA && !inputs.rainingNow && !alreadyAnnounced(inputs)) {
         val strongest = verdict.windows.maxByOrNull { it.probability }
         if (strongest != null) {
           val lastAt = ledger.nowcastAlertAtMillis

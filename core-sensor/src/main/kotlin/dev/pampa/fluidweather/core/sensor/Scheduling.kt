@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -47,9 +49,11 @@ class SamplingScheduler(
     }
   }
 
-  private companion object {
-    const val WORK_NAME = "pressure-sampling"
-    const val MIN_PERIODIC_MINUTES = 15
+  companion object {
+    /** Il nome unico del lavoro periodico: [SamplingHealth] lo interroga per sapere se c'e' ancora. */
+    internal const val WORK_NAME = "pressure-sampling"
+
+    private const val MIN_PERIODIC_MINUTES = 15
   }
 }
 
@@ -58,9 +62,49 @@ class PressureSamplingWorker(
   params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
+  /**
+   * **Non lascia mai uscire un'eccezione**, e non e' pigrizia difensiva.
+   *
+   * Un `doWork` che lancia vale `Result.failure()`, e per un lavoro **periodico** fallito
+   * WorkManager smette di riprogrammarlo: il campionamento si ferma per sempre, in silenzio, e
+   * quello stato vive nel database di WorkManager — dentro i *dati* dell'app, non nella cache. E'
+   * la strada piu' probabile per la barra ferma a "0 ore di 13" che ha costretto qualcuno a
+   * cancellare i dati.
+   *
+   * `retry()` invece di `success()` quando qualcosa e' andato storto: una passata persa si
+   * recupera al tentativo successivo, e lo stato resta ENQUEUED, che e' anche cio' che
+   * [SamplingHealth] va a guardare.
+   */
   override suspend fun doWork(): Result {
-    applicationContext.sensorRuntime().samplingEngine.runScheduledPass()
-    return Result.success()
+    val runtime = applicationContext.sensorRuntime()
+    runCatching { runtime.samplingHealth.check() }
+    return runCatching { runtime.samplingEngine.runScheduledPass() }
+      .fold(onSuccess = { Result.success() }, onFailure = { Result.retry() })
+  }
+}
+
+/**
+ * Il lavoro di una passata di MASSIMA, fuori dal receiver che l'ha svegliata.
+ *
+ * Una passata dura fino a cinquanta secondi — dieci di GPS, trenta di raffica, dieci di grazia —
+ * e dopo di essa parte il ciclo in background con le sue chiamate di rete. Farla dentro
+ * `goAsync()` di un BroadcastReceiver vuol dire sforare il budget del receiver e vedersi
+ * troncare la raffica a meta': i punti che sopravvivono hanno meno di quattro campioni, quindi
+ * saltano il controllo del MAD e finiscono nel filtro come se fossero buoni. Un Worker ha il suo
+ * wakelock e il suo tempo, e la catena di allarmi resta compito del receiver.
+ */
+class MaximaPassWorker(
+  appContext: Context,
+  params: WorkerParameters,
+) : CoroutineWorker(appContext, params) {
+
+  override suspend fun doWork(): Result {
+    val runtime = applicationContext.sensorRuntime()
+    // Stesso ragionamento di PressureSamplingWorker: qui il lavoro e' uno solo e non periodico,
+    // ma la catena di allarmi la riaggancia il receiver, quindi un'eccezione che sale non
+    // riporterebbe niente a nessuno.
+    return runCatching { runtime.samplingEngine.runScheduledPass() }
+      .fold(onSuccess = { Result.success() }, onFailure = { Result.retry() })
   }
 }
 
@@ -99,18 +143,29 @@ object MaximaAlarm {
 class MaximaAlarmReceiver : BroadcastReceiver() {
 
   override fun onReceive(context: Context, intent: Intent) {
+    // Il receiver fa due cose e nessuna delle due e' lunga: mette in coda la passata, e riaggancia
+    // la catena. Il campionamento vero e proprio vive nel Worker, dove c'e' tempo per farlo intero.
+    WorkManager.getInstance(context).enqueueUniqueWork(
+      MAXIMA_PASS_WORK,
+      ExistingWorkPolicy.KEEP,
+      OneTimeWorkRequestBuilder<MaximaPassWorker>().build(),
+    )
     val pending = goAsync()
     val runtime = context.sensorRuntime()
     CoroutineScope(Dispatchers.Default).launch {
       try {
-        runtime.samplingEngine.runScheduledPass()
         // Riapplicare la modalita' corrente e' anche il riaggancio della catena: se nel frattempo
         // l'utente ha cambiato modalita', qui la catena muore e subentra il lavoro periodico.
-        runtime.samplingScheduler.applyCurrentMode()
+        // Un'eccezione qui spezzerebbe la catena per sempre, senza dirlo a nessuno.
+        runCatching { runtime.samplingScheduler.applyCurrentMode() }
       } finally {
         pending.finish()
       }
     }
+  }
+
+  private companion object {
+    const val MAXIMA_PASS_WORK = "pressure-sampling-massima"
   }
 }
 
@@ -123,7 +178,7 @@ class BootReceiver : BroadcastReceiver() {
     val runtime = context.sensorRuntime()
     CoroutineScope(Dispatchers.Default).launch {
       try {
-        runtime.samplingScheduler.applyCurrentMode()
+        runCatching { runtime.samplingScheduler.applyCurrentMode() }
       } finally {
         pending.finish()
       }

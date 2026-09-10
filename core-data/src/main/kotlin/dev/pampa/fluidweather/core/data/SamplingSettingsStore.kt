@@ -2,9 +2,11 @@ package dev.pampa.fluidweather.core.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -20,7 +22,13 @@ import kotlinx.coroutines.flow.map
  * cui quello e' separato da noi: ognuno puo' migrare o azzerare il proprio file senza toccare
  * l'altro.
  */
-internal val Context.fluidWeatherStore: DataStore<Preferences> by preferencesDataStore(name = "fluidweather")
+internal val Context.fluidWeatherStore: DataStore<Preferences> by preferencesDataStore(
+  name = "fluidweather",
+  // Corrotto = si riparte da vuoto. Senza, ogni lettura E ogni scrittura falliscono per
+  // sempre, in silenzio (i chiamanti hanno tutti un runCatching), e l'unico rimedio resta
+  // cancellare i dati dell'app.
+  corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 data class SamplingSettings(
   /** BILANCIATA finche' l'onboarding (fase 15) non fa scegliere esplicitamente. */

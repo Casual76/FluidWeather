@@ -14,8 +14,8 @@ import java.time.Duration
  * dell'app: gira sul computer, una volta, e il risultato resta su disco cosi' com'e' arrivato.
  */
 class OpenMeteoFetcher(
-  private val startDate: String = "2023-09-01",
-  private val endDate: String = "2025-08-25",
+  private val startDate: String = "2022-09-01",
+  private val endDate: String = "2026-08-31",
 ) {
 
   private val client = HttpClient.newBuilder()
@@ -32,6 +32,10 @@ class OpenMeteoFetcher(
     "cloud_cover",
     "wind_speed_10m",
     "wind_direction_10m",
+    // CAPE: l'unica variabile convettiva che l'archivio offre e che i provider dell'app gia'
+    // portano (HourlyPoint.capeJkg). La probabilita' di precipitazione, invece, nell'archivio
+    // non esiste: e' una variabile di previsione, e addestrarci sopra sarebbe impossibile.
+    "cape",
   ).joinToString(",")
 
   fun fetchAll(locations: List<BenchLocation> = BenchLocations) {
@@ -54,11 +58,7 @@ class OpenMeteoFetcher(
         .header("User-Agent", "FluidWeather-testbench (uso non commerciale; dev.pampa.fluidweather)")
         .GET()
         .build()
-      val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-      check(response.statusCode() == 200) {
-        "fetch fallito per ${location.name}: HTTP ${response.statusCode()}"
-      }
-      val body = response.body()
+      val body = fetchWithRetry(request, location.name)
       check(body.lineSequence().count() > 100) { "risposta sospetta per ${location.name}" }
       target.writeText(body)
       println("  salvato: ${target.path} (${target.length() / 1024} KB)")
@@ -66,5 +66,30 @@ class OpenMeteoFetcher(
       Thread.sleep(1_000)
     }
     println("Dati meteo di Open-Meteo.com (CC BY 4.0) — uso non commerciale.")
+  }
+
+  /**
+   * Un servizio gratuito ogni tanto dice "basta" (HTTP 429), e la risposta giusta non e'
+   * insistere: e' aspettare piu' a lungo a ogni tentativo. Prima un 429 sull'ultima localita'
+   * buttava via anche le nove gia' scaricate.
+   */
+  private fun fetchWithRetry(request: HttpRequest, name: String): String {
+    var wait = FIRST_BACKOFF_MILLIS
+    for (attempt in 1..MAX_ATTEMPTS) {
+      val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+      if (response.statusCode() == 200) return response.body()
+      check(response.statusCode() == 429 && attempt < MAX_ATTEMPTS) {
+        "fetch fallito per $name: HTTP ${response.statusCode()}"
+      }
+      println("  429 (troppe richieste): aspetto ${wait / 1000} s e riprovo ($attempt/$MAX_ATTEMPTS)")
+      Thread.sleep(wait)
+      wait *= 2
+    }
+    error("fetch fallito per $name: troppi tentativi")
+  }
+
+  private companion object {
+    const val MAX_ATTEMPTS = 5
+    const val FIRST_BACKOFF_MILLIS = 15_000L
   }
 }

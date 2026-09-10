@@ -8,6 +8,7 @@ import dev.pampa.fluidweather.core.cycle.NotificationChannels
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.SamplingEngine
+import dev.pampa.fluidweather.core.sensor.SamplingHealth
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.sensor.SensorRuntime
 import dev.pampa.fluidweather.core.ui.TutorialCatalog
@@ -29,6 +30,7 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
 
   override val samplingEngine: SamplingEngine get() = graph.samplingEngine
   override val samplingScheduler: SamplingScheduler get() = graph.samplingScheduler
+  override val samplingHealth: SamplingHealth get() = graph.samplingHealth
   override val latestActivityStore: LatestActivityStore get() = graph.latestActivityStore
   override val calibrationController: CalibrationController get() = graph.calibrationController
   override val backgroundCycle: BackgroundCycle get() = graph.backgroundCycle
@@ -59,8 +61,19 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
     NotificationChannels.ensure(this)
     graph.activityRecognizer.start()
     graph.applicationScope.launch {
-      graph.samplingScheduler.applyCurrentMode()
-      graph.rescheduleDailySummary()
+      // Ognuno nel suo `runCatching`: senza, bastava che `applyCurrentMode` lanciasse (un file di
+      // preferenze corrotto, e prima non c'era un gestore della corruzione) perche' il
+      // campionamento non venisse mai schedulato, in silenzio, per sempre.
+      runCatching { graph.samplingScheduler.applyCurrentMode() }
+      // E subito dopo si verifica che sia davvero armato: applicarlo non basta a sapere che c'e'.
+      runCatching { graph.samplingHealth.check() }
+      runCatching { graph.rescheduleDailySummary() }
+      // La chiave dell'onboarding esce dal file della taratura, dove "cancella tutti i dati" se la
+      // portava via insieme al bias e faceva ripartire la presentazione (e quindi la taratura).
+      runCatching { graph.onboardingStore.migrateFromCalibrationStore() }
+      // Una raffica di taratura rimasta senza riferimento e' ancora tutta in archivio: si ritenta
+      // la stima invece di chiedere all'utente altri dieci minuti.
+      runCatching { graph.calibrationController.retryPendingEstimate() }
     }
     // La config remota (fase 18): si rinfresca solo se la copia in cache ha piu' di sei ore,
     // mai davanti al primo fotogramma; un download fallito lascia l'ultima risposta valida.

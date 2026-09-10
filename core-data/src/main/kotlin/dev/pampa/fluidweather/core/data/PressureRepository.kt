@@ -22,6 +22,20 @@ class PressureRepository(private val dao: PressureDao) {
 
   fun count(): Flow<Long> = dao.count()
 
+  /** La media oraria della pressione di stazione dall'istante dato a oggi; null se non c'e' nulla. */
+  suspend fun averageStationPressureSince(sinceMillis: Long): Double? =
+    dao.averageHourlyPressureSince(sinceMillis)
+
+  /** Da quando l'archivio parla: serve a sapere se la normale ha abbastanza storia dietro. */
+  suspend fun oldestSampleMillis(): Long? = dao.oldestTimestamp()
+
+  /** L'ultima lettura in archivio: il segno vitale del campionamento (vedi SamplingHealth). */
+  suspend fun latestSampleMillis(): Long? = dao.newestTimestamp()
+
+  /** I campioni di una raffica, per id: serve a ritentare una stima di taratura gia' raccolta. */
+  suspend fun samplesOfBurst(burstId: String): List<PressureSample> =
+    dao.samplesOfBurst(burstId).map { it.toModel() }
+
   /** Dati e privacy: l'archivio intero. */
   suspend fun clear() = dao.deleteOlderThan(Long.MAX_VALUE)
 

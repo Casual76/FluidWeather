@@ -32,8 +32,21 @@ data class AnalogSummary(
  */
 object Analogs {
 
-  /** Indici in FeatureExtractor.names: tendenza-1h, -3h, -6h, -12h, accelerazione-3h, incertezza, ora-sin, ora-cos. */
-  val featureIndices: IntArray = intArrayOf(0, 1, 2, 3, 4, 6, 14, 15)
+  /**
+   * Indici in FeatureExtractor.names: tendenza-1h, -3h, -6h, -12h, accelerazione-3h,
+   * anomalia-livello, caduta-3h, ora-sin, ora-cos. Tutto barico piu' l'ora solare: gli analoghi
+   * devono raccontare cio' che il barometro da solo ha visto, quindi niente feature che per
+   * esistere hanno bisogno dei provider.
+   */
+  val featureIndices: IntArray = intArrayOf(0, 1, 2, 3, 4, 5, 6, 18, 19)
+
+  /**
+   * Sotto questa deviazione una feature non e' una feature: e' una costante col rumore numerico
+   * attorno, e dividerci sopra produce numeri dell'ordine di 10^5 che si mangiano la distanza
+   * intera. E' successo davvero — la vecchia incertezza-tendenza aveva sd 1e-6 (il pavimento del
+   * trainer) e gli "analoghi storici" ordinavano di fatto per densita' di campionamento.
+   */
+  const val MIN_USABLE_SD: Double = 1e-3
 
   const val DEFAULT_NEIGHBOURS: Int = 25
 
@@ -46,7 +59,7 @@ object Analogs {
     DoubleArray(featureIndices.size) { k ->
       val i = featureIndices[k]
       val value = features.getOrNull(i) ?: Double.NaN
-      if (value.isNaN() || sds[i] <= 0.0) 0.0 else (value - means[i]) / sds[i]
+      if (value.isNaN() || sds[i] <= MIN_USABLE_SD) 0.0 else (value - means[i]) / sds[i]
     }
 
   fun distance(a: DoubleArray, b: DoubleArray): Double {

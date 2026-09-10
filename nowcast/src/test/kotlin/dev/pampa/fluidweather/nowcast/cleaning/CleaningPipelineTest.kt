@@ -126,6 +126,59 @@ class CleaningPipelineTest {
     assertTrue(result.filtered.all { abs(it.trendHpaPerHour) < 0.5 })
   }
 
+  /** Il ballonzolamento verticale del GPS, deterministico: sette valori che si ripetono. */
+  private fun jitter(index: Int): Double =
+    listOf(0.0, 9.0, -8.0, 7.0, -9.0, 8.0, -7.0)[index % 7]
+
+  @Test
+  fun `il ballonzolamento della quota GPS non entra nel segnale`() {
+    // Sei ore ferme a cento metri con pressione al mare costante. La quota *dichiarata* dal GPS
+    // balla di piu' o meno dieci metri, che ridotti punto per punto valgono 1,2 hPa: piu' del
+    // segnale sinottico che stiamo cercando. Dopo la traccia di quota, la serie deve essere
+    // piatta — un offset costante e' innocuo, il dente di sega no.
+    val seaLevel = 1013.0
+    val series = (0..24).map { i ->
+      sample(i * 900L, seaLevel / factor(100.0) + zigzag(i), altitude = 100.0 + jitter(i))
+    }
+    val result = pipeline.process(series)
+
+    val levels = result.filtered.map { it.levelHpa }
+    assertTrue("escursione del livello: ${levels.max() - levels.min()}", levels.max() - levels.min() < 0.15)
+    assertTrue(result.filtered.all { abs(it.trendHpaPerHour) < 0.15 })
+    // La quota di riduzione e' una sola per tutta la serie: nessun punto porta la propria.
+    assertEquals(1, result.cleaned.map { it.reductionAltitudeMeters }.distinct().size)
+  }
+
+  @Test
+  fun `la finestra che scorre non ridisegna la curva`() {
+    // Ventiquattro ore, e poi le stesse venti ore finali. Con la quota di riferimento persistita
+    // le due letture devono dare lo stesso livello: prima la mediana dell'intera finestra
+    // cambiava con la finestra, e la curva traslava a ogni refresh.
+    val seaLevel = 1013.0
+    val series = (0..96).map { i ->
+      sample(i * 900L, seaLevel / factor(100.0) + zigzag(i), altitude = 100.0 + jitter(i))
+    }
+    val whole = pipeline.process(series, referenceAltitudeMeters = 100.0)
+    val tail = pipeline.process(series.drop(16), referenceAltitudeMeters = 100.0)
+
+    assertEquals(whole.latest!!.levelHpa, tail.latest!!.levelHpa, 0.05)
+    assertEquals(100.0, whole.reductionAltitudeMeters, 1e-9)
+  }
+
+  @Test
+  fun `un trasloco confermato e' un gradino, non una tendenza`() {
+    // Il GPS e' cieco (nessuna quota), ma la serie vive davvero tre hPa piu' in basso da un
+    // certo punto in poi: tre punti d'accordo su venti minuti bastano a dichiararlo.
+    val before = (0..8).map { i -> sample(i * 900L, 1013.0 + zigzag(i)) }
+    val after = (9..16).map { i -> sample(i * 900L, 1010.0 + zigzag(i)) }
+    val result = pipeline.process(before + after)
+
+    assertEquals(1010.0, result.latest!!.levelHpa, 0.3)
+    // Senza la dichiarazione del gradino, tre hPa in un quarto d'ora sono -12 hPa/h.
+    assertTrue("tendenza: ${result.latest!!.trendHpaPerHour}", abs(result.latest!!.trendHpaPerHour) < 1.2)
+    assertTrue(result.cleaned.any { it.levelStep })
+  }
+
   @Test
   fun `il bias del dispositivo si sottrae prima di tutto`() {
     val series = (0..8).map { i -> sample(i * 900L, 1015.0) }

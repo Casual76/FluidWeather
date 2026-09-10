@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sereno di notte: la falce.
+
+  Serviva perche' `ic_weather_clear` e' un sole con i raggi, e alle due di notte il widget lo
+  disegnava lo stesso — la mappa dei disegni conosceva solo la condizione, mai l'ora.
+
+  A tratto come tutte le altre: accanto a un testo di peso iOS un glifo pieno legge molto piu'
+  pesante (regola del kit Glance dell'engine).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M20.2,14.6 A8.6,8.6 0 0,1 9.4,3.8 A8.6,8.6 0 1,0 20.2,14.6 z" />
+</vector>
