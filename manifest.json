@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.4.1",
+        "releaseDate": "2026-09-10",
+        "changelog": "Il cielo dipinto da capo, nell'app e nel widget. Il sole è una luce che accende il cielo intorno, non più un disco giallo; basso all'orizzonte diventa arancio e scalda tutta la linea. La luna è la fotografia vera del lato visibile (NASA/LRO) con l'ombra della fase disegnata sopra, anche nella pagina della luna. Le nuvole hanno la faccia al sole e la pancia in ombra; il cielo coperto è una coltre continua con la foschia sotto; la neve cade su tre piani, la pioggia su due con la scia che sfuma; il temporale lampeggia con i fulmini; la nebbia scorre a bande; le notti pulite hanno le stelle vere e la Via Lattea. Le nuvole cambiano ogni giorno.\n\nDalla 1.4.0, con la stessa base: il widget dipinge il cielo, l'app funziona davvero senza rete mostrando gli ultimi dati con la loro età, l'apertura aggiorna da sola senza schermate vuote, aprendo dal widget non si apre più una seconda schermata, la taratura del barometro regge lo spostamento fra quote diverse, e non resta più bloccata a \"0 ore di 13\".",
+        "releaseTag": "stable-fluidweather-v1.4.1",
+        "apkAsset": "fluidweather-1.4.1.apk",
+        "sizeBytes": 5130774
+      },
+      {
         "version": "1.4.0",
         "releaseDate": "2026-09-10",
         "changelog": "Il widget dipinge il cielo vero: sole, luna con la sua fase, nuvole secondo la copertura, pioggia e neve. Prima era solo un gradiente, e di notte con il cielo sereno disegnava un sole. Sole e luna arrivano anche nella schermata dell'app, dove mancavano.\n\nL'app funziona davvero senza rete: i dati dell'ultimo giro vanno in scena subito, prima ancora di chiedere la posizione, e non spariscono piu' dopo dodici ore o dopo tre chilometri di spostamento. Quanto sono vecchi lo dice la testata.\n\nAll'apertura e a ogni ritorno sulla home parte un aggiornamento da solo, in silenzio: finche' non arriva restano in scena i dati di prima, senza schermate vuote.\n\nAprendo l'app dal widget non si apre piu' una seconda schermata sopra quella gia' aperta.\n\nLa taratura del barometro regge lo spostamento: se durante i dieci minuti si passa per posti a quote diverse, ogni tratto fermo viene misurato per conto suo e i minuti in auto si scartano. Se il telefono non sta mai fermo la taratura aspetta, invece di dare un numero sbagliato.\n\nRisolto il caso in cui, dopo qualche giorno, l'app tornava a chiedere la taratura e restava a \"0 ore di 13\" per sempre: il campionamento poteva fermarsi in silenzio e nessuno se ne accorgeva. Ora un controllo lo rimette in piedi da solo, e dalla Diagnostica si vede se e' vivo.\n\nAnche gli \"apri\" dell'assistente Aria funzionano tutti: prima solo il nowcast arrivava a destinazione.",
@@ -97,20 +105,20 @@
       }
     ],
     "beta": {
-      "version": "1.4.1",
+      "version": "1.4.2",
       "releaseDate": "2026-09-10",
-      "changelog": "Il cielo dipinto da capo, nell'app e nel widget. Il sole è una luce che accende il cielo intorno, non più un disco giallo; basso all'orizzonte diventa arancio e scalda tutta la linea. La luna è la fotografia vera del lato visibile (NASA/LRO) con l'ombra della fase disegnata sopra, anche nella pagina della luna. Le nuvole hanno la faccia al sole e la pancia in ombra; il cielo coperto è una coltre continua con la foschia sotto; la neve cade su tre piani, la pioggia su due con la scia che sfuma; il temporale lampeggia con i fulmini; la nebbia scorre a bande; le notti pulite hanno le stelle vere e la Via Lattea. Le nuvole cambiano ogni giorno.\n\nDalla 1.4.0, con la stessa base: il widget dipinge il cielo, l'app funziona davvero senza rete mostrando gli ultimi dati con la loro età, l'apertura aggiorna da sola senza schermate vuote, aprendo dal widget non si apre più una seconda schermata, la taratura del barometro regge lo spostamento fra quote diverse, e non resta più bloccata a \"0 ore di 13\".",
-      "releaseTag": "stable-fluidweather-v1.4.1",
-      "apkAsset": "fluidweather-1.4.1.apk",
-      "sizeBytes": 5130774
+      "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
+      "releaseTag": "stable-fluidweather-v1.4.2",
+      "apkAsset": "fluidweather-1.4.2.apk",
+      "sizeBytes": 5147986
     },
     "stable": {
-      "version": "1.4.1",
+      "version": "1.4.2",
       "releaseDate": "2026-09-10",
-      "changelog": "Il cielo dipinto da capo, nell'app e nel widget. Il sole è una luce che accende il cielo intorno, non più un disco giallo; basso all'orizzonte diventa arancio e scalda tutta la linea. La luna è la fotografia vera del lato visibile (NASA/LRO) con l'ombra della fase disegnata sopra, anche nella pagina della luna. Le nuvole hanno la faccia al sole e la pancia in ombra; il cielo coperto è una coltre continua con la foschia sotto; la neve cade su tre piani, la pioggia su due con la scia che sfuma; il temporale lampeggia con i fulmini; la nebbia scorre a bande; le notti pulite hanno le stelle vere e la Via Lattea. Le nuvole cambiano ogni giorno.\n\nDalla 1.4.0, con la stessa base: il widget dipinge il cielo, l'app funziona davvero senza rete mostrando gli ultimi dati con la loro età, l'apertura aggiorna da sola senza schermate vuote, aprendo dal widget non si apre più una seconda schermata, la taratura del barometro regge lo spostamento fra quote diverse, e non resta più bloccata a \"0 ore di 13\".",
-      "releaseTag": "stable-fluidweather-v1.4.1",
-      "apkAsset": "fluidweather-1.4.1.apk",
-      "sizeBytes": 5130774
+      "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
+      "releaseTag": "stable-fluidweather-v1.4.2",
+      "apkAsset": "fluidweather-1.4.2.apk",
+      "sizeBytes": 5147986
     }
   },
   "engine": {
