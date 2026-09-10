@@ -18,3 +18,8 @@ testbench/reports/
 # Le tracce che la JVM lascia cadendo (crash del daemon di Gradle): non sono codice.
 hs_err_pid*.log
 replay_pid*.log
+
+# Il banco di anteprima del cielo (tools/skypreview): i fotogrammi si rigenerano con `gradlew -p tools/skypreview run`.
+tools/skypreview/out/
+tools/skypreview/.gradle/
+tools/skypreview/.kotlin/

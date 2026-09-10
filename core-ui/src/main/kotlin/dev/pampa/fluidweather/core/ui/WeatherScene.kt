@@ -4,40 +4,26 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
-import dev.pampa.fluidweather.core.model.DayPhase
-import dev.pampa.fluidweather.core.model.WeatherKind
+import kotlin.math.roundToInt
 import kotlinx.coroutines.android.awaitFrame
-
-/** Quanta scena ci si puo' permettere: deciso dal vetro adattivo, non dalla scena stessa. */
-enum class SceneQuality { FULL, REDUCED, STATIC }
-
-data class SkyState(
-  val phase: DayPhase,
-  val kind: WeatherKind?,
-  val cloudCoverPercent: Double?,
-  /**
-   * Dove sei, per sapere dove sta il sole e se c'e' la luna. Null = si ripiega sull'orologio,
-   * come gia' fa la fase del giorno quando la posizione non e' ancora arrivata.
-   */
-  val latitude: Double? = null,
-  val longitude: Double? = null,
-)
 
 /**
  * Il cielo animato a tutto schermo: gradiente atmosferico per fase del giorno, il sole o la luna
- * (con la sua fase vera) al loro posto, nuvole vaporose che scorrono con parallasse, stelle che
- * tremolano nelle notti pulite, pioggia e neve come particelle vere.
+ * (con la sua fase vera) al loro posto, cumuli con la faccia al sole e la pancia in ombra o la
+ * coltre del cielo coperto, cirri, stelle che tremolano e la Via Lattea nelle notti pulite,
+ * pioggia e neve su piu' piani, i lampi del temporale, la nebbia a bande.
  *
  * **Ogni fotogramma di questa scena non costa solo questa scena.** Il cielo e' la sorgente del
  * vetro: quando si ridisegna, il suo sottoalbero viene registrato di nuovo in un GraphicsLayer e
@@ -66,9 +52,11 @@ fun WeatherScene(
   val sky = remember(state) { SkyPalette.sky(state.phase, state.kind, state.cloudCoverPercent) }
 
   // Il cielo cambia colore con calma: un fronte che arriva e' una dissolvenza, non uno scatto.
-  val top by animateColorAsState(sky.gradient[0], FluidMotion.color(1200), label = "sky-top")
-  val mid by animateColorAsState(sky.gradient[1], FluidMotion.color(1200), label = "sky-mid")
-  val bottom by animateColorAsState(sky.gradient[2], FluidMotion.color(1200), label = "sky-bottom")
+  // Si animano le cinque fermate e i tre colori delle nuvole, e il fotogramma legge quelli.
+  val stops = sky.stops.mapIndexed { index, (_, color) -> animatedSkyColor(color, "sky-$index") }
+  val cloud = animatedSkyColor(sky.cloudColor, "cloud")
+  val cloudShadow = animatedSkyColor(sky.cloudShadow, "cloud-shadow")
+  val haze = animatedSkyColor(sky.hazeColor, "haze")
 
   val reducedMotion = LocalFluidMotionPolicy.current.reducedMotion
   val animated = quality != SceneQuality.STATIC && !reducedMotion
@@ -90,9 +78,13 @@ fun WeatherScene(
     }
   }
 
-  val particles = remember(state.kind, quality) { ParticleField(state.kind, quality) }
-  val clouds = remember { CloudField() }
-  val stars = remember { StarField() }
+  // La geometria della scena (dove stanno le nuvole, le stelle, i fiocchi) si decide una volta e
+  // resta finche' non cambia il tempo. La copertura si arrotonda al 10%: un 43% che diventa 44%
+  // non deve rifare le nuvole da capo.
+  val coverBucket = ((state.cloudCoverPercent ?: SkyPalette.defaultCover(state.kind)) / 10.0).roundToInt() * 10.0
+  val painter = remember(state.kind, coverBucket, quality) {
+    SkyScenePainter(state.copy(cloudCoverPercent = coverBucket), quality, SkyVariation.seedFor(System.currentTimeMillis()))
+  }
   // L'astro si ricalcola a ogni minuto di orologio, non a ogni fotogramma: si sposta di un
   // quattrocentesimo di schermo al minuto, e le effemeridi non sono gratis.
   val minute = (frameSeconds / 60f).toInt()
@@ -101,15 +93,20 @@ fun WeatherScene(
   }
 
   Canvas(modifier) {
-    drawRect(Brush.verticalGradient(0f to top, 0.55f to mid, 1f to bottom))
-    val t = if (animated) frameSeconds else 0f
-    if (sky.starAlpha > 0f) stars.draw(this, t, sky.starAlpha)
-    // L'ordine e' il punto: l'astro sta **dietro** le nuvole, come fuori dalla finestra.
-    body?.let { CelestialPainter.draw(this, it, sky) }
-    clouds.draw(this, t, sky, state.cloudCoverPercentOrDefault())
-    particles.draw(this, t)
+    val animatedSky = sky.copy(
+      stops = sky.stops.mapIndexed { index, (at, _) -> at to stops[index].value },
+      gradient = listOf(stops[0].value, stops[2].value, stops[4].value),
+      cloudColor = cloud.value,
+      cloudShadow = cloudShadow.value,
+      hazeColor = haze.value,
+    )
+    painter.draw(this, animatedSky, body, if (animated) frameSeconds else 0f)
   }
 }
+
+@Composable
+private fun animatedSkyColor(target: Color, label: String): State<Color> =
+  animateColorAsState(target, FluidMotion.color(1200), label = label)
 
 /**
  * Il passo del cielo: 30 fotogrammi al secondo. Non e' una resa piu' bassa, e' la stessa scena
