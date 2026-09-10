@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.4.2",
+        "releaseDate": "2026-09-10",
+        "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
+        "releaseTag": "stable-fluidweather-v1.4.2",
+        "apkAsset": "fluidweather-1.4.2.apk",
+        "sizeBytes": 5147986
+      },
+      {
         "version": "1.4.1",
         "releaseDate": "2026-09-10",
         "changelog": "Il cielo dipinto da capo, nell'app e nel widget. Il sole è una luce che accende il cielo intorno, non più un disco giallo; basso all'orizzonte diventa arancio e scalda tutta la linea. La luna è la fotografia vera del lato visibile (NASA/LRO) con l'ombra della fase disegnata sopra, anche nella pagina della luna. Le nuvole hanno la faccia al sole e la pancia in ombra; il cielo coperto è una coltre continua con la foschia sotto; la neve cade su tre piani, la pioggia su due con la scia che sfuma; il temporale lampeggia con i fulmini; la nebbia scorre a bande; le notti pulite hanno le stelle vere e la Via Lattea. Le nuvole cambiano ogni giorno.\n\nDalla 1.4.0, con la stessa base: il widget dipinge il cielo, l'app funziona davvero senza rete mostrando gli ultimi dati con la loro età, l'apertura aggiorna da sola senza schermate vuote, aprendo dal widget non si apre più una seconda schermata, la taratura del barometro regge lo spostamento fra quote diverse, e non resta più bloccata a \"0 ore di 13\".",
@@ -105,20 +113,20 @@
       }
     ],
     "beta": {
-      "version": "1.4.2",
+      "version": "1.4.3",
       "releaseDate": "2026-09-10",
       "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
-      "releaseTag": "stable-fluidweather-v1.4.2",
-      "apkAsset": "fluidweather-1.4.2.apk",
-      "sizeBytes": 5147986
+      "releaseTag": "stable-fluidweather-v1.4.3",
+      "apkAsset": "fluidweather-1.4.3.apk",
+      "sizeBytes": 5147989
     },
     "stable": {
-      "version": "1.4.2",
+      "version": "1.4.3",
       "releaseDate": "2026-09-10",
       "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
-      "releaseTag": "stable-fluidweather-v1.4.2",
-      "apkAsset": "fluidweather-1.4.2.apk",
-      "sizeBytes": 5147986
+      "releaseTag": "stable-fluidweather-v1.4.3",
+      "apkAsset": "fluidweather-1.4.3.apk",
+      "sizeBytes": 5147989
     }
   },
   "engine": {
