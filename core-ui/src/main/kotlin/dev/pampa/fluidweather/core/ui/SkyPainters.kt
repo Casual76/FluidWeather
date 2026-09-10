@@ -116,15 +116,20 @@ object Celestial {
   private fun fromClock(nowMillis: Long, zone: ZoneId): CelestialBody {
     val hour = Instant.ofEpochMilli(nowMillis).atZone(zone).hour
     val day = hour in 7..18
-    val span = if (day) (hour - 7) / 11f else ((hour + 5) % 24) / 12f
+    // Quanto si e' avanti nell'arco, da 0 (appena sorto) a 1 (sta per tramontare).
+    val span = (if (day) (hour - 7) / 11.0 else ((hour + 5) % 24) / 12.0).coerceIn(0.0, 1.0)
     return CelestialBody(
       kind = if (day) CelestialBody.Kind.SUN else CelestialBody.Kind.MOON,
-      x = 0.12f + span.coerceIn(0f, 1f) * 0.76f,
-      y = arcY(60.0 * sin(span.coerceIn(0f, 1f) * PI).toFloat().toDouble()),
+      x = (0.12 + span * 0.76).toFloat(),
+      // Una mezza campana: basso agli estremi, alto a meta' corsa.
+      y = arcY(MAX_FAKE_ALTITUDE_DEG * sin(span * PI)),
       illuminated = if (day) 1f else 0.5f,
       waxing = true,
     )
   }
+
+  /** L'altezza che si finge a meta' arco quando non si sa dove si e': un cielo di mezza stagione. */
+  private const val MAX_FAKE_ALTITUDE_DEG = 55.0
 
   /** Da est a ovest lungo l'arco: 0,12 all'alba, 0,88 al tramonto. */
   private fun arcX(nowMillis: Long, riseSet: Pair<Long?, Long?>, zone: ZoneId): Float {
