@@ -9,6 +9,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import dev.antigravity.fluidengine.foundation.AppUpdateInstallState
 import dev.antigravity.fluidengine.foundation.AvailableAppUpdate
 import dev.antigravity.fluidengine.ui.fluid.FluidAlert
@@ -28,8 +31,13 @@ private sealed interface PromptState {
 
 /**
  * Il controllo degli aggiornamenti all'apertura (fase 18, completata il 2026-09-03): l'app guarda
- * il manifest una volta per avvio e, se c'e' una versione nuova sul canale scelto, lo dice con un
- * avviso invece di aspettare che qualcuno vada a cercarlo nelle impostazioni.
+ * il manifest e, se c'e' una versione nuova sul canale scelto, lo dice con un avviso invece di
+ * aspettare che qualcuno vada a cercarlo nelle impostazioni.
+ *
+ * Quando guarda lo decide [UpdateCheckPolicy]: a ogni ritorno in primo piano ma non piu' di una
+ * volta ogni sei ore, con qualche ritentativo se la rete non e' pronta. Non era cosi' — una volta
+ * sola alla creazione dell'Activity, un solo tentativo — e con un'app tenuta viva in background
+ * una release poteva restare invisibile per giorni; la storia completa sta nel KDoc della policy.
  *
  * Tre modi di rispondere, e nessuno e' una trappola: si aggiorna subito, si rimanda (torna al
  * prossimo avvio), o si salta quella versione (non torna piu' finche' non ne esce un'altra). Un
@@ -41,13 +49,24 @@ fun AppUpdatePrompt(deps: UpdateDependencies, enabled: Boolean = true) {
   val scope = rememberCoroutineScope()
   var state by remember { mutableStateOf<PromptState>(PromptState.Quiet) }
   var install by remember { mutableStateOf<Job?>(null) }
+  val policy = remember(deps) { UpdateCheckPolicy() }
 
-  LaunchedEffect(deps) {
-    val channel = deps.releaseSettings.channel.first()
-    val ignored = deps.releaseSettings.ignoredVersion.first()
-    deps.updater
-      .check(currentVersionName = deps.appVersion, channel = channel, ignoredVersion = ignored)
-      .onSuccess { update -> if (update != null) state = PromptState.Found(update) }
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  LaunchedEffect(deps, lifecycle) {
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      val now = System.currentTimeMillis()
+      if (!policy.shouldCheck(now)) return@repeatOnLifecycle
+      policy.markAttempt(now)
+      val channel = deps.releaseSettings.channel.first()
+      val ignored = deps.releaseSettings.ignoredVersion.first()
+      val update = policy.retrying {
+        deps.updater.check(currentVersionName = deps.appVersion, channel = channel, ignoredVersion = ignored)
+      }
+      // Solo da fermi: un avviso sopra un'installazione in corso sarebbero due storie insieme.
+      if (update != null && !policy.isDeferred(update.version) && state is PromptState.Quiet) {
+        state = PromptState.Found(update)
+      }
+    }
   }
 
   val current = state
@@ -91,7 +110,13 @@ fun AppUpdatePrompt(deps: UpdateDependencies, enabled: Boolean = true) {
             }
           },
         ),
-        FluidAlertAction(label = later, onClick = { dismiss() }),
+        FluidAlertAction(
+          label = later,
+          onClick = {
+            policy.defer(current.update.version)
+            dismiss()
+          },
+        ),
         FluidAlertAction(
           label = skip,
           onClick = {
