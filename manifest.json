@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.3.0",
+        "releaseDate": "2026-09-08",
+        "changelog": "Il meteo parla con Aria: sette strumenti nuovi (il riepilogo del tempo, la finestra asciutta, il confronto fra luoghi, le unita', la rimozione di una localita' o di un'osservazione, lo stato della calibrazione) e il ponte che espone all'assistente PampAI tutti e trentaquattro.",
+        "releaseTag": "stable-fluidweather-v1.3.0",
+        "apkAsset": "fluidweather-1.3.0.apk",
+        "sizeBytes": 4754022
+      },
+      {
         "version": "1.2.1",
         "releaseDate": "2026-09-04",
         "changelog": "Il widget compatto usa lo spazio che restava in fondo: ora mostra la massima e la minima di oggi e\nla probabilità di pioggia più alta nelle prossime sei ore, con una goccia accanto perché il numero\nnon si confonda con l'umidità.\n\nNel widget largo e basso stanno sulla stessa riga del nome del posto, così non rubano altezza; in\nquello piccolo vanno a capo. Il widget grande resta com'era: sotto ha già le prossime ore.\n\nLa massima e la minima sono quelle del giorno, non delle prossime ventiquattro ore — alle undici di\nsera la seconda sarebbe quella di domani — e sono le stesse che scrive la testata dell'app.",
@@ -81,20 +89,20 @@
       }
     ],
     "beta": {
-      "version": "1.3.0",
-      "releaseDate": "2026-09-08",
-      "changelog": "Il meteo parla con Aria: sette strumenti nuovi (il riepilogo del tempo, la finestra asciutta, il confronto fra luoghi, le unita', la rimozione di una localita' o di un'osservazione, lo stato della calibrazione) e il ponte che espone all'assistente PampAI tutti e trentaquattro.",
-      "releaseTag": "stable-fluidweather-v1.3.0",
-      "apkAsset": "fluidweather-1.3.0.apk",
-      "sizeBytes": 4754022
+      "version": "1.4.0",
+      "releaseDate": "2026-09-10",
+      "changelog": "Il widget dipinge il cielo vero: sole, luna con la sua fase, nuvole secondo la copertura, pioggia e neve. Prima era solo un gradiente, e di notte con il cielo sereno disegnava un sole. Sole e luna arrivano anche nella schermata dell'app, dove mancavano.\n\nL'app funziona davvero senza rete: i dati dell'ultimo giro vanno in scena subito, prima ancora di chiedere la posizione, e non spariscono piu' dopo dodici ore o dopo tre chilometri di spostamento. Quanto sono vecchi lo dice la testata.\n\nAll'apertura e a ogni ritorno sulla home parte un aggiornamento da solo, in silenzio: finche' non arriva restano in scena i dati di prima, senza schermate vuote.\n\nAprendo l'app dal widget non si apre piu' una seconda schermata sopra quella gia' aperta.\n\nLa taratura del barometro regge lo spostamento: se durante i dieci minuti si passa per posti a quote diverse, ogni tratto fermo viene misurato per conto suo e i minuti in auto si scartano. Se il telefono non sta mai fermo la taratura aspetta, invece di dare un numero sbagliato.\n\nRisolto il caso in cui, dopo qualche giorno, l'app tornava a chiedere la taratura e restava a \"0 ore di 13\" per sempre: il campionamento poteva fermarsi in silenzio e nessuno se ne accorgeva. Ora un controllo lo rimette in piedi da solo, e dalla Diagnostica si vede se e' vivo.\n\nAnche gli \"apri\" dell'assistente Aria funzionano tutti: prima solo il nowcast arrivava a destinazione.",
+      "releaseTag": "stable-fluidweather-v1.4.0",
+      "apkAsset": "fluidweather-1.4.0.apk",
+      "sizeBytes": 4809282
     },
     "stable": {
-      "version": "1.3.0",
-      "releaseDate": "2026-09-08",
-      "changelog": "Il meteo parla con Aria: sette strumenti nuovi (il riepilogo del tempo, la finestra asciutta, il confronto fra luoghi, le unita', la rimozione di una localita' o di un'osservazione, lo stato della calibrazione) e il ponte che espone all'assistente PampAI tutti e trentaquattro.",
-      "releaseTag": "stable-fluidweather-v1.3.0",
-      "apkAsset": "fluidweather-1.3.0.apk",
-      "sizeBytes": 4754022
+      "version": "1.4.0",
+      "releaseDate": "2026-09-10",
+      "changelog": "Il widget dipinge il cielo vero: sole, luna con la sua fase, nuvole secondo la copertura, pioggia e neve. Prima era solo un gradiente, e di notte con il cielo sereno disegnava un sole. Sole e luna arrivano anche nella schermata dell'app, dove mancavano.\n\nL'app funziona davvero senza rete: i dati dell'ultimo giro vanno in scena subito, prima ancora di chiedere la posizione, e non spariscono piu' dopo dodici ore o dopo tre chilometri di spostamento. Quanto sono vecchi lo dice la testata.\n\nAll'apertura e a ogni ritorno sulla home parte un aggiornamento da solo, in silenzio: finche' non arriva restano in scena i dati di prima, senza schermate vuote.\n\nAprendo l'app dal widget non si apre piu' una seconda schermata sopra quella gia' aperta.\n\nLa taratura del barometro regge lo spostamento: se durante i dieci minuti si passa per posti a quote diverse, ogni tratto fermo viene misurato per conto suo e i minuti in auto si scartano. Se il telefono non sta mai fermo la taratura aspetta, invece di dare un numero sbagliato.\n\nRisolto il caso in cui, dopo qualche giorno, l'app tornava a chiedere la taratura e restava a \"0 ore di 13\" per sempre: il campionamento poteva fermarsi in silenzio e nessuno se ne accorgeva. Ora un controllo lo rimette in piedi da solo, e dalla Diagnostica si vede se e' vivo.\n\nAnche gli \"apri\" dell'assistente Aria funzionano tutti: prima solo il nowcast arrivava a destinazione.",
+      "releaseTag": "stable-fluidweather-v1.4.0",
+      "apkAsset": "fluidweather-1.4.0.apk",
+      "sizeBytes": 4809282
     }
   },
   "engine": {
