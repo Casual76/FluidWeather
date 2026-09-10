@@ -10,7 +10,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.SolarEphemeris
 import dev.pampa.fluidweather.core.model.WeatherKind
+import androidx.compose.ui.geometry.Offset
 import dev.pampa.fluidweather.core.ui.Celestial
+import dev.pampa.fluidweather.core.ui.MoonPainter
 import dev.pampa.fluidweather.core.ui.CelestialBody
 import dev.pampa.fluidweather.core.ui.SceneQuality
 import dev.pampa.fluidweather.core.ui.SkyFrame
@@ -128,6 +130,25 @@ fun main(args: Array<String>) {
       }
     }
     save(contactSheet("variants", 4, CELL_W, CELL_H, cells), File(out, "sheet-variants.png"))
+  }
+
+  if (only == null || "moon" in only) {
+    // Le fasi della luna, crescente sopra e calante sotto: la parte chiara deve essere quella
+    // illuminata (a destra crescendo, a sinistra calando) e larga quanto dice la frazione.
+    val sky = SkyPalette.sky(DayPhase.NIGHT, WeatherKind.CLEAR, null)
+    val fractions = listOf(0.05f, 0.25f, 0.5f, 0.75f, 0.95f)
+    val cells = mutableListOf<Pair<String, BufferedImage>>()
+    for (waxing in listOf(true, false)) {
+      for (lit in fractions) {
+        val bitmap = ImageBitmap(160, 160)
+        CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(bitmap), Size(160f, 160f)) {
+          drawRect(sky.gradient[1])
+          MoonPainter.disc(this, moon, Offset(80f, 80f), 60f, lit, waxing, sky.gradient[1])
+        }
+        cells += "${if (waxing) "crescente" else "calante"} ${(lit * 100).toInt()}%" to bitmap.toAwtImage()
+      }
+    }
+    save(contactSheet("moon", 5, 160, 160, cells), File(out, "sheet-moon.png"))
   }
 
   if (only == null || "lightning" in only) {

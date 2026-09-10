@@ -523,8 +523,11 @@ internal object MoonPainter {
       )
       // La fase: un secondo disco del colore del cielo che morde il primo, col bordo morbido.
       // Il terminatore vero e' un'ellisse, ma a questi raggi un cerchio spostato e' identico.
+      // L'ombra si allontana quanto piu' la luna e' piena: a meta' il suo centro sta sul bordo,
+      // a un decimo copre nove decimi, a nove decimi ne morde uno. Nella 1.4.1 lo scostamento
+      // era `2R * (1 - lit)`, cioe' la fase al contrario: chiara quando doveva essere in ombra.
       if (lit < 0.985f) {
-        val offset = radius * 2f * (1f - lit)
+        val offset = radius * 2f * lit
         val direction = if (waxing) -1f else 1f
         val shadowCenter = Offset(center.x + direction * offset, center.y)
         drawCircle(
