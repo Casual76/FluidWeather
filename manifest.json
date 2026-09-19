@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.4.3",
+        "releaseDate": "2026-09-10",
+        "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
+        "releaseTag": "stable-fluidweather-v1.4.3",
+        "apkAsset": "fluidweather-1.4.3.apk",
+        "sizeBytes": 5147989
+      },
+      {
         "version": "1.4.2",
         "releaseDate": "2026-09-10",
         "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
@@ -113,20 +121,20 @@
       }
     ],
     "beta": {
-      "version": "1.4.3",
-      "releaseDate": "2026-09-10",
-      "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
-      "releaseTag": "stable-fluidweather-v1.4.3",
-      "apkAsset": "fluidweather-1.4.3.apk",
-      "sizeBytes": 5147989
+      "version": "1.4.4",
+      "releaseDate": "2026-09-19",
+      "changelog": "Gli interruttori sono quelli di vetro vero.\n\nIl pomello e' l'unica lastra del controllo: a riposo e' bianco pieno, e tenuto premuto il bianco sparisce e sotto si apre una copia schiacciata della pista, con la frangia cromatica sul bordo. Si commutano con un tocco in qualunque punto, oppure trascinando il pomello, e prendono il colore d'accento dell'app.\n\nFluid Engine 2.3.2.",
+      "releaseTag": "stable-fluidweather-v1.4.4",
+      "apkAsset": "fluidweather-1.4.4.apk",
+      "sizeBytes": 5147979
     },
     "stable": {
-      "version": "1.4.3",
-      "releaseDate": "2026-09-10",
-      "changelog": "Correzioni e piccoli miglioramenti.\n\nAssistente: OpenRouter non riceve più \"niente addestramento\" a ogni richiesta (decide la politica del tuo account), quindi i modelli gratuiti tornano a rispondere invece dell'errore permanente sugli endpoint. Radar: legenda e barra del tempo in vetro come i tasti, etichette delle località che seguono il tema (non più sempre scure), la mezz'ora di previsione del radar disegnata tratteggiata dopo \"adesso\", e si può ingrandire oltre lo zoom nativo — i tile si ricavano dal livello massimo. La pioggia cade lungo la propria inclinazione: prima i tratti erano piegati dal vento ma scendevano in verticale. La neve va di traverso col vento, la forte di più. Nelle righe orarie e nei giorni, di notte il sereno ha la luna e non il sole. \"1 giorno\", \"1 ora\", \"nell’ultima ora\" al singolare. La barra del barometro dice quando la taratura sta aspettando un momento fermo, e i testi non promettono più dieci minuti esatti (di più se ti muovi). Piccole sviste di lingua e di formato dei numeri.",
-      "releaseTag": "stable-fluidweather-v1.4.3",
-      "apkAsset": "fluidweather-1.4.3.apk",
-      "sizeBytes": 5147989
+      "version": "1.4.4",
+      "releaseDate": "2026-09-19",
+      "changelog": "Gli interruttori sono quelli di vetro vero.\n\nIl pomello e' l'unica lastra del controllo: a riposo e' bianco pieno, e tenuto premuto il bianco sparisce e sotto si apre una copia schiacciata della pista, con la frangia cromatica sul bordo. Si commutano con un tocco in qualunque punto, oppure trascinando il pomello, e prendono il colore d'accento dell'app.\n\nFluid Engine 2.3.2.",
+      "releaseTag": "stable-fluidweather-v1.4.4",
+      "apkAsset": "fluidweather-1.4.4.apk",
+      "sizeBytes": 5147979
     }
   },
   "engine": {
