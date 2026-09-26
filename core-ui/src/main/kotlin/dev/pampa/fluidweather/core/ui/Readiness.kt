@@ -29,6 +29,8 @@ fun BarometerReadiness.stageText(): String = when (stage) {
   } else {
     stringResource(R.string.readiness_history, hoursText(historyHours), hoursText(requiredHours))
   }
+  ReadinessStage.BLOCKED -> stringResource(R.string.readiness_blocked)
+  ReadinessStage.NO_SENSOR -> stringResource(R.string.readiness_no_sensor)
   ReadinessStage.READY -> stringResource(R.string.readiness_ready)
 }
 

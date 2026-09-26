@@ -8,14 +8,17 @@
   il cui processo e' stato ucciso aggiorni almeno la riga dell'eta' invece di restare fermo a ieri.
 
   Niente android:configure: la localita' e' sempre dove sei, come deciso.
+
+  maxResize* da 360x260 a 560x400 (2026-09-26): sul tablet il vecchio tetto era un francobollo
+  su uno schermo da 11 pollici. Oltre la taglia grande il layout resta quello grande, allargato.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="110dp"
     android:minHeight="110dp"
     android:minResizeWidth="110dp"
     android:minResizeHeight="110dp"
-    android:maxResizeWidth="360dp"
-    android:maxResizeHeight="260dp"
+    android:maxResizeWidth="560dp"
+    android:maxResizeHeight="400dp"
     android:targetCellWidth="2"
     android:targetCellHeight="2"
     android:resizeMode="horizontal|vertical"

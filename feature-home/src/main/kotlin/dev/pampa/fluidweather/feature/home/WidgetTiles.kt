@@ -65,6 +65,7 @@ import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.ui.stageText
+import dev.pampa.fluidweather.core.model.ReadinessStage
 import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.compassPoint
 import dev.pampa.fluidweather.strings.featureLabelRes
@@ -110,10 +111,11 @@ private fun NowcastTile(state: HomeUiState) {
     FluidProgressBar(progress = { readiness.overallFraction })
     Spacer(Modifier.height(6.dp))
     Text(
-      text = if (readiness.calibrationRunning) {
-        stringResource(R.string.tile_calibration_running)
-      } else {
-        stringResource(R.string.tile_history_needed, readiness.requiredHours.toInt())
+      text = when {
+        readiness.calibrationRunning -> stringResource(R.string.tile_calibration_running)
+        // Il contatore fermo con una ragione e una via d'uscita: la pagina ha i tasti.
+        readiness.stage == ReadinessStage.BLOCKED -> stringResource(R.string.tile_blocked_hint)
+        else -> stringResource(R.string.tile_history_needed, readiness.requiredHours.toInt())
       },
       style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
@@ -813,7 +815,7 @@ private fun ProviderPressureBody(state: HomeUiState) {
   )
   Spacer(Modifier.height(8.dp))
   Text(
-    text = stringResource(R.string.tile_barometer_here_only),
+    text = stringResource(state.providerPressureNoteRes),
     style = MaterialTheme.typography.labelMedium,
     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
   )

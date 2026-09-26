@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidGrabber
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
+import dev.antigravity.fluidengine.ui.fluid.FluidScreenDefaults
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.strings.R
@@ -183,6 +184,9 @@ private fun BlackSheetChrome(
     onDismissRequest = dismiss,
     sheetState = sheetState,
     modifier = Modifier.fillMaxHeight(),
+    // Su un tablet il foglio resta una pagina da leggere, centrata: la stessa misura delle
+    // schermate dell'engine (760dp), non i 640 di default del bottom sheet ne' tutto lo schermo.
+    sheetMaxWidth = FluidScreenDefaults.ContentMaxWidth,
     containerColor = BlackSheetColor,
     contentColor = Color.White,
     shape = ContinuousCornerShape(topStart = FluidRadius.Sheet, topEnd = FluidRadius.Sheet),

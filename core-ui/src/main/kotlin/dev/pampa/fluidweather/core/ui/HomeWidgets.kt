@@ -24,7 +24,30 @@ enum class HomeWidget(
   MOON("moon", R.string.widget_moon, 2),
   DETAILS("details", R.string.widget_details, 2);
 
+  /**
+   * Quante colonne occupa la tessera in una griglia di [columns] colonne.
+   *
+   * Sul telefono la griglia ha due colonne e vale [span]. Da tablet (2026-09-26) le colonne sono
+   * quattro: una tessera "larga" diventa mezza riga — la larghezza di un telefono, affiancata a
+   * un'altra — e le compatte un quarto. L'orario no: la sua striscia di ore rende quanto e' lunga,
+   * e a mezza riga mostrerebbe la meta' delle ore su uno schermo che ne ha il doppio.
+   */
+  fun spanIn(columns: Int): Int = when {
+    columns < WIDE_COLUMNS -> span.coerceAtMost(columns)
+    this == HOURLY -> columns
+    else -> span
+  }
+
   companion object {
+
+    /** Le colonne della home su schermo largo (da [WIDE_MIN_WIDTH_DP] in su). */
+    const val WIDE_COLUMNS: Int = 4
+
+    /** Da qui la home e' "larga": e' la soglia media dell'engine (FluidPaneDefaults, 600dp). */
+    const val WIDE_MIN_WIDTH_DP: Int = 600
+
+    /** Le colonne della home per una larghezza utile in dp. */
+    fun columnsFor(widthDp: Float): Int = if (widthDp >= WIDE_MIN_WIDTH_DP) WIDE_COLUMNS else 2
 
     val defaultOrder: List<HomeWidget> = listOf(
       NOWCAST, HOURLY, DAILY, PRECIPITATION, PRESSURE, AIR_QUALITY, SUN, MOON, DETAILS,

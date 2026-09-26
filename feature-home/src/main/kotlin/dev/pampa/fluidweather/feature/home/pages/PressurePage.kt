@@ -20,6 +20,7 @@ import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeUiState
+import dev.pampa.fluidweather.feature.home.providerPressureNoteRes
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.cleaning.RejectionReason
 import dev.pampa.fluidweather.nowcast.tide.TideSource
@@ -208,7 +209,7 @@ private fun ProviderPressurePage(state: HomeUiState) {
   if (series.isEmpty()) {
     PageNote(stringResource(R.string.common_waiting_providers))
     PageSection(stringResource(R.string.pressure_provider_title))
-    PageNote(stringResource(R.string.tile_barometer_here_only))
+    PageNote(stringResource(state.providerPressureNoteRes))
     return
   }
 
@@ -253,7 +254,7 @@ private fun ProviderPressurePage(state: HomeUiState) {
   )
 
   PageSection(stringResource(R.string.pressure_provider_title))
-  PageNote(stringResource(R.string.pressure_provider_note))
+  PageNote(stringResource(if (state.sensorAvailable) R.string.pressure_provider_note else R.string.tile_no_barometer_device))
 }
 
 @Composable

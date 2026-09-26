@@ -130,6 +130,16 @@
   <string name="bench_title">Benchmark</string>
   <string name="bench_use_only">Use only this where supported</string>
   <string name="bench_weight_note">The share is the learned weight (1/(MAE+0.3)², MAE decayed with a 14-day half-life) normalised among those with verifications, averaged over the variables: it is the same maths that drives the fusion.</string>
+  <string name="bg_access_battery">Unrestricted battery</string>
+  <string name="bg_access_battery_desc">Tap and confirm: the system stops postponing the readings.</string>
+  <string name="bg_access_battery_ok">Unrestricted battery: done</string>
+  <string name="bg_access_battery_ok_desc">The system isn\'t optimizing the app.</string>
+  <string name="bg_access_desc">The barometer reads the pressure every quarter hour even with the app closed. If the phone stops the app, the history stops growing and the nowcast never starts.</string>
+  <string name="bg_access_restricted">The system restricts the app in the background</string>
+  <string name="bg_access_restricted_desc">Tap to open the app settings, then Battery › Unrestricted.</string>
+  <string name="bg_access_samsung">Sleeping apps (Samsung)</string>
+  <string name="bg_access_samsung_desc">Settings › Battery › Background usage limits: remove FluidWeather from “Sleeping apps” and “Deep sleeping apps”, then add it to “Never sleeping apps”. Tap to open settings.</string>
+  <string name="bg_access_title">The barometer in the background</string>
   <string name="calib_channel">Barometer calibration</string>
   <string name="calib_channel_desc">Only during the initial burst: about ten minutes, longer if the phone keeps moving.</string>
   <string name="calib_no_barometer">This device has no barometer.</string>
@@ -172,8 +182,8 @@
   </plurals>
   <string name="common_humidity">Humidity</string>
   <string name="common_loading">Checking…</string>
-  <string name="common_max_prefix">max</string>
-  <string name="common_min_prefix">min</string>
+  <string name="common_max_prefix">"max "</string>
+  <string name="common_min_prefix">"min "</string>
   <string name="common_next">Next</string>
   <string name="common_now">Now</string>
   <string name="common_remove">Remove</string>
@@ -251,6 +261,10 @@
   <string name="details_visibility_fog">fog or haze</string>
   <string name="details_wind_from">from %1$s (%2$s°)</string>
   <string name="details_wind_note">The arrow shows where the wind goes; the name says where it comes from, as it has always been said.</string>
+  <string name="diag_bg_desc">Battery %1$s · background-restricted: %2$s · standby bucket: %3$s (always ACTIVE while the app is open)</string>
+  <string name="diag_bg_optimized">optimized</string>
+  <string name="diag_bg_title">What the system allows</string>
+  <string name="diag_bg_unrestricted">unrestricted</string>
   <string name="diag_burst_progress">%1$s / %2$s s</string>
   <string name="diag_burst_running">Burst in progress</string>
   <string name="diag_clean_title">Clean signal — stages 1-2</string>
@@ -284,6 +298,7 @@
   <string name="diag_manual_burst">Manual burst</string>
   <string name="diag_manual_burst_desc">%1$s minutes at %2$s Hz: enough samples to tell a real drop from noise</string>
   <string name="diag_meters_suffix"> · %1$s m</string>
+  <string name="diag_no">no</string>
   <string name="diag_no_barometer">No barometer</string>
   <string name="diag_no_barometer_desc">This device has no sensor: the local section is not available.</string>
   <string name="diag_no_factors">No factor beyond neutral</string>
@@ -311,6 +326,7 @@
   <string name="diag_waiting_data_desc">The clean signal appears once the archive has a few readings</string>
   <string name="diag_waiting_history">Waiting for history</string>
   <string name="diag_waiting_history_desc">The verdict appears after ~13 hours of sampling; provider context refines it</string>
+  <string name="diag_yes">yes</string>
   <string name="duration_hm">%1$sh %2$sm</string>
   <string name="duration_hours_minutes">%1$s h %2$s min</string>
   <string name="duration_minutes">%1$s min</string>
@@ -360,6 +376,7 @@
   <string name="feature_trend_1h">1-hour trend</string>
   <string name="feature_trend_3h">3-hour trend</string>
   <string name="feature_trend_6h">6-hour trend</string>
+  <string name="no_sensor_desc">The barometric nowcast uses the phone\'s pressure sensor, which this device doesn\'t have. Forecasts still come from the weather services.</string>
   <string name="nowcast_raining_now">Raining now</string>
   <string name="nowcast_raining_now_rate">Raining now, %1$s mm/h</string>
   <string name="nowcast_seen_by">Seen by: %1$s</string>
@@ -594,6 +611,7 @@
   <string name="onb_activity_text">Activity recognition tells the engine when you are in a car, on a bike or on the move: those readings are discarded before they become a false weather change. Without it, the engine relies on GPS altitude alone.</string>
   <string name="onb_activity_title">A lift is not a front</string>
   <string name="onb_allow_activity">Allow recognition</string>
+  <string name="onb_allow_battery">Allow in background</string>
   <string name="onb_allow_location">Allow location</string>
   <string name="onb_allow_notifications">Allow notifications</string>
   <string name="onb_begin">Begin</string>
@@ -608,12 +626,18 @@
   <string name="onb_location_title">Where you really are</string>
   <string name="onb_notifications_text">The local alert, incoming rain, official alerts and the morning summary are four separate channels, each with its own switch. With the app open they arrive as banners, never in the shade.</string>
   <string name="onb_notifications_title">When the barometer has something to say</string>
+  <string name="onb_ready_title">All set</string>
   <string name="onb_sampling_text">More readings, more signal, more battery. Balanced is the suggested compromise; you can change it any time from the settings.</string>
   <string name="onb_sampling_title">How often to read the barometer</string>
+  <string name="onb_samsung_note">On a Samsung, also remove the app from “Sleeping apps”: Settings › Battery › Background usage limits. You\'ll find this again in Settings › Engine and accuracy.</string>
   <string name="onb_step_activity">3 of 3 · Activity</string>
+  <string name="onb_step_battery">Battery</string>
   <string name="onb_step_location">1 of 3 · Location</string>
+  <string name="onb_step_location_of_two">1 of 2 · Location</string>
   <string name="onb_step_notifications">2 of 3 · Notifications</string>
+  <string name="onb_step_notifications_of_two">2 of 2 · Notifications</string>
   <string name="onb_welcome_text">There is a barometer inside. Here it becomes a short-range forecasting engine, calibrated on years of real data, and joins a constellation of weather services fused with weights that learn where you are. Three permissions, two choices, and off we go.</string>
+  <string name="onb_welcome_text_no_sensor">A constellation of weather services fused with weights that learn where you are, the radar and official alerts. This device has no barometer: the short-range engine stays with the phones that have one. Two permissions, one choice, and off we go.</string>
   <string name="onb_welcome_title">Weather that starts from your phone</string>
   <string name="page_no_curve">Not enough points for a curve.</string>
   <string name="period_12h">12 hours</string>
@@ -737,10 +761,12 @@
   <string name="radar_play">Play</string>
   <string name="radar_precipitation">Precipitation</string>
   <string name="radar_title">Radar</string>
+  <string name="readiness_blocked">Barometric history stalled: the phone is stopping the app in the background</string>
   <string name="readiness_burst_waiting">Calibration: waiting for a still moment, %1$s of %2$s useful min</string>
   <string name="readiness_burst">Initial burst: %1$s of %2$s</string>
   <string name="readiness_history_start">Barometric history: just started (%1$s hours needed)</string>
   <string name="readiness_history">Barometric history: %1$s of %2$s hours</string>
+  <string name="readiness_no_sensor">This device has no barometer</string>
   <string name="readiness_ready">Barometer ready</string>
   <string name="reject_altitude">Altitude change (stairs, lift)</string>
   <string name="reject_jump">Non-meteorological jump</string>
@@ -831,12 +857,14 @@
   <string name="tile_air_dominant">Dominant: %1$s</string>
   <string name="tile_air_unavailable">Air quality not available.</string>
   <string name="tile_barometer_here_only">The barometer is the phone\'s: it only speaks for where you are</string>
+  <string name="tile_blocked_hint">Tap to see how to fix it.</string>
   <string name="tile_calibration_running">The calibration burst runs in the background: you can close the app.</string>
   <string name="tile_history_needed">The model wants %1$s hours of clean signal before its first verdict.</string>
   <string name="tile_level_alert">Alert: precipitation likely soon</string>
   <string name="tile_level_quiet">Quiet: no signal beyond climatology</string>
   <string name="tile_level_watch">Watch: something is moving</string>
   <string name="tile_needs_location">Location needed.</string>
+  <string name="tile_no_barometer_device">This device has no barometer: the pressure comes from the weather services.</string>
   <string name="tile_no_barometer_reading">No barometer reading.</string>
   <string name="tile_no_fused_temperature">No fused temperature available.</string>
   <string name="tile_no_rain_6h">No rain expected in the next 6 hours</string>

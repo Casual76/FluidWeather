@@ -183,6 +183,7 @@ private fun FluidWeatherRoutes(
           onboardingStore = graph.onboardingStore,
           calibrationController = graph.calibrationController,
           assistant = graph.aiAssistant,
+          barometerAvailable = graph.barometer.isAvailable,
         )
       }
       OnboardingScreen(
@@ -215,6 +216,7 @@ private fun FluidWeatherRoutes(
           selectedPlaceStore = graph.selectedPlaceStore,
           geocodingClient = graph.geocodingClient,
           onWeatherAccent = { graph.weatherAccent.value = it },
+          barometerAvailable = graph.barometer.isAvailable,
         )
       }
       var benchmarkOpen by remember { mutableStateOf(false) }
@@ -348,6 +350,7 @@ private fun FluidWeatherRoutes(
           nowcast = graph.nowcastUseCase,
           learningStore = graph.learningStore,
           learningRepository = graph.learningRepository,
+          barometerAvailable = graph.barometer.isAvailable,
         )
       }
       EngineAccuracyScreen(deps = deps, onBack = { navController.popBackStack() })

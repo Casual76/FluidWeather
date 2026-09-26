@@ -32,6 +32,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.ui.stageText
+import dev.pampa.fluidweather.core.ui.BackgroundAccessRows
+import dev.pampa.fluidweather.core.model.ReadinessStage
 import dev.pampa.fluidweather.strings.featureLabelRes
 import dev.pampa.fluidweather.strings.windowLabelRes
 
@@ -60,6 +62,13 @@ internal fun NowcastPage(state: HomeUiState) {
       Spacer(Modifier.height(6.dp))
       FluidProgressBar(progress = { readiness.overallFraction }, color = PageBlue)
       Spacer(Modifier.height(6.dp))
+      // La storia non cresce perche' il telefono ferma l'app: si dice perche', e si porta nel
+      // posto dove si rimedia. E' la risposta al "0 di 13 ore per sempre" dei due Samsung.
+      if (readiness.stage == ReadinessStage.BLOCKED) {
+        PageSection(stringResource(R.string.bg_access_title))
+        PageNote(stringResource(R.string.bg_access_desc))
+        BackgroundAccessRows(titleColor = White, bodyColor = Dim)
+      }
     }
     val points = state.cleaning?.filtered?.size ?: 0
     if (points > 0) StatRow(stringResource(R.string.nowcast_clean_points), "$points", stringResource(R.string.nowcast_last_24h))

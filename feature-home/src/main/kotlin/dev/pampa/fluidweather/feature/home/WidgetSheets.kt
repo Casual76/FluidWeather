@@ -45,7 +45,7 @@ internal fun WidgetSheetHost(
       HomeWidget.NOWCAST -> if (state.barometerApplies) {
         NowcastPage(state)
       } else {
-        BlackSheetNote(stringResource(R.string.tile_barometer_here_only))
+        BlackSheetNote(stringResource(state.providerPressureNoteRes))
       }
       // Gestita sopra, nel foglio pigro: qui non ci arriva mai.
       HomeWidget.HOURLY -> Unit

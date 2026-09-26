@@ -18,6 +18,18 @@ data class BarometerReadiness(
    * telefono stia tranquillo. Senza questo flag la barra diceva "1:30 di 5:00" e sembrava rotta.
    */
   val calibrationWaiting: Boolean = false,
+  /**
+   * Il dispositivo ha un barometro. Senza (tanti tablet, qualche telefono economico) la barra
+   * diceva "appena cominciata (servono 13 ore)" per sempre: una promessa che il sensore che non
+   * c'e' non poteva mantenere. Decisione 2026-09-26: si dice che manca, e basta.
+   */
+  val sensorAvailable: Boolean = true,
+  /**
+   * Il campionamento in background non sta girando: la storia non cresce perche' il telefono
+   * ferma l'app (Samsung la mette "in sospensione" dopo tre giorni senza aprirla), non perche'
+   * si sta aspettando. Vedi [SamplingCoverage].
+   */
+  val samplingBlocked: Boolean = false,
 ) {
   val calibrationFraction: Float
     get() = when {
@@ -38,13 +50,23 @@ data class BarometerReadiness(
   /** Dove siamo: chi mostra la barra sceglie le parole (core-strings), qui solo lo stadio. */
   val stage: ReadinessStage
     get() = when {
+      !sensorAvailable -> ReadinessStage.NO_SENSOR
       calibrationRunning -> ReadinessStage.CALIBRATING
-      !ready -> ReadinessStage.HISTORY
-      else -> ReadinessStage.READY
+      ready -> ReadinessStage.READY
+      samplingBlocked -> ReadinessStage.BLOCKED
+      else -> ReadinessStage.HISTORY
     }
 }
 
-enum class ReadinessStage { CALIBRATING, HISTORY, READY }
+enum class ReadinessStage {
+  /** Il dispositivo non ha il barometro: niente da aspettare. */
+  NO_SENSOR,
+  CALIBRATING,
+  HISTORY,
+  /** La storia non cresce perche' il sistema ferma il campionamento in background. */
+  BLOCKED,
+  READY,
+}
 
 object NowcastReadiness {
 
@@ -56,6 +78,8 @@ object NowcastReadiness {
     calibrationProgress: Pair<Int, Int>?,
     historyHours: Double,
     requiredHours: Double = REQUIRED_HOURS,
+    sensorAvailable: Boolean = true,
+    samplingBlocked: Boolean = false,
   ): BarometerReadiness = BarometerReadiness(
     calibrationRunning = calibrationProgress != null,
     calibrationCompletedSeconds = calibrationProgress?.first ?: 0,
@@ -63,5 +87,7 @@ object NowcastReadiness {
     calibrated = calibration != null,
     historyHours = historyHours.coerceAtLeast(0.0),
     requiredHours = requiredHours,
+    sensorAvailable = sensorAvailable,
+    samplingBlocked = samplingBlocked,
   )
 }

@@ -63,6 +63,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -459,8 +460,15 @@ private fun HomeGrid(
   val visible = remember(order, state.barometerApplies) {
     HomeWidget.visibleIds(order, state.barometerApplies)
   }
+  // Tablet (2026-09-26): la larghezza della finestra, non dello schermo, cosi' vale anche in
+  // split-screen e in finestra libera. Da 600dp la griglia passa a quattro colonne e le tessere
+  // larghe diventano mezza riga — due "telefoni" affiancati invece di una card lunga un metro.
+  val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+  val wide = windowWidthDp >= HomeWidget.WIDE_MIN_WIDTH_DP
+  val sidePadding = if (wide) 24.dp else 14.dp
+  val columns = HomeWidget.columnsFor(windowWidthDp - sidePadding.value * 2)
   LazyVerticalGrid(
-    columns = GridCells.Fixed(2),
+    columns = GridCells.Fixed(columns),
     state = gridState,
     flingBehavior = flingBehavior,
     modifier = modifier
@@ -502,17 +510,17 @@ private fun HomeGrid(
         },
       )
     },
-    contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 0.dp, bottom = 130.dp),
+    contentPadding = PaddingValues(start = sidePadding, end = sidePadding, top = 0.dp, bottom = 130.dp),
     horizontalArrangement = Arrangement.spacedBy(12.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    item(key = HEADER_KEY, span = { GridItemSpan(2) }) {
+    item(key = HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) {
       HomeHeader(state = state, gridState = gridState, collapse = collapse)
     }
 
     val verdict = state.verdict.takeIf { state.barometerApplies }
     if (verdict != null && verdict.level != AlertLevel.QUIETE) {
-      item(key = ALERT_KEY, span = { GridItemSpan(2) }) {
+      item(key = ALERT_KEY, span = { GridItemSpan(maxLineSpan) }) {
         BarometerAlertRow(verdict)
       }
     }
@@ -520,7 +528,7 @@ private fun HomeGrid(
     items(
       items = visible,
       key = { it },
-      span = { id -> GridItemSpan(HomeWidget.entries.firstOrNull { it.id == id }?.span ?: 2) },
+      span = { id -> GridItemSpan(HomeWidget.entries.firstOrNull { it.id == id }?.spanIn(maxLineSpan) ?: maxLineSpan) },
     ) { id ->
       val widget = HomeWidget.entries.firstOrNull { it.id == id } ?: return@items
       val dragging = drag.draggingKey == id
@@ -584,12 +592,17 @@ private fun widgetIcon(widget: HomeWidget) = when (widget) {
 @Composable
 private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: HeaderCollapseState) {
   val shadow = Shadow(color = Color.Black.copy(alpha = 0.35f), blurRadius = 14f)
+  // In orizzontale (tablet, 2026-09-26) l'altezza e' poca e la testata da telefono ne prendeva
+  // quasi meta': un po' meno aria sopra e una temperatura un filo piu' piccola, e le tessere
+  // cominciano dove l'occhio le cerca.
+  val window = LocalWindowInfo.current.containerSize
+  val landscape = window.width > window.height
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
     modifier = Modifier
       .fillMaxWidth()
       .statusBarsPadding()
-      .padding(top = 34.dp, bottom = 18.dp)
+      .padding(top = if (landscape) 14.dp else 34.dp, bottom = 18.dp)
       // La testata misura da sola il proprio viaggio: e' la sua altezza.
       .onSizeChanged { collapse.travelPx = it.height.toFloat() }
       .graphicsLayer {
@@ -610,7 +623,7 @@ private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: H
     )
     Text(
       text = state.temperatureC?.let { units.degrees(it) } ?: "—",
-      fontSize = 108.sp,
+      fontSize = if (landscape) 88.sp else 108.sp,
       fontWeight = FontWeight.ExtraLight,
       style = MaterialTheme.typography.displayLarge.copy(shadow = shadow),
       color = Color.White,

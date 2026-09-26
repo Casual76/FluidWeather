@@ -130,6 +130,16 @@
   <string name="bench_title">Benchmark</string>
   <string name="bench_use_only">Usa solo questo dove è supportato</string>
   <string name="bench_weight_note">La quota è il peso appreso (1/(MAE+0,3)², MAE decaduto con dimezzamento a 14 giorni) normalizzato fra chi ha verifiche, mediato sulle variabili: è la stessa matematica che comanda la fusione.</string>
+  <string name="bg_access_battery">Batteria senza restrizioni</string>
+  <string name="bg_access_battery_desc">Tocca e conferma: il sistema smette di rimandare le letture.</string>
+  <string name="bg_access_battery_ok">Batteria senza restrizioni: fatto</string>
+  <string name="bg_access_battery_ok_desc">Il sistema non ottimizza l\'app.</string>
+  <string name="bg_access_desc">Il barometro legge la pressione ogni quarto d\'ora anche ad app chiusa. Se il telefono ferma l\'app, la storia smette di crescere e il nowcast non parte.</string>
+  <string name="bg_access_restricted">Il sistema limita l\'app in background</string>
+  <string name="bg_access_restricted_desc">Tocca per aprire le impostazioni dell\'app, poi Batteria › Senza restrizioni.</string>
+  <string name="bg_access_samsung">App in sospensione (Samsung)</string>
+  <string name="bg_access_samsung_desc">Impostazioni › Batteria › Limiti di utilizzo in background: togli FluidWeather da «App in sospensione» e «App in sospensione profonda», poi aggiungila ad «App mai in sospensione». Tocca per aprire le impostazioni.</string>
+  <string name="bg_access_title">Il barometro in background</string>
   <string name="calib_channel">Taratura del barometro</string>
   <string name="calib_channel_desc">Solo durante la raffica iniziale: circa dieci minuti, di più se il telefono continua a muoversi.</string>
   <string name="calib_no_barometer">Questo dispositivo non ha il barometro.</string>
@@ -172,8 +182,8 @@
   </plurals>
   <string name="common_humidity">Umidità</string>
   <string name="common_loading">Controllo in corso…</string>
-  <string name="common_max_prefix">max </string>
-  <string name="common_min_prefix">min </string>
+  <string name="common_max_prefix">"max "</string>
+  <string name="common_min_prefix">"min "</string>
   <string name="common_next">Avanti</string>
   <string name="common_now">Adesso</string>
   <string name="common_remove">Rimuovi</string>
@@ -251,6 +261,10 @@
   <string name="details_visibility_fog">nebbia o foschia</string>
   <string name="details_wind_from">da %1$s (%2$s°)</string>
   <string name="details_wind_note">La freccia indica dove il vento va; il nome dice da dove viene, come si è sempre detto.</string>
+  <string name="diag_bg_desc">Batteria %1$s · limitata in background: %2$s · bucket di standby: %3$s (ad app aperta è sempre ACTIVE)</string>
+  <string name="diag_bg_optimized">ottimizzata</string>
+  <string name="diag_bg_title">Cosa lascia fare il sistema</string>
+  <string name="diag_bg_unrestricted">senza restrizioni</string>
   <string name="diag_burst_progress">%1$s / %2$s s</string>
   <string name="diag_burst_running">Raffica in corso</string>
   <string name="diag_clean_title">Segnale pulito — stadi 1-2</string>
@@ -284,6 +298,7 @@
   <string name="diag_manual_burst">Raffica manuale</string>
   <string name="diag_manual_burst_desc">%1$s minuti a %2$s Hz: abbastanza campioni da separare una caduta vera dal rumore</string>
   <string name="diag_meters_suffix"> · %1$s m</string>
+  <string name="diag_no">no</string>
   <string name="diag_no_barometer">Barometro assente</string>
   <string name="diag_no_barometer_desc">Questo dispositivo non ha il sensore: la sezione locale non è disponibile.</string>
   <string name="diag_no_factors">Nessun fattore fuori dal neutro</string>
@@ -311,6 +326,7 @@
   <string name="diag_waiting_data_desc">Il segnale pulito compare quando l\'archivio ha qualche lettura</string>
   <string name="diag_waiting_history">In attesa di storia</string>
   <string name="diag_waiting_history_desc">Il verdetto compare dopo ~13 ore di campionamento; il contesto dei provider lo affina</string>
+  <string name="diag_yes">sì</string>
   <string name="duration_hm">%1$sh %2$sm</string>
   <string name="duration_hours_minutes">%1$s h %2$s min</string>
   <string name="duration_minutes">%1$s min</string>
@@ -360,6 +376,7 @@
   <string name="feature_trend_1h">Tendenza 1 h</string>
   <string name="feature_trend_3h">Tendenza 3 h</string>
   <string name="feature_trend_6h">Tendenza 6 h</string>
+  <string name="no_sensor_desc">Il nowcast barometrico usa il sensore di pressione del telefono, che qui non c\'è. Le previsioni arrivano comunque dai servizi meteo.</string>
   <string name="nowcast_raining_now">Sta piovendo</string>
   <string name="nowcast_raining_now_rate">Sta piovendo, %1$s mm/h</string>
   <string name="nowcast_seen_by">Lo vede: %1$s</string>
@@ -594,6 +611,7 @@
   <string name="onb_activity_text">Il riconoscimento dell\'attività dice al motore quando sei in auto, in bici o in movimento: quelle letture si scartano prima che diventino un falso cambio di tempo. Senza, il motore si affida alla sola quota GPS.</string>
   <string name="onb_activity_title">Un ascensore non è un fronte</string>
   <string name="onb_allow_activity">Consenti il riconoscimento</string>
+  <string name="onb_allow_battery">Consenti in background</string>
   <string name="onb_allow_location">Consenti la posizione</string>
   <string name="onb_allow_notifications">Consenti le notifiche</string>
   <string name="onb_begin">Inizia</string>
@@ -608,12 +626,18 @@
   <string name="onb_location_title">Dove sei, per davvero</string>
   <string name="onb_notifications_text">L\'allerta locale, la pioggia in arrivo, le allerte ufficiali e il riepilogo del mattino sono quattro canali separati, ognuno col suo interruttore. Con l\'app aperta arrivano come banner, mai in tendina.</string>
   <string name="onb_notifications_title">Quando il barometro ha qualcosa da dire</string>
+  <string name="onb_ready_title">Tutto pronto</string>
   <string name="onb_sampling_text">Più letture, più segnale, più batteria. Bilanciata è il compromesso suggerito; si cambia quando vuoi dalle impostazioni.</string>
   <string name="onb_sampling_title">Quanto spesso leggere il barometro</string>
+  <string name="onb_samsung_note">Su un Samsung togli anche l\'app dalle «App in sospensione»: Impostazioni › Batteria › Limiti di utilizzo in background. Lo ritrovi in Impostazioni › Motore e accuratezza.</string>
   <string name="onb_step_activity">3 di 3 · Attività</string>
+  <string name="onb_step_battery">Batteria</string>
   <string name="onb_step_location">1 di 3 · Posizione</string>
+  <string name="onb_step_location_of_two">1 di 2 · Posizione</string>
   <string name="onb_step_notifications">2 di 3 · Notifiche</string>
+  <string name="onb_step_notifications_of_two">2 di 2 · Notifiche</string>
   <string name="onb_welcome_text">Dentro c\'è un barometro. Qui diventa un motore di previsione a breve, tarato su anni di dati veri, e si aggiunge a una costellazione di servizi meteo fusi con pesi che imparano dove sei. Tre permessi, due scelte, e si parte.</string>
+  <string name="onb_welcome_text_no_sensor">Una costellazione di servizi meteo fusi con pesi che imparano dove sei, il radar e le allerte ufficiali. Questo dispositivo non ha il barometro: il motore a breve resta ai telefoni che ce l\'hanno. Due permessi, una scelta, e si parte.</string>
   <string name="onb_welcome_title">Il meteo che parte dal tuo telefono</string>
   <string name="page_no_curve">Non ci sono abbastanza punti per una curva.</string>
   <string name="period_12h">12 ore</string>
@@ -737,10 +761,12 @@
   <string name="radar_play">Play</string>
   <string name="radar_precipitation">Precipitazioni</string>
   <string name="radar_title">Radar</string>
+  <string name="readiness_blocked">Storia barometrica ferma: il telefono blocca l\'app in background</string>
   <string name="readiness_burst_waiting">Taratura: in attesa di un momento fermo, %1$s di %2$s min utili</string>
   <string name="readiness_burst">Raffica iniziale: %1$s di %2$s</string>
   <string name="readiness_history_start">Storia barometrica: appena cominciata (servono %1$s ore)</string>
   <string name="readiness_history">Storia barometrica: %1$s di %2$s ore</string>
+  <string name="readiness_no_sensor">Questo dispositivo non ha il barometro</string>
   <string name="readiness_ready">Barometro pronto</string>
   <string name="reject_altitude">Cambio di quota (scale, ascensore)</string>
   <string name="reject_jump">Salto non meteorologico</string>
@@ -831,12 +857,14 @@
   <string name="tile_air_dominant">Domina: %1$s</string>
   <string name="tile_air_unavailable">Qualità dell\'aria non disponibile.</string>
   <string name="tile_barometer_here_only">Il barometro è quello del telefono: parla solo di dove sei</string>
+  <string name="tile_blocked_hint">Tocca per vedere come sistemarlo.</string>
   <string name="tile_calibration_running">La raffica di taratura gira in sottofondo: puoi chiudere l\'app.</string>
   <string name="tile_history_needed">Il modello vuole %1$s ore di segnale pulito prima del primo verdetto.</string>
   <string name="tile_level_alert">Allerta: precipitazione probabile a breve</string>
   <string name="tile_level_quiet">Quiete: nessun segnale fuori dalla climatologia</string>
   <string name="tile_level_watch">Sorveglianza: qualcosa si muove</string>
   <string name="tile_needs_location">Serve la posizione.</string>
+  <string name="tile_no_barometer_device">Questo dispositivo non ha il barometro: la pressione arriva dai servizi meteo.</string>
   <string name="tile_no_barometer_reading">Nessuna lettura del barometro.</string>
   <string name="tile_no_fused_temperature">Nessuna temperatura fusa disponibile.</string>
   <string name="tile_no_rain_6h">Niente pioggia attesa nelle prossime 6 ore</string>

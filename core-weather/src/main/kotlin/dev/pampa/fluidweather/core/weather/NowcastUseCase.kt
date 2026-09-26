@@ -13,6 +13,7 @@ import dev.pampa.fluidweather.core.model.DeviceCalibration
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NowcastReadiness
 import dev.pampa.fluidweather.core.model.PressureSample
+import dev.pampa.fluidweather.core.model.SamplingCoverage
 import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
@@ -75,6 +76,11 @@ class NowcastUseCase(
    */
   private val radarObservation: suspend (Double, Double) -> RainObservation? = { _, _ -> null },
   private val learningCacheMillis: Long = LEARNING_CACHE_MILLIS,
+  /**
+   * Il dispositivo ha un barometro. Una lambda e non un Boolean perche' il sensore lo conosce
+   * core-sensor, che sta sopra questo modulo: il grafo dell'app fa da ponte.
+   */
+  private val sensorAvailable: () -> Boolean = { true },
 ) {
 
   /**
@@ -141,6 +147,7 @@ class NowcastUseCase(
     runCatching { baselineStore.observePlace(temperature, snapshot?.latitude, snapshot?.longitude) }
 
     val historyHours = cleaning?.historyHours ?: 0.0
+    val blocked = samplingBlocked(samples, nowMillis)
     return NowcastSnapshot(
       nowMillis = nowMillis,
       samples = samples,
@@ -153,6 +160,8 @@ class NowcastUseCase(
         calibrationProgress = calibrationProgress,
         historyHours = historyHours,
         requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
+        sensorAvailable = sensorAvailable(),
+        samplingBlocked = blocked,
       ),
       reductionAltitudeMeters = cleaning?.reductionAltitudeMeters,
       normalHpa = normal,
@@ -172,6 +181,13 @@ class NowcastUseCase(
     temperatureCelsius: Double? = null,
   ): CleaningResult? {
     val samples = runCatching { pressureRepository.samplesSince(sinceMillis) }.getOrNull() ?: return null
+    return cleanSamples(samples, temperatureCelsius)
+  }
+
+  private suspend fun cleanSamples(
+    samples: List<PressureSample>,
+    temperatureCelsius: Double? = null,
+  ): CleaningResult? {
     val calibration = runCatching { calibrationStore.current() }.getOrNull()
     val baseline = runCatching { baselineStore.current() }.getOrNull()
     return runCatching {
@@ -197,12 +213,30 @@ class NowcastUseCase(
   suspend fun readiness(
     nowMillis: Long,
     calibrationProgress: Pair<Int, Int>?,
-  ): BarometerReadiness = NowcastReadiness.of(
-    calibration = runCatching { calibrationStore.current() }.getOrNull(),
-    calibrationProgress = calibrationProgress,
-    historyHours = clean(nowMillis - HISTORY_WINDOW_MILLIS)?.historyHours ?: 0.0,
-    requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
-  )
+  ): BarometerReadiness {
+    val calibration = runCatching { calibrationStore.current() }.getOrNull()
+    if (!sensorAvailable()) {
+      return NowcastReadiness.of(calibration, calibrationProgress, historyHours = 0.0, sensorAvailable = false)
+    }
+    val samples = runCatching { pressureRepository.samplesSince(nowMillis - HISTORY_WINDOW_MILLIS) }.getOrNull()
+    return NowcastReadiness.of(
+      calibration = calibration,
+      calibrationProgress = calibrationProgress,
+      historyHours = samples?.let { cleanSamples(it) }?.historyHours ?: 0.0,
+      requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
+      samplingBlocked = samples != null && samplingBlocked(samples, nowMillis),
+    )
+  }
+
+  /**
+   * L'archivio dice che il campionamento e' fermo (vedi [SamplingCoverage]). Non lancia: nel
+   * dubbio la risposta e' "no", e la barra torna a dire quello che diceva prima.
+   */
+  private suspend fun samplingBlocked(samples: List<PressureSample>, nowMillis: Long): Boolean {
+    if (!sensorAvailable()) return false
+    val oldest = runCatching { pressureRepository.oldestSampleMillis() }.getOrNull()
+    return SamplingCoverage.isBlocked(samples.map { it.timestampMillis }, nowMillis, oldest)
+  }
 
   /** La tendenza pulita delle ultime [hours] ore: il cambio di marcia della sorveglianza. */
   suspend fun cleanTrend(hours: Int, nowMillis: Long): Double? =

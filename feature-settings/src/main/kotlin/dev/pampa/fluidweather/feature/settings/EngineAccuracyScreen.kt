@@ -3,7 +3,6 @@ package dev.pampa.fluidweather.feature.settings
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.PowerManager
 import android.provider.Settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -38,7 +37,9 @@ import dev.pampa.fluidweather.core.data.LearningStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettings
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
+import dev.pampa.fluidweather.core.model.BarometerReadiness
 import dev.pampa.fluidweather.core.model.NowcastReadiness
+import dev.pampa.fluidweather.core.model.ReadinessStage
 import dev.pampa.fluidweather.core.model.SamplingMode
 import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.MaximaAlarm
@@ -54,6 +55,8 @@ import dev.pampa.fluidweather.strings.messageRes
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.ui.stageText
+import dev.pampa.fluidweather.core.ui.BackgroundAccessIntents
+import dev.pampa.fluidweather.core.ui.rememberBackgroundAccess
 import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.strings.TimeFormats
 
@@ -67,6 +70,8 @@ class EngineAccuracyDependencies(
   val nowcast: NowcastUseCase,
   val learningStore: LearningStore,
   val learningRepository: LearningRepository,
+  /** Senza barometro non c'e' niente da tarare ne' da campionare: la schermata lo dice e basta. */
+  val barometerAvailable: Boolean = true,
 )
 
 /**
@@ -85,18 +90,22 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
   val outcome by deps.calibrationController.lastOutcome.collectAsState()
   val pendingBurst by deps.calibrationStore.pendingBurst.collectAsState(initial = null)
   val units = rememberUnitFormatter()
-  val historyHours by produceState(initialValue = 0.0) {
-    val now = System.currentTimeMillis()
+  // La storia e il campionamento fermo si leggono dall'archivio una volta; la taratura, che puo'
+  // girare mentre si guarda, resta viva sopra.
+  val base by produceState<BarometerReadiness?>(initialValue = null) {
     value = withContext(Dispatchers.Default) {
-      deps.nowcast.clean(now - 24 * 3_600_000L)?.historyHours ?: 0.0
+      runCatching { deps.nowcast.readiness(System.currentTimeMillis(), calibrationProgress = null) }.getOrNull()
     }
   }
   val readiness = NowcastReadiness.of(
     calibration = calibration,
     calibrationProgress = progress?.let { it.completedSeconds to it.totalSeconds },
-    historyHours = historyHours,
+    historyHours = base?.historyHours ?: 0.0,
     requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
+    sensorAvailable = deps.barometerAvailable,
+    samplingBlocked = base?.samplingBlocked == true,
   )
+  val access = rememberBackgroundAccess()
 
   FluidScreen(title = stringResource(R.string.engine_title), onBack = onBack) {
     item { FluidSectionHeader(title = stringResource(R.string.engine_ready_title)) }
@@ -104,18 +113,60 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
       FluidListGroup {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
           Text(readiness.stageText(), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-          Spacer(Modifier.height(8.dp))
-          FluidProgressBar(progress = { readiness.overallFraction })
+          if (deps.barometerAvailable) {
+            Spacer(Modifier.height(8.dp))
+            FluidProgressBar(progress = { readiness.overallFraction })
+          }
           Spacer(Modifier.height(6.dp))
           Text(
-            if (readiness.ready) {
-              stringResource(R.string.engine_ready_desc)
-            } else {
-              stringResource(R.string.engine_not_ready_desc, FeatureExtractor.MIN_HISTORY_HOURS.toInt())
+            when (readiness.stage) {
+              ReadinessStage.READY -> stringResource(R.string.engine_ready_desc)
+              ReadinessStage.NO_SENSOR -> stringResource(R.string.no_sensor_desc)
+              ReadinessStage.BLOCKED -> stringResource(R.string.bg_access_desc)
+              else -> stringResource(R.string.engine_not_ready_desc, FeatureExtractor.MIN_HISTORY_HOURS.toInt())
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
+        }
+      }
+    }
+
+    // Senza sensore quello che segue (taratura, apprendimento, campionamento) non ha oggetto.
+    if (!deps.barometerAvailable) return@FluidScreen
+
+    // Il campionamento vive in background, e sui telefoni che mettono le app a dormire muore li'.
+    // Prima l'esenzione si offriva solo in MASSIMA: i due Samsung dei genitori, in BILANCIATA,
+    // non l'avevano mai vista (2026-09-26). Ora si offre sempre, finche' non e' fatta.
+    if (access.fixable || readiness.stage == ReadinessStage.BLOCKED) {
+      item { FluidSectionHeader(title = stringResource(R.string.bg_access_title)) }
+      item {
+        FluidListGroup {
+          if (access.unrestrictedBattery) {
+            FluidListRow(title = stringResource(R.string.bg_access_battery_ok), subtitle = stringResource(R.string.bg_access_battery_ok_desc))
+          } else {
+            FluidListRow(
+              title = stringResource(R.string.bg_access_battery),
+              subtitle = stringResource(R.string.bg_access_battery_desc),
+              onClick = { BackgroundAccessIntents.requestUnrestrictedBattery(context) },
+            )
+          }
+          if (access.backgroundRestricted) {
+            FluidListDivider()
+            FluidListRow(
+              title = stringResource(R.string.bg_access_restricted),
+              subtitle = stringResource(R.string.bg_access_restricted_desc),
+              onClick = { BackgroundAccessIntents.openAppDetails(context) },
+            )
+          }
+          if (access.samsung) {
+            FluidListDivider()
+            FluidListRow(
+              title = stringResource(R.string.bg_access_samsung),
+              subtitle = stringResource(R.string.bg_access_samsung_desc),
+              onClick = { BackgroundAccessIntents.openSamsungSleepingApps(context) },
+            )
+          }
         }
       }
     }
@@ -273,18 +324,8 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
             )
             FluidListDivider()
           }
-          val powerManager = context.getSystemService(PowerManager::class.java)
-          if (powerManager?.isIgnoringBatteryOptimizations(context.packageName) == false) {
-            FluidListRow(
-              title = stringResource(R.string.engine_battery),
-              subtitle = stringResource(R.string.engine_battery_desc),
-              onClick = {
-                context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
-              },
-            )
-          } else {
-            FluidListRow(title = stringResource(R.string.engine_max_active), subtitle = stringResource(R.string.engine_max_active_desc))
-          }
+          // L'esenzione batteria ora sta nella sezione del background, per ogni modalita'.
+          FluidListRow(title = stringResource(R.string.engine_max_active), subtitle = stringResource(R.string.engine_max_active_desc))
         }
       }
     }

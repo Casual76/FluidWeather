@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -142,6 +143,9 @@ class MainActivity : ComponentActivity() {
   override fun onStart() {
     super.onStart()
     graph.appVisibility.set(true)
+    // Ogni volta che l'app torna davanti: se il campionamento tace da ore (Samsung l'ha messa in
+    // sospensione, il bucket l'ha rinviato), qui riparte da capo con una passata subito.
+    graph.applicationScope.launch { graph.samplingHealth.check(foreground = true) }
   }
 
   override fun onStop() {

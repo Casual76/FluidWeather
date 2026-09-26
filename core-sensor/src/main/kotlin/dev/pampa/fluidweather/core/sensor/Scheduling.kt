@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ListenableWorker
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -16,6 +17,7 @@ import androidx.work.WorkerParameters
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.model.SamplingMode
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,7 +35,15 @@ class SamplingScheduler(
 
   suspend fun applyCurrentMode() = apply(settingsStore.current().mode)
 
-  fun apply(mode: SamplingMode) {
+  /**
+   * [restart] = true rimette in coda il lavoro periodico da capo invece di aggiornarlo.
+   *
+   * `UPDATE` tiene il calendario del lavoro esistente, ed e' giusto finche' il lavoro gira. Ma un
+   * lavoro rinviato all'infinito — l'app "in sospensione" su Samsung, il bucket RESTRICTED — resta
+   * ENQUEUED: aggiornarlo non cambia niente, e il cane da guardia lo riarmava senza effetto
+   * (2026-09-26). Ripartire da capo, ad app aperta, fa ripartire anche il periodo da adesso.
+   */
+  fun apply(mode: SamplingMode, restart: Boolean = false) {
     val workManager = WorkManager.getInstance(context)
     if (mode == SamplingMode.MASSIMA && MaximaAlarm.canSchedule(context)) {
       workManager.cancelUniqueWork(WORK_NAME)
@@ -43,15 +53,29 @@ class SamplingScheduler(
       val cadenceMinutes = maxOf(mode.cadenceMinutes, MIN_PERIODIC_MINUTES).toLong()
       workManager.enqueueUniquePeriodicWork(
         WORK_NAME,
-        ExistingPeriodicWorkPolicy.UPDATE,
+        if (restart) ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE else ExistingPeriodicWorkPolicy.UPDATE,
         PeriodicWorkRequestBuilder<PressureSamplingWorker>(cadenceMinutes, TimeUnit.MINUTES).build(),
       )
     }
   }
 
+  /**
+   * Una passata subito, una volta sola. La chiede il cane da guardia quando l'app si apre dopo un
+   * silenzio: l'archivio ricomincia a riempirsi adesso, non alla prossima cadenza.
+   */
+  fun passNow() {
+    WorkManager.getInstance(context).enqueueUniqueWork(
+      PASS_NOW_WORK,
+      ExistingWorkPolicy.KEEP,
+      OneTimeWorkRequestBuilder<MaximaPassWorker>().build(),
+    )
+  }
+
   companion object {
     /** Il nome unico del lavoro periodico: [SamplingHealth] lo interroga per sapere se c'e' ancora. */
     internal const val WORK_NAME = "pressure-sampling"
+
+    private const val PASS_NOW_WORK = "pressure-sampling-now"
 
     private const val MIN_PERIODIC_MINUTES = 15
   }
@@ -78,8 +102,7 @@ class PressureSamplingWorker(
   override suspend fun doWork(): Result {
     val runtime = applicationContext.sensorRuntime()
     runCatching { runtime.samplingHealth.check() }
-    return runCatching { runtime.samplingEngine.runScheduledPass() }
-      .fold(onSuccess = { Result.success() }, onFailure = { Result.retry() })
+    return runPass { runtime.samplingEngine.runScheduledPass() }
   }
 }
 
@@ -103,9 +126,24 @@ class MaximaPassWorker(
     // Stesso ragionamento di PressureSamplingWorker: qui il lavoro e' uno solo e non periodico,
     // ma la catena di allarmi la riaggancia il receiver, quindi un'eccezione che sale non
     // riporterebbe niente a nessuno.
-    return runCatching { runtime.samplingEngine.runScheduledPass() }
-      .fold(onSuccess = { Result.success() }, onFailure = { Result.retry() })
+    return runPass { runtime.samplingEngine.runScheduledPass() }
   }
+}
+
+/**
+ * Una passata come la vuole WorkManager: ogni errore diventa `retry()`, **tranne la cancellazione**.
+ *
+ * `runCatching` prende anche la `CancellationException` con cui WorkManager ferma un lavoro (tempo
+ * scaduto, vincoli, quota del bucket), e rispondergli "riprova" dentro una coroutine gia'
+ * cancellata e' rispondere a nessuno: la cancellazione deve salire.
+ */
+private suspend fun runPass(pass: suspend () -> Unit): ListenableWorker.Result = try {
+  pass()
+  ListenableWorker.Result.success()
+} catch (cancelled: CancellationException) {
+  throw cancelled
+} catch (_: Throwable) {
+  ListenableWorker.Result.retry()
 }
 
 /** La catena di allarmi esatti che regge MASSIMA: ogni scatto campiona e riprogramma il prossimo. */

@@ -213,6 +213,7 @@ class AppGraph(context: Context) {
     radarObservation = { latitude, longitude ->
       RadarObservations.of(aiAssistant.radarSampler, latitude, longitude)
     },
+    sensorAvailable = { barometer.isAvailable },
   )
 
   val samplingEngine = SamplingEngine(

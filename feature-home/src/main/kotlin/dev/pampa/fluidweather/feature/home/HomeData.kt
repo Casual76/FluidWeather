@@ -44,6 +44,7 @@ import dev.pampa.fluidweather.core.model.todayRange
 import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.ui.WeatherAccent
+import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.core.weather.AirQualityClient
 import dev.pampa.fluidweather.core.weather.GeocodingClient
 import dev.pampa.fluidweather.core.weather.NowcastUseCase
@@ -87,6 +88,12 @@ class HomeDependencies(
   val geocodingClient: GeocodingClient,
   /** La home deriva l'accento dal meteo e lo consegna al tema dell'app. */
   val onWeatherAccent: (AccentPreset) -> Unit,
+  /**
+   * Il dispositivo ha un barometro. Senza (il Galaxy Tab S9 su cui si e' visto, 2026-09-26) la
+   * tessera del nowcast restava in home a dire "appena cominciata" per sempre: senza sensore la
+   * home fa come fuori casa — niente nowcast, la pressione dai provider.
+   */
+  val barometerAvailable: Boolean = true,
 )
 
 data class HomeUiState(
@@ -129,6 +136,8 @@ data class HomeUiState(
    * che non doveva succedere. Fuori casa il nowcast non c'e' e la pressione la danno i provider.
    */
   val barometerApplies: Boolean = true,
+  /** Il dispositivo ha un barometro: decide perche' la pressione viene dai provider, e come dirlo. */
+  val sensorAvailable: Boolean = true,
   /**
    * Quando risale il giro dei provider che sta in scena; null = non c'e' nessun giro in scena.
    *
@@ -184,7 +193,13 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
   // veniva riapplicato a ogni cambio di chiave: la home si svuotava — testata "—", tessere in
   // attesa — per tutto il caricamento, che col GPS puo' durare dieci secondi. Tenendo i dati di
   // prima e dicendo solo "sto caricando", il cambio di posto e' immediato.
-  val holder = remember { mutableStateOf(HomeUiState(phase = phaseFromClock())) }
+  val holder = remember { mutableStateOf(HomeUiState(
+      phase = phaseFromClock(),
+      sensorAvailable = deps.barometerAvailable,
+      // Anche prima del primo caricamento, e quando la posizione non arriva mai: senza sensore la
+      // tessera del nowcast non deve comparire nemmeno per un fotogramma.
+      barometerApplies = deps.barometerAvailable,
+    )) }
   val lifecycle = LocalLifecycleOwner.current.lifecycle
   // Cresce a ogni pull to refresh, ed e' la chiave che fa ripartire il caricamento da capo.
   var reloads by remember { mutableIntStateOf(0) }
@@ -281,7 +296,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
     // barometro pulito + contesto dell'opinione piu' completa (dall'istantanea), registrato nello
     // storico. **Solo dove sei**: su una citta' lontana questo sensore non ha niente da dire, e
     // registrarne il verdetto sporcherebbe anche lo storico con previsioni di un altro posto.
-    if (place.isGps) {
+    if (place.isGps && deps.barometerAvailable) {
       val nowcast = deps.nowcast.evaluate(
         snapshot = snapshot,
         nowMillis = now,
@@ -359,10 +374,13 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
   // raffica. Chi apriva la home subito dopo l'onboarding vedeva "0 ore di 13" e restava li' a
   // guardarla finche' non tirava giu' per aggiornare — che e' precisamente il baco raccontato.
   LaunchedEffect(place.id, lifecycle) {
-    if (!place.isGps) return@LaunchedEffect
+    if (!place.isGps || !deps.barometerAvailable) return@LaunchedEffect
     lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
       while (true) {
-        delay(READINESS_REFRESH_MILLIS)
+        // Prima si calcola, poi si aspetta: senza un fix GPS il caricamento esce subito e la
+        // readiness non la calcola nessuno, quindi per un minuto intero la tessera diceva solo
+        // "in attesa" — anche quando il campionamento era fermo da giorni (2026-09-26). La barra
+        // del barometro non ha bisogno della posizione: legge l'archivio.
         // Fuori dal thread della UI: rileggere ventiquattro ore di campioni e rifarci passare la
         // pipeline di pulizia e' lavoro vero, e qui succede ogni minuto per tutto il tempo che la
         // home resta aperta.
@@ -374,8 +392,9 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
                 ?.let { it.completedSeconds to it.totalSeconds },
             )
           }
-        }.getOrNull() ?: continue
-        holder.value = holder.value.copy(readiness = readiness)
+        }.getOrNull()
+        if (readiness != null) holder.value = holder.value.copy(readiness = readiness)
+        delay(READINESS_REFRESH_MILLIS)
       }
     }
   }
@@ -454,6 +473,13 @@ private fun HomeUiState.applySnapshot(
       ?: observedPrecipitation,
   )
 }
+
+/**
+ * La nota sotto la pressione dei provider. Il motivo per cui il barometro non parla e' diverso:
+ * altrove il sensore e' qui e non la', senza sensore semplicemente non c'e' (tablet, 2026-09-26).
+ */
+internal val HomeUiState.providerPressureNoteRes: Int
+  get() = if (sensorAvailable) R.string.tile_barometer_here_only else R.string.tile_no_barometer_device
 
 private fun SunTimes.Times.lengthMillis(): Long? {
   val rise = sunriseMillis ?: return null

@@ -329,6 +329,24 @@ internal object SkyGradientPainter {
  */
 internal object CelestialPainter {
 
+  /**
+   * L'altezza dell'astro sulla tela, adattata allo schermo largo.
+   *
+   * La fascia del cielo (10-46% dell'altezza) e' pensata per un telefono in verticale, dove sotto
+   * il 46% c'e' ancora la testata. Su un tablet in orizzontale la testata finisce al 35% circa e le
+   * tessere cominciano li': la luna bassa sull'orizzonte finiva dietro la card del nowcast
+   * (Galaxy Tab S9, 2026-09-26). In orizzontale la stessa fascia si stringe dentro la testata.
+   */
+  private fun DrawScope.skyY(y: Float): Float {
+    if (size.width <= size.height) return y
+    return LANDSCAPE_TOP + (y - PORTRAIT_TOP) / (PORTRAIT_BOTTOM - PORTRAIT_TOP) * (LANDSCAPE_BOTTOM - LANDSCAPE_TOP)
+  }
+
+  private const val PORTRAIT_TOP = 0.10f
+  private const val PORTRAIT_BOTTOM = 0.46f
+  private const val LANDSCAPE_TOP = 0.08f
+  private const val LANDSCAPE_BOTTOM = 0.30f
+
   fun draw(scope: DrawScope, body: CelestialBody, sky: SkyPalette.Sky, moon: ImageBitmap? = null) {
     when (body.kind) {
       CelestialBody.Kind.SUN -> scope.drawSun(body, sky)
@@ -338,7 +356,7 @@ internal object CelestialPainter {
 
   private fun DrawScope.drawSun(body: CelestialBody, sky: SkyPalette.Sky) {
     val minSide = minOf(size.width, size.height)
-    val center = Offset(body.x * size.width, body.y * size.height)
+    val center = Offset(body.x * size.width, skyY(body.y) * size.height)
     // 0 quando e' alto, 1 quando tocca l'orizzonte: guida colore, grandezza e fascia.
     val warmth = (1.0 - (body.altitudeDegrees / 25.0).coerceIn(0.0, 1.0)).toFloat()
     val core = lerp(SkyPalette.SunCoreHigh, SkyPalette.SunCoreLow, warmth)
@@ -425,7 +443,7 @@ internal object CelestialPainter {
 
   private fun DrawScope.drawMoon(body: CelestialBody, sky: SkyPalette.Sky, moon: ImageBitmap?) {
     val minSide = minOf(size.width, size.height)
-    val center = Offset(body.x * size.width, body.y * size.height)
+    val center = Offset(body.x * size.width, skyY(body.y) * size.height)
     val radius = minSide * 0.046f
     val visibility = (1f - sky.gloom * 0.85f).coerceIn(0.12f, 1f)
     val lit = body.illuminated.coerceIn(0f, 1f)
@@ -444,7 +462,7 @@ internal object CelestialPainter {
       radius = radius,
       illuminated = lit,
       waxing = body.waxing,
-      shadow = skyColorAt(sky, body.y),
+      shadow = skyColorAt(sky, skyY(body.y)),
       alpha = visibility,
     )
   }

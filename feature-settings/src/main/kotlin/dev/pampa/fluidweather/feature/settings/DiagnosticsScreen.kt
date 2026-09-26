@@ -39,6 +39,7 @@ import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.data.CrashLog
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.ui.rememberBackgroundAccess
 import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.feature.assistant.aiDiagnosticsSection
@@ -222,6 +223,19 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
             else -> stringResource(R.string.diag_samples_desc)
           },
           meta = report?.lastSampleAtMillis?.let { TimeFormats.dayTime(it) } ?: "—",
+        )
+        FluidListDivider()
+        // Il pezzo che mancava per leggere il baco dei due Samsung (2026-09-26): lo scheduler
+        // diceva "armato", l'archivio taceva, e nessuno vedeva cosa il sistema stesse negando.
+        val access = rememberBackgroundAccess()
+        FluidListRow(
+          title = stringResource(R.string.diag_bg_title),
+          subtitle = stringResource(
+            R.string.diag_bg_desc,
+            stringResource(if (access.unrestrictedBattery) R.string.diag_bg_unrestricted else R.string.diag_bg_optimized),
+            stringResource(if (access.backgroundRestricted) R.string.diag_yes else R.string.diag_no),
+            access.standbyBucketName,
+          ),
         )
         FluidListDivider()
         FluidListRow(

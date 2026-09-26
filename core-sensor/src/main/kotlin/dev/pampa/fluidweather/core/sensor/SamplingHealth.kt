@@ -60,9 +60,15 @@ class SamplingHealth(
   /**
    * Non lancia mai: e' un controllo di salute, e un controllo di salute che fa cadere il chiamante
    * e' il primo posto in cui guardare quando qualcosa non torna.
+   *
+   * [foreground] = true lo chiama l'app aperta davanti all'utente: li', e solo li', un silenzio si
+   * cura ripartendo da capo e con una passata subito. Dal worker no — cancellare e rimettere in
+   * coda il lavoro periodico da dentro il lavoro stesso vorrebbe dire cancellare la passata in
+   * corso; e all'avvio del processo nemmeno, perche' il processo puo' essere nato proprio per
+   * quel worker.
    */
-  suspend fun check(nowMillis: Long = System.currentTimeMillis()): Report {
-    val report = runCatching { inspect(nowMillis) }.getOrElse { error ->
+  suspend fun check(nowMillis: Long = System.currentTimeMillis(), foreground: Boolean = false): Report {
+    val report = runCatching { inspect(nowMillis, foreground) }.getOrElse { error ->
       Report(
         checkedAtMillis = nowMillis,
         mode = null,
@@ -77,7 +83,7 @@ class SamplingHealth(
     return report
   }
 
-  private suspend fun inspect(nowMillis: Long): Report {
+  private suspend fun inspect(nowMillis: Long, foreground: Boolean): Report {
     val mode = settingsStore.current().mode
     val lastSample = runCatching { repository.latestSampleMillis() }.getOrNull()
     val scheduled = isArmed(mode)
@@ -85,10 +91,15 @@ class SamplingHealth(
     // Con l'archivio vuoto non si giudica il silenzio — non c'e' ancora niente da cui misurarlo.
     val silent = lastSample != null &&
       nowMillis - lastSample > SILENCE_FACTOR * maxOf(mode.cadenceMinutes, MIN_CADENCE_MINUTES) * 60_000L
-    val rescheduled = if (!scheduled || silent) {
-      runCatching { scheduler.apply(mode) }.isSuccess
-    } else {
-      false
+    val rescheduled = when {
+      // L'app e' aperta e l'archivio tace: il lavoro "c'e'" ma non gira (sospensione, bucket).
+      // Si riparte da capo e si campiona adesso, cosi' la storia riprende da questo momento.
+      foreground && silent -> runCatching {
+        scheduler.apply(mode, restart = true)
+        scheduler.passNow()
+      }.isSuccess
+      !scheduled || silent -> runCatching { scheduler.apply(mode) }.isSuccess
+      else -> false
     }
     return Report(
       checkedAtMillis = nowMillis,

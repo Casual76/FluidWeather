@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -68,6 +70,8 @@ import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.ui.SkyState
 import dev.pampa.fluidweather.core.ui.WeatherAccent
 import dev.pampa.fluidweather.core.ui.WeatherScene
+import dev.pampa.fluidweather.core.ui.BackgroundAccessIntents
+import dev.pampa.fluidweather.core.ui.rememberBackgroundAccess
 import dev.pampa.fluidweather.core.ui.deviceGlassTier
 import dev.pampa.fluidweather.core.ui.toSceneQuality
 import java.time.LocalTime
@@ -85,9 +89,22 @@ class OnboardingDependencies(
   val calibrationController: CalibrationController,
   /** La pagina dell'assistente (fase 19): chiavi, microfono, azioni. */
   val assistant: AiAssistant,
+  /** Senza barometro non si chiede ne' l'attivita', ne' la cadenza, ne' la taratura. */
+  val barometerAvailable: Boolean = true,
 )
 
-private const val PAGES = 8
+/**
+ * Le pagine, in ordine. Un elenco e non un numero fisso: senza barometro (il tablet su cui si e'
+ * visto, 2026-09-26) tre passi su otto parlavano di un sensore che non c'e'.
+ */
+private enum class OnboardingPage { WELCOME, LOCATION, NOTIFICATIONS, ACTIVITY, GLASS, SAMPLING, BACKGROUND, ASSISTANT, FINISH }
+
+private fun pagesFor(barometer: Boolean): List<OnboardingPage> = OnboardingPage.entries.filter { page ->
+  barometer || page !in setOf(OnboardingPage.ACTIVITY, OnboardingPage.SAMPLING, OnboardingPage.BACKGROUND)
+}
+
+/** Su un tablet le pagine restano della misura di un telefono, centrate: righe da 1100dp non si leggono. */
+private val PageMaxWidth = 560.dp
 
 /**
  * Il primo avvio (fase 15, poi 19): otto pagine sopra il cielo del momento — l'app si presenta con la
@@ -118,7 +135,8 @@ fun OnboardingScreen(deps: OnboardingDependencies, onFinished: () -> Unit) {
 private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
-  val pagerState = rememberPagerState(pageCount = { PAGES })
+  val pages = remember(deps.barometerAvailable) { pagesFor(deps.barometerAvailable) }
+  val pagerState = rememberPagerState(pageCount = { pages.size })
   val appearance by deps.appearanceStore.settings.collectAsState(initial = AppearanceSettings())
   val sampling by deps.samplingSettings.settings.collectAsState(initial = SamplingSettings())
   var permissionEpoch by remember { mutableIntStateOf(0) }
@@ -133,9 +151,10 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || granted(Manifest.permission.POST_NOTIFICATIONS)
   }
   val activityGranted = remember(permissionEpoch) { granted(Manifest.permission.ACTIVITY_RECOGNITION) }
+  val access = rememberBackgroundAccess()
 
   fun next() {
-    scope.launch { pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(PAGES - 1)) }
+    scope.launch { pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(pages.size - 1)) }
   }
 
   Column(
@@ -144,24 +163,30 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
       .statusBarsPadding()
       .navigationBarsPadding(),
   ) {
-    HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+    HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { index ->
       Column(
         Modifier
           .fillMaxSize()
+          .wrapContentWidth(Alignment.CenterHorizontally)
+          .widthIn(max = PageMaxWidth)
           .verticalScroll(rememberScrollState())
           .padding(horizontal = 28.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.Center,
       ) {
-        when (page) {
-          0 -> Page(
+        when (pages[index]) {
+          OnboardingPage.WELCOME -> Page(
             eyebrow = "FluidWeather",
             title = stringResource(R.string.onb_welcome_title),
-            body = stringResource(R.string.onb_welcome_text),
+            body = if (deps.barometerAvailable) {
+              stringResource(R.string.onb_welcome_text)
+            } else {
+              stringResource(R.string.onb_welcome_text_no_sensor)
+            },
           ) {
             FluidButton(text = stringResource(R.string.common_next), onClick = { next() }, fillWidth = true)
           }
-          1 -> Page(
-            eyebrow = stringResource(R.string.onb_step_location),
+          OnboardingPage.LOCATION -> Page(
+            eyebrow = stringResource(if (deps.barometerAvailable) R.string.onb_step_location else R.string.onb_step_location_of_two),
             title = stringResource(R.string.onb_location_title),
             body = stringResource(R.string.onb_location_text),
           ) {
@@ -172,8 +197,8 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
               onNext = { next() },
             )
           }
-          2 -> Page(
-            eyebrow = stringResource(R.string.onb_step_notifications),
+          OnboardingPage.NOTIFICATIONS -> Page(
+            eyebrow = stringResource(if (deps.barometerAvailable) R.string.onb_step_notifications else R.string.onb_step_notifications_of_two),
             title = stringResource(R.string.onb_notifications_title),
             body = stringResource(R.string.onb_notifications_text),
           ) {
@@ -188,7 +213,7 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
               onNext = { next() },
             )
           }
-          3 -> Page(
+          OnboardingPage.ACTIVITY -> Page(
             eyebrow = stringResource(R.string.onb_step_activity),
             title = stringResource(R.string.onb_activity_title),
             body = stringResource(R.string.onb_activity_text),
@@ -200,7 +225,7 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
               onNext = { next() },
             )
           }
-          4 -> Page(
+          OnboardingPage.GLASS -> Page(
             eyebrow = stringResource(R.string.appear_title),
             title = stringResource(R.string.onb_glass_title),
             body = stringResource(R.string.onb_glass_text),
@@ -209,7 +234,7 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
             Spacer(Modifier.height(16.dp))
             FluidButton(text = stringResource(R.string.common_next), onClick = { next() }, fillWidth = true)
           }
-          5 -> Page(
+          OnboardingPage.SAMPLING -> Page(
             eyebrow = stringResource(R.string.onb_accuracy),
             title = stringResource(R.string.onb_sampling_title),
             body = stringResource(R.string.onb_sampling_text),
@@ -230,24 +255,61 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
             Spacer(Modifier.height(16.dp))
             FluidButton(text = stringResource(R.string.common_next), onClick = { next() }, fillWidth = true)
           }
-          6 -> AiOnboardingPage(assistant = deps.assistant, onNext = { next() })
-          else -> Page(
-            eyebrow = stringResource(R.string.onb_calibration),
-            title = stringResource(R.string.onb_calibration_title),
-            body = stringResource(R.string.onb_calibration_text),
+          // Il campionamento vive in background, e i telefoni che mettono le app a dormire lo
+          // fermano senza dirlo: meglio chiederlo qui, una volta, che scoprirlo dopo giorni.
+          OnboardingPage.BACKGROUND -> Page(
+            eyebrow = stringResource(R.string.onb_step_battery),
+            title = stringResource(R.string.bg_access_title),
+            body = stringResource(R.string.bg_access_desc) +
+              if (access.samsung) "\n\n" + stringResource(R.string.onb_samsung_note) else "",
           ) {
-            FluidButton(
-              text = stringResource(R.string.onb_begin),
-              onClick = {
-                scope.launch {
-                  deps.onboardingStore.setDone(true)
-                  deps.scheduler.applyCurrentMode()
-                  deps.calibrationController.start()
-                  onFinished()
-                }
-              },
-              fillWidth = true,
+            PermissionActions(
+              granted = access.unrestrictedBattery,
+              grantLabel = stringResource(R.string.onb_allow_battery),
+              onGrant = { BackgroundAccessIntents.requestUnrestrictedBattery(context) },
+              onNext = { next() },
             )
+          }
+          OnboardingPage.ASSISTANT -> AiOnboardingPage(assistant = deps.assistant, onNext = { next() })
+          OnboardingPage.FINISH -> if (deps.barometerAvailable) {
+            Page(
+              eyebrow = stringResource(R.string.onb_calibration),
+              title = stringResource(R.string.onb_calibration_title),
+              body = stringResource(R.string.onb_calibration_text),
+            ) {
+              FluidButton(
+                text = stringResource(R.string.onb_begin),
+                onClick = {
+                  scope.launch {
+                    deps.onboardingStore.setDone(true)
+                    deps.scheduler.applyCurrentMode()
+                    deps.calibrationController.start()
+                    onFinished()
+                  }
+                },
+                fillWidth = true,
+              )
+            }
+          } else {
+            Page(
+              eyebrow = stringResource(R.string.readiness_no_sensor),
+              title = stringResource(R.string.onb_ready_title),
+              body = stringResource(R.string.no_sensor_desc),
+            ) {
+              FluidButton(
+                text = stringResource(R.string.onb_begin),
+                onClick = {
+                  scope.launch {
+                    deps.onboardingStore.setDone(true)
+                    // Il giro meteo in background si appoggia al lavoro periodico anche senza
+                    // sensore: la passata non legge niente, ma dopo di lei il meteo si aggiorna.
+                    deps.scheduler.applyCurrentMode()
+                    onFinished()
+                  }
+                },
+                fillWidth = true,
+              )
+            }
           }
         }
       }
@@ -258,7 +320,7 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
         .fillMaxWidth()
         .padding(bottom = 18.dp),
     ) {
-      repeat(PAGES) { index ->
+      repeat(pages.size) { index ->
         Box(
           Modifier
             .padding(horizontal = 4.dp)

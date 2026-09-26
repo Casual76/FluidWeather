@@ -42,13 +42,21 @@ class NowcastVerdictTool(private val resolver: PlaceResolver) : AiTool {
     val nowcast = ctx.nowcastFor(place, resolver) ?: return "nessun verdetto: posizione del telefono sconosciuta"
     val readiness = nowcast.readiness
     val explanation = nowcast.explanation
+    if (!readiness.sensorAvailable) {
+      return "nessun verdetto: questo dispositivo non ha il barometro, il nowcast locale non esiste; per la pioggia usa le previsioni dei provider"
+    }
     return ToolText.build {
       line("luogo", place?.label ?: "posizione attuale")
       if (readiness.calibrationRunning) line("taratura", "in corso (${readiness.calibrationCompletedSeconds}/${readiness.calibrationTotalSeconds} s)")
       else line("taratura", if (readiness.calibrated) "fatta" else "non fatta")
       line("storia barometrica", "${"%.1f".format(ctx.locale, nowcast.historyHours)} h su ${readiness.requiredHours.roundToInt()} h necessarie")
       if (explanation == null) {
-        line("verdetto", "non ancora disponibile: ${if (nowcast.samples.isEmpty()) "nessun campione registrato" else "servono ${readiness.requiredHours.roundToInt()} ore di storia pulita"}")
+        val why = when {
+          readiness.samplingBlocked -> "il campionamento in background e' fermo (il sistema sospende l'app: l'utente lo sistema in Impostazioni > Motore e accuratezza)"
+          nowcast.samples.isEmpty() -> "nessun campione registrato"
+          else -> "servono ${readiness.requiredHours.roundToInt()} ore di storia pulita"
+        }
+        line("verdetto", "non ancora disponibile: $why")
         return@build
       }
       val verdict = explanation.verdict

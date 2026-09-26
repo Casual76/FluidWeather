@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -91,6 +92,9 @@ val HomeBarHeight = 54.dp
 private val BarIconSize = 22.dp
 private val BarGap = 10.dp
 
+/** La barra non si allarga oltre un telefono grande: su tablet resta centrata. */
+private val BarMaxWidth = 560.dp
+
 /**
  * La barra flottante a tutta larghezza: radar a sinistra, pillola della localita' elastica al
  * centro, il tasto dell'assistente (solo se attivo) e il menu' a destra. Il menu' e' un morph
@@ -129,7 +133,9 @@ internal fun HomeFloatingBar(
   }
 
   Row(
-    modifier = modifier.padding(horizontal = 16.dp),
+    // Su un tablet la barra non attraversa lo schermo: resta della misura di un telefono,
+    // centrata, con la pillola del posto che non diventa lunga un metro (2026-09-26).
+    modifier = modifier.widthIn(max = BarMaxWidth).padding(horizontal = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(BarGap),
   ) {
