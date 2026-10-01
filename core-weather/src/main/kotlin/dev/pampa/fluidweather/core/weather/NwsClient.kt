@@ -15,7 +15,6 @@ import java.util.Locale
 class NwsClient(
   override val descriptor: ProviderDescriptor,
   private val http: ProviderHttp,
-  private val clock: () -> Long = System::currentTimeMillis,
 ) : WeatherClient {
 
   override suspend fun fetch(latitude: Double, longitude: Double, apiKey: String?): ForecastBundle {
@@ -24,7 +23,9 @@ class NwsClient(
     val hourlyUrl = point["properties"]["forecastHourly"].string()
       ?: error("NWS: cella di griglia senza forecastHourly")
 
-    val forecast = http.readJson(hourlyUrl, FORECAST_TTL_MILLIS)
+    // L'eta' del bundle e' quella del forecast orario: la cella di griglia e' in cache per una
+    // settimana e non dice niente di quanto e' vecchia la previsione.
+    val (forecast, downloadedAt) = http.readJsonTimed(hourlyUrl, FORECAST_TTL_MILLIS)
     val points = forecast["properties"]["periods"].asArray().mapNotNull { period ->
       val start = period["startTime"].string() ?: return@mapNotNull null
       val temperatureRaw = period["temperature"].double()
@@ -43,7 +44,7 @@ class NwsClient(
 
     return ForecastBundle(
       providerId = descriptor.id,
-      fetchedAtMillis = clock(),
+      fetchedAtMillis = downloadedAt,
       latitude = latitude,
       longitude = longitude,
       hourly = points,

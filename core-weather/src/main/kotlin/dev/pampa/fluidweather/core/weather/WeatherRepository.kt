@@ -1,8 +1,12 @@
 package dev.pampa.fluidweather.core.weather
 
+import dev.pampa.fluidweather.nowcast.features.ContextVariable
+import dev.pampa.fluidweather.nowcast.features.ContextSlots
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
 import dev.pampa.fluidweather.core.model.ForecastBundle
+import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.nowcast.features.NowcastContext
+import dev.pampa.fluidweather.nowcast.truth.RainWindows
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -57,38 +61,40 @@ class WeatherRepository(
 }
 
 /**
- * Da un bundle orario al contesto del nowcast: adesso, tre ore fa, e la pioggia recente.
- *
- * La pioggia dell'ultima ora prende il quarto d'ora quando il provider lo offre, riportato a
- * millimetri all'ora. E' la differenza fra sapere che sta piovendo e scoprirlo alla fine dell'ora.
+ * Da un bundle orario al contesto del nowcast, letto "com'era al download": il riferimento e' il
+ * piu' presto fra adesso e l'istante in cui il bundle e' stato scaricato ([ForecastBundle.fetchedAtMillis]).
+ * Vedi [contextAsOf].
  */
-fun ForecastBundle.toContext(nowMillis: Long): NowcastContext? {
-  val now = at(nowMillis) ?: return null
-  val threeAgo = at(nowMillis - 3 * 3_600_000L)
-  val rainLast3 = (0..2).mapNotNull { at(nowMillis - it * 3_600_000L)?.precipitationMm }
-    .takeIf { it.isNotEmpty() }
-    ?.sum()
-  val dewSpread = if (now.temperatureC != null && now.dewPointC != null) {
-    now.temperatureC!! - now.dewPointC!!
-  } else {
-    null
-  }
-  return NowcastContext(
-    relativeHumidityPercent = now.relativeHumidityPercent,
-    dewPointSpreadC = dewSpread,
-    cloudCoverPercent = now.cloudCoverPercent,
-    windSpeedKmh = now.windSpeedKmh,
-    windDirectionDeg = now.windDirectionDeg,
-    windDirectionDeg3hAgo = threeAgo?.windDirectionDeg,
-    // Il quarto d'ora vince sull'ora quando c'e', ma come accumulo dell'ora appena passata, non
-    // come tasso istantaneo: e' la grandezza su cui il modello e' stato addestrato. Il vantaggio
-    // non e' la scala, e' la freschezza — la riga oraria del provider e' vecchia fino a novanta
-    // minuti, i quattro quarti d'ora arrivano fino ad adesso.
-    rainLastHourMm = rainLastHourMm(nowMillis) ?: now.precipitationMm,
-    rainLast3hMm = rainLast3,
-    pressureMslHpa = now.pressureMslHpa,
-    pressureMsl3hAgoHpa = threeAgo?.pressureMslHpa,
-  )
+fun ForecastBundle.toContext(nowMillis: Long): NowcastContext? =
+  contextAsOf(minOf(nowMillis, fetchedAtMillis))
+
+/**
+ * Il contesto sinottico com'era all'istante [refMillis], **solo con slot chiusi**, calcolato da
+ * [ContextSlots.contextAt]: la stessa funzione con cui il banco ha costruito le righe del v3.
+ *
+ * Prima si leggeva la riga piu' vicina a "adesso" (`at`, fino a novanta minuti di scarto) e si
+ * poteva pescare un valore istantaneo di mezz'ora nel futuro del download: una previsione spacciata
+ * per osservazione. Poi (P2a) gli slot chiusi, ma con la pioggia dell'ultima ora presa dai quarti
+ * d'ora quando c'erano: piu' fresca, e diversa da quella su cui il v3 e' stato addestrato (lo slot
+ * orario). Col v3 la parita' col banco vale piu' di mezz'ora di freschezza: la lettura e' esatta sul
+ * timestamp delle righe orarie, nessuna riga con fine oltre [refMillis] entra mai, e senza la riga S
+ * il contesto non c'e'. I campi nuovi del v3 (temperatura e rugiada adesso e tre ore fa, nuvole tre
+ * ore fa, le sette ore di pioggia) vengono dalle stesse righe.
+ */
+fun ForecastBundle.contextAsOf(refMillis: Long): NowcastContext? {
+  val rows = hourly.associateBy { it.timestampMillis }
+  return ContextSlots.contextAt(refMillis) { slotEnd, variable -> rows[slotEnd]?.valueOf(variable) }
+}
+
+private fun HourlyPoint.valueOf(variable: ContextVariable): Double? = when (variable) {
+  ContextVariable.TEMPERATURE -> temperatureC
+  ContextVariable.RELATIVE_HUMIDITY -> relativeHumidityPercent
+  ContextVariable.DEW_POINT -> dewPointC
+  ContextVariable.PRESSURE_MSL -> pressureMslHpa
+  ContextVariable.PRECIPITATION -> precipitationMm
+  ContextVariable.CLOUD_COVER -> cloudCoverPercent
+  ContextVariable.WIND_SPEED -> windSpeedKmh
+  ContextVariable.WIND_DIRECTION -> windDirectionDeg
 }
 
 /** La fabbrica della costellazione: descrittori del registro -> client concreti. */

@@ -29,6 +29,32 @@ data class NowcastContext(
    */
   val pressureMslHpa: Double? = null,
   val pressureMsl3hAgoHpa: Double? = null,
+  /**
+   * Da qui in giu' i campi del v3, tutti null per chi non li riempie: il v2 non li legge e i
+   * chiamanti di prima compilano invariati. Li riempie [ContextSlots.contextAt] sia sul telefono
+   * sia sul banco, e da una sola definizione — solo slot orari **chiusi** — escono le feature
+   * 20-26 di [FeatureExtractorV3].
+   *
+   * S = la fine dell'ultimo slot orario chiuso quando il contesto e' stato scaricato. Serve a due
+   * cose: l'eta' del contesto all'emissione (feature 20) e il ritardo con cui la persistenza e'
+   * calibrata ([dev.pampa.fluidweather.nowcast.climatology.LocalBaselines.lagOf]).
+   */
+  val slotEndMillis: Long? = null,
+  /** Temperatura a 2 m nello slot S e in S - 3 h, in gradi. */
+  val temperatureC: Double? = null,
+  val temperature3hAgoC: Double? = null,
+  /** Punto di rugiada nello slot S e in S - 3 h, in gradi. */
+  val dewPointC: Double? = null,
+  val dewPoint3hAgoC: Double? = null,
+  /** Copertura nuvolosa in S - 3 h (quella di S e' [cloudCoverPercent]). */
+  val cloudCover3hAgoPercent: Double? = null,
+  /**
+   * La pioggia degli ultimi sette slot chiusi: l'indice k e' lo slot che si chiude a S - k ore
+   * (k = 0..6), null dove lo slot manca. Sono sette e non sei perche' `past_hours=6` di Open-Meteo
+   * porta S-6h..S: sei slot servono a "pioggia delle ultime 6 h" (k = 0..5), il settimo e' la
+   * riga piu' vecchia che la richiesta porta comunque.
+   */
+  val rainSlotsMm: List<Double?>? = null,
 )
 
 /**

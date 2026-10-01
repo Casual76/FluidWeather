@@ -233,9 +233,15 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
     }
 
     // 1) GPS o localita' scelta: da qui in poi il caricamento non sa la differenza.
+    // Il fix puo' essere l'ultima posizione nota, di ore fa: il meteo si aggiorna li' lo stesso, ma
+    // il giro non si iscrive alla classifica come "dov'e' il telefono" (null = la regola di sempre).
+    var registerHere: Boolean? = null
     val resolved: Triple<Double, Double, String?>? = if (place.isGps) {
       runCatching { deps.locationProvider.snapshot() }.getOrNull()
-        ?.let { Triple(it.latitude, it.longitude, null) }
+        ?.let { fix ->
+          if (!fix.isFreshAt(System.currentTimeMillis())) registerHere = false
+          Triple(fix.latitude, fix.longitude, null)
+        }
     } else {
       Triple(place.latitude, place.longitude, place.name)
     }
@@ -274,7 +280,8 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
       .getOrDefault(DEFAULT_CADENCE_MILLIS)
     val cached = known?.takeIf { it.distanceKmTo(latitude, longitude) <= NEARBY_KM }
     val snapshot = if (canRefresh && (cached == null || cached.ageMillis(now) > cadenceMillis)) {
-      runCatching { deps.snapshotRefresher.refresh(key, latitude, longitude) }.getOrNull() ?: known
+      runCatching { deps.snapshotRefresher.refresh(key, latitude, longitude, registerPredictions = registerHere) }.getOrNull()
+        ?: known
     } else {
       cached
     }
@@ -302,6 +309,8 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
         nowMillis = now,
         calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
         record = true,
+        pointLatitude = latitude,
+        pointLongitude = longitude,
       )
       val history = runCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
       value = value.copy(
@@ -434,8 +443,19 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
       }
       val latitude = here?.latitude ?: state.latitude ?: return@repeatOnLifecycle
       val longitude = here?.longitude ?: state.longitude ?: return@repeatOnLifecycle
-      val fresh = runCatching { deps.snapshotRefresher.refresh(key, latitude, longitude) }.getOrNull()
-        ?: return@repeatOnLifecycle
+      // Senza un fix di adesso le coordinate sono quelle di prima, e non si sa di quanto: aggiornare
+      // il meteo li' va bene, ma non deve iscrivere previsioni alla classifica come "dove e' il
+      // telefono". E "di adesso" vuol dire fresco davvero: il fix puo' essere l'ultima posizione
+      // nota, di ore fa. Solo per il posto del telefono: per una localita' scelta vale la regola di sempre.
+      val freshFix = here?.isFreshAt(System.currentTimeMillis()) == true
+      val fresh = runCatching {
+        deps.snapshotRefresher.refresh(
+          key,
+          latitude,
+          longitude,
+          registerPredictions = if (place.isGps && !freshFix) false else null,
+        )
+      }.getOrNull() ?: return@repeatOnLifecycle
       holder.value = holder.value.applySnapshot(fresh, System.currentTimeMillis(), deps)
     }
   }

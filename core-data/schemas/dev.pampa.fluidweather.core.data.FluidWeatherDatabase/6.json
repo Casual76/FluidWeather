@@ -1,0 +1,435 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 6,
+    "identityHash": "8d98a9dce1b4f645a2580435afa1ce61",
+    "entities": [
+      {
+        "tableName": "pressure_samples",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestampMillis` INTEGER NOT NULL, `pressureHpa` REAL NOT NULL, `source` TEXT NOT NULL, `burstId` TEXT, `altitudeMeters` REAL, `latitude` REAL, `longitude` REAL, `activity` TEXT NOT NULL, `activityConfidence` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampMillis",
+            "columnName": "timestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pressureHpa",
+            "columnName": "pressureHpa",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "burstId",
+            "columnName": "burstId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "altitudeMeters",
+            "columnName": "altitudeMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "activity",
+            "columnName": "activity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityConfidence",
+            "columnName": "activityConfidence",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pressure_samples_timestampMillis",
+            "unique": false,
+            "columnNames": [
+              "timestampMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pressure_samples_timestampMillis` ON `${TABLE_NAME}` (`timestampMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pending_predictions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`providerId` TEXT NOT NULL, `variable` TEXT NOT NULL, `targetTimestampMillis` INTEGER NOT NULL, `predictedValue` REAL NOT NULL, `issuedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`providerId`, `variable`, `targetTimestampMillis`))",
+        "fields": [
+          {
+            "fieldPath": "providerId",
+            "columnName": "providerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "variable",
+            "columnName": "variable",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetTimestampMillis",
+            "columnName": "targetTimestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "predictedValue",
+            "columnName": "predictedValue",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "issuedAtMillis",
+            "columnName": "issuedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "providerId",
+            "variable",
+            "targetTimestampMillis"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pending_predictions_targetTimestampMillis",
+            "unique": false,
+            "columnNames": [
+              "targetTimestampMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_predictions_targetTimestampMillis` ON `${TABLE_NAME}` (`targetTimestampMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "forecast_verifications",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `providerId` TEXT NOT NULL, `variable` TEXT NOT NULL, `horizonBucket` TEXT NOT NULL, `absoluteError` REAL NOT NULL, `verifiedAtMillis` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "providerId",
+            "columnName": "providerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "variable",
+            "columnName": "variable",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "horizonBucket",
+            "columnName": "horizonBucket",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "absoluteError",
+            "columnName": "absoluteError",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verifiedAtMillis",
+            "columnName": "verifiedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_forecast_verifications_variable_horizonBucket",
+            "unique": false,
+            "columnNames": [
+              "variable",
+              "horizonBucket"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_forecast_verifications_variable_horizonBucket` ON `${TABLE_NAME}` (`variable`, `horizonBucket`)"
+          }
+        ]
+      },
+      {
+        "tableName": "saved_locations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `region` TEXT, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `sortOrder` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "region",
+            "columnName": "region",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "nowcast_verdicts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`timestampMillis` INTEGER NOT NULL, `probability01` REAL NOT NULL, `probability13` REAL NOT NULL, `probability36` REAL NOT NULL, `level` TEXT NOT NULL, PRIMARY KEY(`timestampMillis`))",
+        "fields": [
+          {
+            "fieldPath": "timestampMillis",
+            "columnName": "timestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "probability01",
+            "columnName": "probability01",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "probability13",
+            "columnName": "probability13",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "probability36",
+            "columnName": "probability36",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "level",
+            "columnName": "level",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "timestampMillis"
+          ]
+        }
+      },
+      {
+        "tableName": "observations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestampMillis` INTEGER NOT NULL, `condition` TEXT NOT NULL, `latitude` REAL, `longitude` REAL, `placeName` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampMillis",
+            "columnName": "timestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "condition",
+            "columnName": "condition",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "placeName",
+            "columnName": "placeName",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_observations_timestampMillis",
+            "unique": false,
+            "columnNames": [
+              "timestampMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_observations_timestampMillis` ON `${TABLE_NAME}` (`timestampMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "nowcast_issues",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`issuedAtMillis` INTEGER NOT NULL, `features` TEXT NOT NULL, `rawProbability01` REAL NOT NULL, `rawProbability13` REAL NOT NULL, `rawProbability36` REAL NOT NULL, PRIMARY KEY(`issuedAtMillis`))",
+        "fields": [
+          {
+            "fieldPath": "issuedAtMillis",
+            "columnName": "issuedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "features",
+            "columnName": "features",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawProbability01",
+            "columnName": "rawProbability01",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawProbability13",
+            "columnName": "rawProbability13",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawProbability36",
+            "columnName": "rawProbability36",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "issuedAtMillis"
+          ]
+        }
+      },
+      {
+        "tableName": "nowcast_outcomes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`issuedAtMillis` INTEGER NOT NULL, `window` TEXT NOT NULL, `rained` INTEGER NOT NULL, PRIMARY KEY(`issuedAtMillis`, `window`))",
+        "fields": [
+          {
+            "fieldPath": "issuedAtMillis",
+            "columnName": "issuedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "window",
+            "columnName": "window",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rained",
+            "columnName": "rained",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "issuedAtMillis",
+            "window"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_nowcast_outcomes_issuedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "issuedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_nowcast_outcomes_issuedAtMillis` ON `${TABLE_NAME}` (`issuedAtMillis`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8d98a9dce1b4f645a2580435afa1ce61')"
+    ]
+  }
+}

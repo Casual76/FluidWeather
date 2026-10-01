@@ -7,4 +7,7 @@ plugins {
   id 'org.jetbrains.kotlin.jvm' version '2.2.20' apply false
   // La parte dopo il trattino e' la versione di KSP, quella prima DEVE combaciare con Kotlin.
   id 'com.google.devtools.ksp' version '2.2.20-2.0.4' apply false
+  // Il plugin di Room esporta gli schemi JSON (le fotografie di ogni versione del database su cui
+  // si appoggia MigrationTest). DEVE avere la stessa versione di appVersions.room.
+  id 'androidx.room' version '2.8.4' apply false
 }

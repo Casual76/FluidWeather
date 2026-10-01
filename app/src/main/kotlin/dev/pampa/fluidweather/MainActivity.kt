@@ -146,6 +146,9 @@ class MainActivity : ComponentActivity() {
     // Ogni volta che l'app torna davanti: se il campionamento tace da ore (Samsung l'ha messa in
     // sospensione, il bucket l'ha rinviato), qui riparte da capo con una passata subito.
     graph.applicationScope.launch { graph.samplingHealth.check(foreground = true) }
+    // Il giudice della pioggia e la climatologia del posto: al piu' una volta l'ora (il freno e' su
+    // disco), cosi' anche chi apre l'app ogni tanto vede le sue righe giudicate.
+    graph.applicationScope.launch { runCatching { graph.rainTruthMaintenance.runIfDue() } }
   }
 
   override fun onStop() {

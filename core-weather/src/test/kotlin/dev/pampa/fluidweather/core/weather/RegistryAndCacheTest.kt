@@ -75,7 +75,8 @@ class RegistryAndCacheTest {
 
   @Test
   fun `il contesto dal bundle - adesso, tre ore fa, pioggia recente`() {
-    val base = 1_700_000_000_000L
+    // Un'ora tonda: il contesto legge solo slot chiusi, sulla riga esatta.
+    val base = 1_700_002_800_000L
     val bundle = ForecastBundle(
       providerId = "test",
       fetchedAtMillis = base,

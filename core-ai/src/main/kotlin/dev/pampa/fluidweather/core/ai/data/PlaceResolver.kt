@@ -18,6 +18,12 @@ data class ResolvedPlace(
   val isSelected: Boolean,
   val isSaved: Boolean,
   val isGps: Boolean,
+  /**
+   * Le coordinate vengono da un fix di adesso. Falso quando il GPS non risponde e si ripiega
+   * sull'ultima istantanea: e' il posto di un'ora o di un giorno fa, e un giro fatto li' non deve
+   * iscrivere previsioni "di qui" alla classifica del barometro.
+   */
+  val fromFreshFix: Boolean = true,
 ) {
   val label: String get() = if (region.isNullOrBlank()) name else "$name, $region"
 
@@ -83,7 +89,12 @@ class PlaceResolver(private val sources: AiDataSources) {
         placeKey = place.snapshotKey,
         latitude = place.latitude,
         longitude = place.longitude,
-        registerPredictions = if (place.isSaved || place.isGps) null else false,
+        registerPredictions = when {
+          // Posizione ricostruita dall'ultima istantanea: non e' dove e' il telefono adesso.
+          place.isGps && !place.fromFreshFix -> false
+          place.isSaved || place.isGps -> null
+          else -> false
+        },
       )
     }.getOrNull() ?: sources.snapshotRefresher.fresh(place.snapshotKey, place.latitude, place.longitude, STALE_MAX_AGE_MILLIS)
   }
@@ -101,6 +112,7 @@ class PlaceResolver(private val sources: AiDataSources) {
           isSelected = isSelected,
           isSaved = false,
           isGps = true,
+          fromFreshFix = false,
         )
       } ?: return null
       return ResolvedPlace(
@@ -113,6 +125,9 @@ class PlaceResolver(private val sources: AiDataSources) {
         isSelected = isSelected,
         isSaved = false,
         isGps = true,
+        // Il fix puo' essere l'ultima posizione nota del sistema, di ore fa: e' ancora "dove sei"
+        // per rispondere, ma non per iscrivere il giro alla classifica del barometro.
+        fromFreshFix = here.isFreshAt(System.currentTimeMillis()),
       )
     }
     return ResolvedPlace(

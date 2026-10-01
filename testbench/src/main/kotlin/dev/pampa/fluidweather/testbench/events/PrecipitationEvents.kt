@@ -1,55 +1,55 @@
 package dev.pampa.fluidweather.testbench.events
 
+import dev.pampa.fluidweather.nowcast.truth.RainWindow
+import dev.pampa.fluidweather.nowcast.truth.RainWindows
 import dev.pampa.fluidweather.testbench.data.HourlyRecord
 
 /** Una finestra di previsione: "pioggia fra [fromHours] e [toHours] ore da adesso". */
 data class EventWindow(val fromHours: Int, val toHours: Int) {
   val label: String get() = "$fromHours-${toHours}h"
 
+  /** La stessa finestra nel contratto condiviso col telefono. */
+  fun toRainWindow(): RainWindow = RainWindow(fromHours, toHours)
+
   companion object {
-    /** Le tre finestre del piano: il widget mostra 0-3, la pagina arriva a 6. */
-    val Standard = listOf(EventWindow(0, 1), EventWindow(1, 3), EventWindow(3, 6))
+    /** Le tre finestre del piano, prese dal contratto condiviso: il widget mostra 0-3, la pagina arriva a 6. */
+    val Standard = RainWindows.ALL.map { EventWindow(it.fromHours, it.toHours) }
   }
 }
 
 /**
- * La verita' di riferimento: c'e' stata precipitazione nella finestra?
+ * La verita' di riferimento del banco: c'e' stata precipitazione nella finestra?
  *
- * La soglia e' 0,2 mm accumulati: sotto, gli archivi orari riportano piovaschi da tracce che
- * nessuno percepisce come "pioggia" — contarli come eventi renderebbe il banco piu' facile da
- * battere e piu' bugiardo. I record orari valgono per l'ora *precedente* al loro timestamp
- * (convenzione degli archivi): la finestra (t+a, t+b] somma i record con timestamp in
- * (t+a, t+b].
+ * Non e' piu' una definizione propria: delega a [RainWindows], la definizione unica dell'evento
+ * che usa anche il telefono (soglia 0,2 mm sull'accumulo di finestra, slot orari (T-1h, T],
+ * finestra ingiudicabile se manca anche un solo slot). I record orari valgono per l'ora
+ * *precedente* al loro timestamp (convenzione degli archivi): la finestra (a, b) da t somma i record
+ * che si chiudono da t+(a+1)h a t+b h.
+ *
+ * L'unica differenza e' l'ancora: [RainWindows.evaluate] arrotonda l'emissione per eccesso all'ora
+ * piena, qui si ancora all'istante dato ([RainWindows.outcomeFromAnchor]). Il banco emette sempre
+ * sugli istanti dei suoi record, che negli archivi Open-Meteo sono ore piene: li' le due cose
+ * coincidono, e un'emissione allo scoccare dell'ora da' lo stesso esito sul banco e sul telefono.
+ * Ancorare all'istante tiene in piedi anche le serie su griglie orarie sfasate (i test).
  */
 class PrecipitationEvents(
   records: List<HourlyRecord>,
-  private val thresholdMm: Double = 0.2,
+  private val thresholdMm: Double = RainWindows.WET_THRESHOLD_MM,
 ) {
 
-  private val ordered = records.sortedBy { it.timestampMillis }
-  private val timestamps = ordered.map { it.timestampMillis }
+  /** Fine dello slot -> mm (null = record presente ma senza precipitazione: un buco come un altro). */
+  private val precipitationBySlotEnd: Map<Long, Double?> =
+    records.associate { it.timestampMillis to it.precipitationMm }
 
-  fun occurred(nowMillis: Long, window: EventWindow): Boolean? {
-    val from = nowMillis + window.fromHours * 3_600_000L
-    val to = nowMillis + window.toHours * 3_600_000L
-    var index = timestamps.binarySearch(from + 1).let { if (it < 0) -it - 1 else it }
-    var accumulated = 0.0
-    var covered = 0
-    while (index < ordered.size && timestamps[index] <= to) {
-      val precip = ordered[index].precipitationMm ?: return null
-      accumulated += precip
-      covered++
-      index++
-    }
-    // Finestra scoperta (fine del dataset): non si giudica cio' che non si conosce.
-    if (covered < window.toHours - window.fromHours) return null
-    return accumulated >= thresholdMm
-  }
+  private val slotMm: (Long) -> Double? = { precipitationBySlotEnd[it] }
 
-  /** Sta piovendo adesso? (l'ora appena conclusa) — serve al predittore di persistenza. */
-  fun rainingAt(nowMillis: Long): Boolean? {
-    val index = timestamps.binarySearch(nowMillis)
-    if (index < 0) return null
-    return (ordered[index].precipitationMm ?: return null) >= thresholdMm
-  }
+  fun occurred(nowMillis: Long, window: EventWindow): Boolean? =
+    RainWindows.outcomeFromAnchor(nowMillis, window.toRainWindow(), slotMm, thresholdMm = thresholdMm)
+
+  /**
+   * Sta piovendo adesso? L'ora appena conclusa, cioe' lo slot che si chiude a [nowMillis], con la
+   * stessa soglia dell'evento — serve al predittore di persistenza. Fra due record non si inventa.
+   */
+  fun rainingAt(nowMillis: Long): Boolean? =
+    slotMm(nowMillis)?.let { RainWindows.isWet(it, thresholdMm) }
 }

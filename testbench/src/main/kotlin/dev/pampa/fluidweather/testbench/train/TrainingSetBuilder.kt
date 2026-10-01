@@ -84,7 +84,7 @@ class TrainingSetBuilder(
  * trentacinquemila confronti per riga, moltiplicati per trentacinquemila righe. Il risultato non
  * cambia di una virgola; il tempo si'.
  */
-private class TemperatureTrack(dataset: StationDataset) {
+internal class TemperatureTrack(dataset: StationDataset) {
   private val ordered = dataset.records.sortedBy { it.timestampMillis }
   private val lastKnown = DoubleArray(ordered.size)
 

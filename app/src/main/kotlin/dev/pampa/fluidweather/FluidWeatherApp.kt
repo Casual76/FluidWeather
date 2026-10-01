@@ -71,6 +71,9 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
       // La chiave dell'onboarding esce dal file della taratura, dove "cancella tutti i dati" se la
       // portava via insieme al bias e faceva ripartire la presentazione (e quindi la taratura).
       runCatching { graph.onboardingStore.migrateFromCalibrationStore() }
+      // Le mappe di Platt di un altro modello (o di altre regole) si azzerano subito, non alla
+      // prima ristima: un aggiornamento non deve correggere il modello nuovo con la taratura del vecchio.
+      runCatching { graph.plattRefitter.ensureVersion() }
       // Una raffica di taratura rimasta senza riferimento e' ancora tutta in archivio: si ritenta
       // la stima invece di chiedere all'utente altri dieci minuti.
       runCatching { graph.calibrationController.retryPendingEstimate() }

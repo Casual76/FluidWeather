@@ -13,6 +13,7 @@ import com.google.android.gms.location.ActivityRecognitionResult
 import com.google.android.gms.location.DetectedActivity
 import dev.pampa.fluidweather.core.data.LatestActivity
 import dev.pampa.fluidweather.core.model.ActivityKind
+import dev.pampa.fluidweather.nowcast.cleaning.TransitRule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,6 +74,9 @@ class ActivityUpdateReceiver : BroadcastReceiver() {
             confidence = mostProbable.confidence,
             observedAtMillis = System.currentTimeMillis(),
           ),
+          // Lo stesso criterio della pulizia del segnale: "in auto o in bici" lo decide una regola
+          // sola, e qui serve a sapere da quando l'ultimo fix GPS non e' piu' "qui".
+          inTransit = TransitRule.isInTransit(kind, mostProbable.confidence),
         )
       } finally {
         pending.finish()

@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.feature.benchmark
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,17 +27,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
-import dev.antigravity.fluidengine.ui.fluid.FluidChip
-import dev.antigravity.fluidengine.ui.fluid.FluidRadius
+import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
+import dev.antigravity.fluidengine.ui.fluid.FluidMotion
+import dev.antigravity.fluidengine.ui.fluid.fluidPressable
 import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.RainEventStore
 import dev.pampa.fluidweather.core.model.VerificationStore
 import dev.pampa.fluidweather.core.ui.BlackSheet
 import dev.pampa.fluidweather.core.ui.BlackSheetNote
@@ -46,14 +55,19 @@ import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.core.weather.Benchmark
 import dev.pampa.fluidweather.core.weather.BenchmarkReport
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
-import dev.pampa.fluidweather.core.weather.ProviderScore
-import dev.pampa.fluidweather.core.weather.RainEvent
+import dev.pampa.fluidweather.core.weather.RainBoard
+import dev.pampa.fluidweather.core.weather.RainBoardReport
+import dev.pampa.fluidweather.core.weather.RainRowKind
+import dev.pampa.fluidweather.core.weather.RainRowScore
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
+import dev.pampa.fluidweather.nowcast.verdict.ModelVersions
 import java.time.LocalDate
-import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import dev.pampa.fluidweather.strings.R
+import dev.pampa.fluidweather.strings.rainRowLabelRes
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.strings.TimeFormats
@@ -63,6 +77,10 @@ class BenchmarkDependencies(
   val verificationStore: VerificationStore,
   val fusionSettings: FusionSettingsStore,
   val snapshotStore: WeatherSnapshotStore,
+  /** I giudizi della pioggia: la classifica nuova li legge da qui, non dalle verifiche generali. */
+  val rainEventStore: RainEventStore,
+  /** Decide l'ancora della classifica pioggia: il barometro, o la climatologia dove non c'e'. */
+  val barometerAvailable: Boolean,
 )
 
 private val White = Color.White
@@ -74,8 +92,9 @@ private val Green = Color(0xFF6FD58C)
 
 /**
  * La vetrina del motore (fase 13), foglio nero a tutta altezza: la classifica dei provider
- * per la zona dalle verifiche VERE, la pioggia col barometro in classifica alla pari, l'errore
- * nel tempo, la ripartizione per variabile, e da ogni riga l'override "usa solo questo".
+ * per la zona dalle verifiche VERE, la pioggia col barometro in classifica alla pari (Brier, sugli
+ * stessi giri per tutti, con i giudici fuori classifica), l'errore nel tempo, la ripartizione per
+ * variabile, e da ogni riga l'override "usa solo questo".
  * Niente qui e' editoriale: dove mancano verifiche, la pagina lo dice.
  */
 @Composable
@@ -86,26 +105,40 @@ fun BenchmarkSheet(open: Boolean, deps: BenchmarkDependencies, onDismiss: () -> 
   }
 }
 
+/** Le due pagelle della pagina, pronte insieme: il foglio si disegna una volta sola. */
+private class BenchmarkState(val report: BenchmarkReport, val rain: RainBoardReport)
+
 @Composable
 private fun BenchmarkContent(deps: BenchmarkDependencies) {
   val scope = rememberCoroutineScope()
   val now = remember { System.currentTimeMillis() }
-  val report by produceState<BenchmarkReport?>(initialValue = null) {
-    val verifications = runCatching {
-      deps.verificationStore.allVerifications(now - 60L * 86_400_000L)
-    }.getOrDefault(emptyList())
-    value = Benchmark.build(verifications, now)
+  val state by produceState<BenchmarkState?>(initialValue = null) {
+    // Il ricampionamento del Brier e' calcolo vero (mille ricampionamenti per riga e finestra): non
+    // sul thread dell'interfaccia.
+    value = withContext(Dispatchers.Default) {
+      val verifications = runCatching {
+        deps.verificationStore.allVerifications(now - 60L * 86_400_000L)
+      }.getOrDefault(emptyList())
+      val rainRows = runCatching {
+        deps.rainEventStore.verifications(ModelVersions.TAG, now - RainBoard.WINDOW_MILLIS)
+      }.getOrDefault(emptyList())
+      BenchmarkState(
+        report = Benchmark.build(verifications, now),
+        rain = RainBoard.build(rainRows, now, deps.barometerAvailable),
+      )
+    }
   }
   val snapshot by produceState<WeatherSnapshot?>(initialValue = null) {
     value = deps.snapshotStore.read(WeatherSnapshot.GPS_KEY)
   }
   val onlyProvider by deps.fusionSettings.onlyProviderId.collectAsState(initial = null)
 
-  val ready = report
-  if (ready == null) {
+  val loaded = state
+  if (loaded == null) {
     BlackSheetNote(stringResource(R.string.bench_loading))
     return
   }
+  val ready = loaded.report
 
   // ------------------------------------------------------------------------- lo stato
   BlackSheetSectionTitle(stringResource(R.string.bench_collection))
@@ -214,30 +247,7 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
   }
 
   // ------------------------------------------------------------------------ la pioggia
-  BlackSheetSectionTitle(stringResource(R.string.bench_rain_title))
-  if (ready.rainEvent.isEmpty()) {
-    BlackSheetNote(
-      stringResource(R.string.bench_rain_note),
-    )
-  } else {
-    var window by remember { mutableIntStateOf(1) }
-    val windows = RainEvent.windows
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      windows.forEachIndexed { index, w ->
-        FluidChip(label = w.nowcastLabel, selected = index == window, onClick = { window = index })
-      }
-    }
-    Spacer(Modifier.height(8.dp))
-    val scores = ready.rainEvent[windows[window].variable].orEmpty()
-    if (scores.isEmpty()) {
-      BlackSheetNote(stringResource(R.string.bench_rain_empty))
-    } else {
-      scores.forEachIndexed { index, score -> RainRow(index + 1, score) }
-    }
-    BlackSheetNote(
-      stringResource(R.string.bench_rain_method),
-    )
-  }
+  RainSection(loaded.rain)
 
   // ------------------------------------------------------------------- errore nel tempo
   BlackSheetSectionTitle(stringResource(R.string.bench_error_time, Benchmark.DAYS))
@@ -250,12 +260,12 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
     val variables = FusionVariables.verified
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
       providers.take(4).forEachIndexed { index, id ->
-        FluidChip(label = providerLabel(id), selected = index == providerIndex, onClick = { providerIndex = index })
+        SheetChip(label = providerLabel(id), selected = index == providerIndex, onClick = { providerIndex = index })
       }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       variables.forEachIndexed { index, variable ->
-        FluidChip(label = variableLabel(variable), selected = index == variableIndex, onClick = { variableIndex = index })
+        SheetChip(label = variableLabel(variable), selected = index == variableIndex, onClick = { variableIndex = index })
       }
     }
     Spacer(Modifier.height(8.dp))
@@ -308,25 +318,127 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
   )
 }
 
+/**
+ * La pioggia: il barometro, i provider e due riferimenti, giudicati con lo stesso metro sugli stessi
+ * giri. Finche' non e' arrivata una sola verita' (il giudizio aspetta un giorno dopo la finestra) la
+ * sezione e' la nota che spiega che cosa si sta aspettando.
+ */
 @Composable
-private fun RainRow(position: Int, score: ProviderScore) {
-  val isBarometer = score.providerId == RainEvent.LOCAL_BAROMETER_ID
+private fun RainSection(board: RainBoardReport) {
+  BlackSheetSectionTitle(stringResource(R.string.bench_rain_title))
+  if (board.windows.all { it.rows.isEmpty() }) {
+    BlackSheetNote(stringResource(R.string.bench_rain_note))
+    return
+  }
+  var selected by remember { mutableIntStateOf(1) }
+  val index = selected.coerceIn(0, board.windows.lastIndex)
+  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    board.windows.forEachIndexed { i, w ->
+      SheetChip(label = w.window, selected = i == index, onClick = { selected = i })
+    }
+  }
+  Spacer(Modifier.height(8.dp))
+  val window = board.windows[index]
+  if (window.rows.isEmpty()) {
+    BlackSheetNote(stringResource(R.string.bench_rain_empty))
+  } else {
+    Text(
+      stringResource(R.string.bench_rain_rounds, window.rounds.toString(), window.days.toString()),
+      style = MaterialTheme.typography.bodySmall,
+      color = Faint,
+    )
+    window.rows.forEach { RainRow(it) }
+  }
+  BlackSheetNote(stringResource(R.string.bench_rain_method))
+}
+
+/**
+ * Una riga della classifica pioggia: posto, nome, "n casi · MAE", e a destra il Brier col suo "±".
+ * Il barometro e' verde; i riferimenti (sempre 0%, climatologia) in corsivo, perche' non sono
+ * concorrenti ma il metro con cui leggere gli altri; chi ha pochi dati non ha posto ne' numero.
+ */
+@Composable
+private fun RainRow(row: RainRowScore) {
+  val isBarometer = row.kind == RainRowKind.BAROMETER
+  val isReference = row.kind == RainRowKind.REFERENCE
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier = Modifier
       .fillMaxWidth()
-      .padding(vertical = 6.dp),
+      .padding(vertical = 6.dp)
+      .semantics(mergeDescendants = true) {},
   ) {
-    Text("$position", style = MaterialTheme.typography.titleMedium, color = if (position == 1) Amber else Faint, modifier = Modifier.width(28.dp))
+    Text(
+      row.rank?.toString() ?: "",
+      style = MaterialTheme.typography.titleMedium,
+      color = if (row.rank == 1) Amber else Faint,
+      modifier = Modifier.width(28.dp),
+    )
     Column(Modifier.weight(1f)) {
       Text(
-        providerLabel(score.providerId),
-        style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (isBarometer) FontWeight.SemiBold else FontWeight.Normal),
+        providerLabel(row.providerId),
+        style = MaterialTheme.typography.titleSmall.copy(
+          fontWeight = if (isBarometer) FontWeight.SemiBold else FontWeight.Normal,
+          fontStyle = if (isReference) FontStyle.Italic else FontStyle.Normal,
+        ),
         color = if (isBarometer) Green else White,
       )
-      Text(stringResource(R.string.common_verifications_count, score.count), style = MaterialTheme.typography.bodySmall, color = Faint)
+      Text(
+        stringResource(R.string.bench_rain_cases_mae, row.cases.toString(), fmtDecimals(row.mae, 2)),
+        style = MaterialTheme.typography.bodySmall,
+        color = Faint,
+      )
     }
-    Text(String.format(Locale.getDefault(), "%.2f", score.decayedMae), style = MaterialTheme.typography.titleMedium, color = White)
+    if (row.fewData) {
+      Text(stringResource(R.string.bench_rain_few_data), style = MaterialTheme.typography.bodySmall, color = Faint)
+    } else {
+      Text(
+        stringResource(R.string.bench_rain_brier, fmtDecimals(row.brier, 3), fmtDecimals(row.halfWidth, 3)),
+        style = MaterialTheme.typography.titleMedium,
+        color = White,
+      )
+    }
+  }
+}
+
+/**
+ * La pillola di scelta del foglio nero.
+ *
+ * `FluidChip` dipinge il non scelto con `onSurface` al 6% e la scritta in `onSurface`: colori del
+ * TEMA dell'app, pensati per una superficie del tema. Il foglio nero e' nero qualunque sia il tema,
+ * e li' una pillola non scelta spariva (al 6% su nero non c'e' bordo, e nel tema chiaro anche la
+ * scritta e' scura su nero). Qui il non scelto e' bianco al 14% con la scritta bianca, sempre
+ * leggibile; lo scelto resta come quello dell'engine: l'accento con la sua scritta.
+ */
+@Composable
+private fun SheetChip(label: String, selected: Boolean, onClick: () -> Unit) {
+  val scheme = MaterialTheme.colorScheme
+  val container by animateColorAsState(
+    targetValue = if (selected) scheme.primary else White.copy(alpha = 0.14f),
+    animationSpec = FluidMotion.color(200),
+    label = "sheet chip container",
+  )
+  val content by animateColorAsState(
+    targetValue = if (selected) scheme.onPrimary else White.copy(alpha = 0.92f),
+    animationSpec = FluidMotion.color(200),
+    label = "sheet chip content",
+  )
+  Box(
+    modifier = Modifier
+      .defaultMinSize(minHeight = 48.dp)
+      .clip(FluidCapsuleShape)
+      .background(container)
+      .semantics { this.selected = selected }
+      .fluidPressable(onClick = onClick, role = Role.Button)
+      .padding(horizontal = 14.dp, vertical = 6.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text(
+      text = label,
+      style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+      color = content,
+      maxLines = 1,
+    )
   }
 }
 
@@ -374,10 +486,10 @@ private fun StatRow(label: String, value: String, detail: String? = null) {
 }
 
 @Composable
-internal fun providerLabel(providerId: String): String = when (providerId) {
-  RainEvent.LOCAL_BAROMETER_ID -> stringResource(R.string.your_barometer)
-  else -> ProviderRegistry.all.firstOrNull { it.id == providerId }?.label ?: providerId
-}
+internal fun providerLabel(providerId: String): String =
+  rainRowLabelRes(providerId)?.let { stringResource(it) }
+    ?: ProviderRegistry.all.firstOrNull { it.id == providerId }?.label
+    ?: providerId
 
 @Composable
 internal fun variableLabel(variable: String): String = when (variable) {

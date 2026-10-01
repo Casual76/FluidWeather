@@ -39,19 +39,28 @@ import dev.pampa.fluidweather.core.data.SamplingSettings
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.model.BarometerReadiness
 import dev.pampa.fluidweather.core.model.NowcastReadiness
+import dev.pampa.fluidweather.core.model.PlattMapRecord
+import dev.pampa.fluidweather.core.model.PlattMaps
 import dev.pampa.fluidweather.core.model.ReadinessStage
 import dev.pampa.fluidweather.core.model.SamplingMode
 import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.MaximaAlarm
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
+import dev.pampa.fluidweather.nowcast.features.ContextTier
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
+import dev.pampa.fluidweather.nowcast.learning.PlattRefitPolicy
+import dev.pampa.fluidweather.nowcast.learning.PlattStatus
+import dev.pampa.fluidweather.nowcast.learning.PlattVariant
+import dev.pampa.fluidweather.nowcast.verdict.ModelVersions
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import dev.pampa.fluidweather.strings.R
+import dev.pampa.fluidweather.strings.labelRes
 import dev.pampa.fluidweather.strings.messageRes
+import dev.pampa.fluidweather.strings.plattStatusLabelRes
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.ui.stageText
@@ -70,6 +79,8 @@ class EngineAccuracyDependencies(
   val nowcast: NowcastUseCase,
   val learningStore: LearningStore,
   val learningRepository: LearningRepository,
+  /** Il livello di contesto dell'ultimo giro del telefono, per la riga "contesto adesso". */
+  val currentTier: suspend () -> ContextTier? = { null },
   /** Senza barometro non c'e' niente da tarare ne' da campionare: la schermata lo dice e basta. */
   val barometerAvailable: Boolean = true,
 )
@@ -261,26 +272,44 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
 
     item { FluidSectionHeader(title = stringResource(R.string.learning_title)) }
     item {
-      val platt by deps.learningStore.platt.collectAsState(initial = emptyMap())
+      val maps by deps.learningStore.maps.collectAsState(initial = PlattMaps.EMPTY)
       val outcomes by produceState(initialValue = -1) { value = runCatching { deps.learningRepository.outcomeCount() }.getOrDefault(0) }
+      // Il livello del posto del telefono dall'ultima istantanea, non da un fix nuovo: per questo
+      // l'etichetta dice "ultimo giro".
+      val tier by produceState<ContextTier?>(initialValue = null) {
+        value = withContext(Dispatchers.Default) { runCatching { deps.currentTier() }.getOrNull() }
+      }
       FluidListGroup {
+        FluidListRow(
+          title = stringResource(R.string.learning_model_version),
+          subtitle = "${ModelVersions.TAG} · ${PlattRefitPolicy.RULES_VERSION}",
+        )
+        FluidListDivider()
+        FluidListRow(
+          title = stringResource(R.string.learning_tier_now),
+          subtitle = tier?.let { stringResource(it.labelRes()) } ?: "…",
+        )
+        FluidListDivider()
         FluidListRow(
           title = stringResource(R.string.learning_verifications),
           subtitle = stringResource(R.string.learning_verifications_desc),
           meta = if (outcomes < 0) "…" else outcomes.toString(),
         )
-        listOf("0-1h", "1-3h", "3-6h").forEach { window ->
-          FluidListDivider()
-          val record = platt[window]
-          FluidListRow(
-            title = stringResource(R.string.learning_recalibration, window),
-            subtitle = if (record == null) {
-              stringResource(R.string.learning_not_yet)
-            } else {
-              stringResource(R.string.learning_platt, fmt2(record.a), fmt2(record.b), record.samples)
-            },
-            meta = record?.let { fmtDayTime(it.fittedAtMillis) } ?: "—",
-          )
+        // Una riga per variante di contesto e finestra: i numeri della mappa e, sotto, perche'
+        // e' attiva o no. Una mappa esiste sempre come riga anche quando non si applica.
+        PlattVariant.FITTED.forEach { variant ->
+          PlattRefitPolicy.WINDOWS.forEach { window ->
+            FluidListDivider()
+            val record = maps.records.firstOrNull { it.variant == variant.key && it.window == window }
+            FluidListRow(
+              title = stringResource(
+                R.string.learning_recalibration,
+                "${stringResource(variant.labelRes())} · $window",
+              ),
+              subtitle = mapSubtitle(record),
+              meta = record?.let { fmtDayTime(it.fittedAtMillis) } ?: "—",
+            )
+          }
         }
       }
     }
@@ -347,6 +376,32 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
     }
   }
 }
+
+/**
+ * Le righe di una mappa di Platt: i parametri quando ci sono, i conteggi con bagnati e asciutti, e
+ * l'esito: attiva con il suo guadagno fuori campione, o il motivo per cui non si applica.
+ */
+@Composable
+private fun mapSubtitle(record: PlattMapRecord?): String {
+  if (record == null) return stringResource(R.string.learning_not_yet)
+  val lines = mutableListOf<String>()
+  val a = record.a
+  val b = record.b
+  if (a != null && b != null) lines += stringResource(R.string.learning_platt, fmt2(a), fmt2(b), record.samples)
+  lines += stringResource(R.string.learning_map_counts, record.samples, record.wet, record.dry)
+  val reason = plattStatusLabelRes(record.status)
+  lines += when {
+    record.active -> stringResource(R.string.learning_active_gain, record.guardDeltaBrier?.let(::fmtDelta) ?: "—")
+    reason != null && record.status != PlattStatus.ACTIVE.name -> stringResource(reason)
+    else -> stringResource(R.string.learning_reason_no_gain)
+  }
+  // Senza contesto la regola barometrica del posto puo' aver battuto il modello sui giri di questo
+  // telefono: allora e' lei a parlare, e la pagina lo dice.
+  if (record.useRule) lines += stringResource(R.string.learning_rule_fallback, record.ruleDeltaBrier?.let(::fmtDelta) ?: "—")
+  return lines.joinToString("\n")
+}
+
+private fun fmtDelta(value: Double) = String.format(Locale.ROOT, "%+.4f", value)
 
 private fun fmt2(value: Double) = String.format(Locale.ROOT, "%.2f", value)
 

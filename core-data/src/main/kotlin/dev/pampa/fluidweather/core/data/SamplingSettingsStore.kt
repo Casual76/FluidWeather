@@ -112,17 +112,29 @@ class LatestActivityStore(private val context: Context) {
 
   suspend fun current(): LatestActivity? = latest.first()
 
-  suspend fun store(activity: LatestActivity) {
+  /**
+   * Scrive l'attivita'. Con [inTransit] (auto o bici, decisa da chi riconosce) segna anche
+   * *quando* ci si e' mossi: l'ultima attivita' da sola dice cosa si sta facendo adesso, ma "sono
+   * in coda al semaforo" non cancella che un quarto d'ora fa si correva in autostrada, ed e'
+   * quell'istante che dice se l'ultimo fix GPS e' ancora "qui".
+   */
+  suspend fun store(activity: LatestActivity, inTransit: Boolean = false) {
     context.fluidWeatherStore.edit { preferences ->
       preferences[Keys.Kind] = activity.kind.name
       preferences[Keys.Confidence] = activity.confidence
       preferences[Keys.ObservedAt] = activity.observedAtMillis
+      if (inTransit) preferences[Keys.InTransitAt] = activity.observedAtMillis
     }
   }
+
+  /** L'ultima volta che si e' stati in auto o in bici; null se non si e' mai saputo. */
+  suspend fun lastInTransitMillis(): Long? =
+    context.fluidWeatherStore.data.map { it[Keys.InTransitAt] }.first()
 
   private object Keys {
     val Kind = stringPreferencesKey("latest_activity_kind")
     val Confidence = intPreferencesKey("latest_activity_confidence")
     val ObservedAt = longPreferencesKey("latest_activity_observed_at")
+    val InTransitAt = longPreferencesKey("latest_activity_in_transit_at")
   }
 }

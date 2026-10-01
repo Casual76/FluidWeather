@@ -9,6 +9,7 @@ import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.MinutePoint
 import dev.pampa.fluidweather.core.model.WeatherKind
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.sin
@@ -16,6 +17,8 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -396,11 +399,37 @@ class WeatherSnapshotStore(private val directory: File) {
 class EmptyRoundException(val attempts: List<ProviderFetchSummary>) :
   Exception("nessun provider ha risposto (${attempts.size} tentativi)")
 
+/**
+ * Un giro del posto del telefono che ha seminato le verifiche: e' l'istante in cui il barometro, i
+ * provider e i riferimenti si iscrivono alla classifica pioggia, tutti con lo stesso [roundId].
+ */
+data class RegisteredRound(
+  /** L'istante del giro: lo stesso `fetchedAtMillis` e `predictionsRegisteredAtMillis` dell'istantanea. */
+  val roundId: Long,
+  val snapshot: WeatherSnapshot,
+  /** I bundle grezzi del giro, con le PoP orarie che l'istantanea non conserva. */
+  val fetches: List<ProviderFetch>,
+)
+
 class WeatherSnapshotRefresher(
   private val coordinator: RoundSource,
   private val store: WeatherSnapshotStore,
+  /**
+   * Chiamato dopo la scrittura di ogni giro del posto del telefono che ha seminato: e' il gancio del
+   * registratore della classifica pioggia. Gira dentro il lucchetto del posto, prima che [refresh]
+   * restituisca, cosi' chi chiede un giro sa che quando l'ha avuto il giro e' anche iscritto. Un suo
+   * errore non fa fallire il giro.
+   */
+  private val onGpsRoundRegistered: suspend (RegisteredRound) -> Unit = {},
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
+
+  /**
+   * Un lucchetto per posto. La home e il ciclo in background possono chiedere lo stesso posto
+   * insieme: senza, entrambi leggevano "ultima semina un'ora fa", entrambi seminavano, e lo stesso
+   * giro finiva due volte in classifica con due istanti diversi. Posti diversi non si aspettano.
+   */
+  private val locks = ConcurrentHashMap<String, Mutex>()
 
   /**
    * L'ultima istantanea salvata per quel posto, **senza condizioni**.
@@ -432,7 +461,12 @@ class WeatherSnapshotRefresher(
    * [registerPredictions] = false salta la semina delle verifiche: per i posti chiesti al volo
    * all'assistente (fase 19), che non devono inquinare la pagella dei provider.
    */
-  suspend fun refresh(placeKey: String, latitude: Double, longitude: Double, registerPredictions: Boolean? = null): WeatherSnapshot {
+  suspend fun refresh(
+    placeKey: String,
+    latitude: Double,
+    longitude: Double,
+    registerPredictions: Boolean? = null,
+  ): WeatherSnapshot = locks.computeIfAbsent(placeKey) { Mutex() }.withLock {
     val now = clock()
     val previous = store.read(placeKey)
     val lastRegistration = previous?.predictionsRegisteredAtMillis
@@ -444,10 +478,14 @@ class WeatherSnapshotRefresher(
     // Niente risposte, niente scrittura: l'istantanea salvata resta quella buona. Si lancia invece
     // di restituire null perche' i chiamanti sono gia' scritti per il fallimento, e perche' cosi'
     // nemmeno `predictionsRegisteredAtMillis` avanza — su zero fetch non si e' seminato niente.
+    // (E il gancio del registratore non parte: un giro a vuoto non si iscrive.)
     if (!round.producedAnything) throw EmptyRoundException(fresh.fetches)
     val snapshot = fresh.carryingContextFrom(previous, now)
     store.write(snapshot)
-    return snapshot
+    if (register && placeKey == WeatherSnapshot.GPS_KEY) {
+      runCatching { onGpsRoundRegistered(RegisteredRound(now, snapshot, round.fetches)) }
+    }
+    snapshot
   }
 
   /**

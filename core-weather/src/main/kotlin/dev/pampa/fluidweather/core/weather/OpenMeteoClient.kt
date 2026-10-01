@@ -14,9 +14,12 @@ import dev.pampa.fluidweather.core.model.WeatherKind
 class OpenMeteoClient(
   override val descriptor: ProviderDescriptor,
   private val http: ProviderHttp,
-  /** Il parametro `models` di Open-Meteo; null = best_match. */
-  private val model: String? = null,
-  private val clock: () -> Long = System::currentTimeMillis,
+  /**
+   * Il parametro `models` di Open-Meteo; null = best_match. Pubblico perche' un modello che fa da
+   * giudice nel pannello della verita' non deve mai finire in classifica pioggia, e il test che lo
+   * garantisce deve poterlo leggere.
+   */
+  val model: String? = null,
 ) : WeatherClient {
 
   override suspend fun fetch(latitude: Double, longitude: Double, apiKey: String?): ForecastBundle {
@@ -35,7 +38,7 @@ class OpenMeteoClient(
       append("&timeformat=unixtime&timezone=UTC&wind_speed_unit=kmh")
       if (model != null) append("&models=$model")
     }
-    val root = http.readJson(url, FORECAST_TTL_MILLIS)
+    val (root, downloadedAt) = http.readJsonTimed(url, FORECAST_TTL_MILLIS)
     val hourly = root["hourly"]
 
     val times = hourly["time"].asArray()
@@ -79,7 +82,8 @@ class OpenMeteoClient(
 
     return ForecastBundle(
       providerId = descriptor.id,
-      fetchedAtMillis = clock(),
+      // L'istante del download vero: un colpo di cache non ringiovanisce il dato.
+      fetchedAtMillis = downloadedAt,
       latitude = latitude,
       longitude = longitude,
       hourly = points,

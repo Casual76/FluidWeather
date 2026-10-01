@@ -275,8 +275,11 @@ class AssistantSession(
   ): PromptContext {
     val sampling = sources.samplingSettings.current()
     val snapshot = selected?.let { runCatching { sources.snapshotRefresher.fresh(it.snapshotKey, it.latitude, it.longitude, 12 * 3_600_000L) }.getOrNull() }
-    val nowcast = if (selected == null || selected.isGps || selected.isSelected) {
-      runCatching { sources.nowcast.evaluate(snapshot, ctx.nowMillis, null, record = false) }.getOrNull()
+    // Solo la prontezza del sensore, senza far girare il modello: al prompt servono "pronto",
+    // "tarato" e le ore di storia, e cosi' non si valuta mai un verdetto per un posto dove il
+    // barometro non c'e'.
+    val readiness = if (selected == null || selected.isGps || selected.isSelected) {
+      runCatching { sources.nowcast.readiness(ctx.nowMillis, null) }.getOrNull()
     } else {
       null
     }
@@ -287,9 +290,9 @@ class AssistantSession(
       roughCoordinates = selected?.roughCoordinates,
       savedPlaces = saved,
       samplingMode = sampling.mode,
-      barometerReady = nowcast?.readiness?.ready == true,
-      barometerCalibrated = nowcast?.readiness?.calibrated == true,
-      historyHours = nowcast?.historyHours ?: 0.0,
+      barometerReady = readiness?.ready == true,
+      barometerCalibrated = readiness?.calibrated == true,
+      historyHours = readiness?.historyHours ?: 0.0,
       snapshotAgeMinutes = snapshot?.let { ((ctx.nowMillis - it.fetchedAtMillis) / 60_000.0).roundToInt() },
       actionsEnabled = actionsEnabled,
       mode = mode,

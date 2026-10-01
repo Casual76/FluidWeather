@@ -36,8 +36,6 @@ data class BenchmarkReport(
   val ranking: List<ProviderRank>,
   /** variabile -> provider dal migliore al peggiore (fascia 0-6 ore). */
   val byVariable: Map<String, List<ProviderScore>>,
-  /** finestra (variabile rain_event_*) -> classifica, barometro compreso. */
-  val rainEvent: Map<String, List<ProviderScore>>,
   /** providerId -> variabile -> errore giorno per giorno (ultimi [Benchmark.DAYS] giorni). */
   val dailyError: Map<String, Map<String, List<DailyError>>>,
   val totalVerifications: Int,
@@ -56,7 +54,15 @@ object Benchmark {
   const val HALF_LIFE_DAYS = 14.0
   private const val MAE_EPSILON = 0.3
 
-  fun build(verifications: List<ForecastVerification>, nowMillis: Long): BenchmarkReport {
+  /**
+   * [stored] e' quello che il magazzino restituisce: ci sono anche le righe `rain_event_*` di quando
+   * la pioggia si giudicava qui. Restano nel database ma non sono piu' una verifica di nessuno (la
+   * pioggia ha la sua classifica, [RainBoard]): contarle gonfierebbe "verifiche raccolte" e
+   * nasconderebbe la pagina vuota a chi ha solo quelle.
+   */
+  fun build(stored: List<ForecastVerification>, nowMillis: Long): BenchmarkReport {
+    val verifications = stored.filterNot { RainEvent.isRainEvent(it.variable) }
+
     fun decay(v: ForecastVerification): Double =
       0.5.pow((nowMillis - v.verifiedAtMillis) / 86_400_000.0 / HALF_LIFE_DAYS)
 
@@ -77,7 +83,6 @@ object Benchmark {
         .sortedBy { it.decayedMae }
 
     val byVariable = FusionVariables.verified.associateWith { scores(it) }.filterValues { it.isNotEmpty() }
-    val rainEvent = RainEvent.windows.associate { it.variable to scores(it.variable) }.filterValues { it.isNotEmpty() }
 
     // La quota per variabile e' il peso appreso normalizzato fra chi ha verifiche; la classifica
     // generale e' la media delle quote sulle variabili in cui il provider e' stato giudicato.
@@ -93,7 +98,7 @@ object Benchmark {
       ProviderRank(
         providerId = providerId,
         share = list.average(),
-        verifications = verifications.count { it.providerId == providerId && !RainEvent.isRainEvent(it.variable) },
+        verifications = verifications.count { it.providerId == providerId },
         bestAt = byVariable.filter { (_, scores) -> scores.firstOrNull()?.providerId == providerId }.keys.toList(),
         maeByVariable = byVariable.mapNotNull { (variable, scores) ->
           scores.firstOrNull { it.providerId == providerId }?.let { variable to it }
@@ -116,7 +121,6 @@ object Benchmark {
     return BenchmarkReport(
       ranking = ranking,
       byVariable = byVariable,
-      rainEvent = rainEvent,
       dailyError = dailyError,
       totalVerifications = verifications.size,
       firstVerificationMillis = verifications.minOfOrNull { it.verifiedAtMillis },

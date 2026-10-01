@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.testbench.metrics
 
+import dev.pampa.fluidweather.nowcast.scoring.ForecastCase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -80,5 +81,50 @@ class MetricsTest {
     assertEquals(3, high.count)
     assertEquals(0.65, high.meanForecast, 1e-9)
     assertEquals(2.0 / 3.0, high.observedFrequency, 1e-9)
+  }
+  @Test
+  fun `il log-loss e la MAE a mano, con il ritaglio sui bordi`() {
+    val verifications = listOf(
+      Verification(0.8, true), // -ln 0,8
+      Verification(0.3, false), // -ln 0,7
+      Verification(0.0, true), // ritagliato a 1e-6: 13,8
+    )
+    val expectedLogLoss = (-Math.log(0.8) - Math.log(0.7) - Math.log(1e-6)) / 3.0
+    assertEquals(expectedLogLoss, Probabilistic.logLoss(verifications), 1e-12)
+    assertEquals((0.2 + 0.3 + 1.0) / 3.0, Probabilistic.mae(verifications), 1e-12)
+    assertTrue(Probabilistic.logLoss(emptyList()).isNaN())
+  }
+
+  @Test
+  fun `il BSS contro un riferimento dato non e' quello contro il tasso base`() {
+    val outcomes = listOf(true, false, false, false, false, false, false, false)
+    val model = outcomes.map { Verification(if (it) 0.5 else 0.05, it) }
+    val reference = outcomes.map { Verification(0.3, it) } // un riferimento sbagliato di proposito
+    val referenceBrier = Probabilistic.brier(reference)
+
+    val against = Probabilistic.brierSkillScoreAgainst(model, referenceBrier)
+    assertEquals(1.0 - Probabilistic.brier(model) / referenceBrier, against, 1e-12)
+    // Contro la climatologia dei casi stessi e' un'altra cosa.
+    assertTrue(Math.abs(against - Probabilistic.brierSkillScore(model)) > 0.01)
+    // Un riferimento con Brier zero non da' un punteggio.
+    assertTrue(Probabilistic.brierSkillScoreAgainst(model, 0.0).isNaN())
+  }
+
+  @Test
+  fun `la curva di affidabilita' si stampa, un gradino per riga`() {
+    val cases = listOf(
+      ForecastCase(0.62, true),
+      ForecastCase(0.65, false),
+      ForecastCase(0.68, true),
+      ForecastCase(0.05, false),
+    )
+    val lines = ReliabilityPrinter.lines(cases)
+    assertEquals(2, lines.size)
+    assertTrue(lines.last().contains("0.60-0.70"))
+    assertTrue(lines.last().trim().split(Regex("""\s+""")).contains("3"))
+    val table = ReliabilityPrinter.format(cases, indent = "  ")
+    assertEquals(3, table.lines().size)
+    assertTrue(table.lines().all { it.startsWith("  ") })
+    assertEquals(1, ReliabilityPrinter.format(emptyList()).lines().size) // solo l'intestazione
   }
 }

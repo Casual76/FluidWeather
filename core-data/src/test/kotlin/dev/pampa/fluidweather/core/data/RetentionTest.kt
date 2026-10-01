@@ -86,4 +86,17 @@ class RetentionTest {
   fun `lo storico dei verdetti tiene due mesi`() {
     assertEquals(60L, NowcastHistoryStore.KEEP_MILLIS / giorno)
   }
+
+  @Test
+  fun `le verifiche della pioggia tengono piu' della finestra della classifica`() {
+    // La classifica guarda sessanta giorni; le pendenti vivono fino a sette. Se la ritenzione
+    // scendesse sotto la finestra, la classifica si accorcerebbe in silenzio.
+    val finestraClassifica = 60 * giorno
+    val giorniPendenti = 7 * giorno
+
+    assertTrue(RoomRainEventStore.KEEP_MILLIS >= 90 * giorno)
+    assertTrue(RoomRainEventStore.KEEP_MILLIS >= finestraClassifica + giorniPendenti)
+    // La rete di sicurezza delle pendenti sta un giorno oltre la scadenza di chi giudica.
+    assertEquals(8L, RoomRainEventStore.PENDING_BACKSTOP_MILLIS / giorno)
+  }
 }

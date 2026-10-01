@@ -3,8 +3,9 @@ package dev.pampa.fluidweather.core.cycle
 import android.content.Context
 import android.location.Geocoder
 import dev.pampa.fluidweather.core.data.CalibrationStore
+import dev.pampa.fluidweather.core.data.LastFixStore
+import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.LearningRepository
-import dev.pampa.fluidweather.core.data.LearningStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
@@ -16,9 +17,8 @@ import dev.pampa.fluidweather.core.model.AppNotification
 import dev.pampa.fluidweather.core.model.DataAge
 import dev.pampa.fluidweather.core.model.DataFreshness
 import dev.pampa.fluidweather.core.model.FusionVariables
-import dev.pampa.fluidweather.core.model.NowcastIssueRecord
-import dev.pampa.fluidweather.core.model.PlattParamsRecord
 import dev.pampa.fluidweather.core.model.OfficialAlert
+import dev.pampa.fluidweather.core.model.RainEventStore
 import dev.pampa.fluidweather.core.model.hourAround
 import dev.pampa.fluidweather.core.sensor.LocationProvider
 import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
@@ -27,12 +27,8 @@ import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.nowcast.cleaning.CalibrationMath
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
-import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
-import dev.pampa.fluidweather.nowcast.learning.LearningStateBuilder
-import dev.pampa.fluidweather.nowcast.learning.PlattCalibration
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
-import dev.pampa.fluidweather.nowcast.verdict.toRecord
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -47,11 +43,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-
-/** Chi iscrive il verdetto del barometro alla verifica (il coordinatore della fusione). */
-fun interface BarometerRegistrar {
-  suspend fun register(verdict: NowcastVerdict, nowMillis: Long)
-}
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Chi ha chiesto il giro: ogni innesco ha il suo appetito di rete e di GPS. */
 enum class CycleTrigger { SAMPLING_PASS, SURVEILLANCE_TICK, DAILY_SUMMARY, MANUAL }
@@ -129,7 +121,6 @@ class BackgroundCycle(
   private val cleaningPipeline: CleaningPipeline,
   private val calibrationStore: CalibrationStore,
   private val learningRepository: LearningRepository,
-  private val learningStore: LearningStore,
   private val samplingSettings: SamplingSettingsStore,
   private val notificationSettings: NotificationSettingsStore,
   private val ledgerStore: NotificationLedgerStore,
@@ -137,7 +128,11 @@ class BackgroundCycle(
   /** Serve solo alla potatura: la tabella delle verifiche non ha nessun altro che la sfoltisca. */
   private val verificationStore: RoomVerificationStore,
   private val nowcastUseCase: NowcastUseCase,
-  private val barometerRegistrar: BarometerRegistrar,
+  /** L'ultimo fix e l'ultima volta in auto o in bici: decidono se il telefono e' ancora "qui". */
+  private val lastFixStore: LastFixStore,
+  private val latestActivityStore: LatestActivityStore,
+  /** Serve solo alla potatura delle verifiche della pioggia. */
+  private val rainEventStore: RainEventStore,
   private val officialAlerts: OfficialAlertsClient,
   private val placeContext: PlaceContextResolver,
   private val notifier: SystemNotifier,
@@ -159,13 +154,26 @@ class BackgroundCycle(
    * Il default e' `true`: nessun test esistente cambia comportamento.
    */
   private val networkLikelyAvailable: () -> Boolean = { true },
+  /**
+   * Il lavoro che non ha fretta e non e' di nessun innesco in particolare: oggi il giudice della
+   * pioggia e la climatologia del posto. Si chiama a ogni giro, dopo tutto il resto: chi la passa
+   * e' responsabile di limitarsi (l'ora, e' un suo throttle persistito) — qui si limita solo
+   * quanto puo' tenere il mutex.
+   */
+  private val afterCycle: suspend () -> Unit = {},
+  /**
+   * La ristima delle mappe di Platt, col tempo di adesso. Le regole (ogni sei ore, per versione, la
+   * prova fuori campione) stanno in `PlattRefitPolicy` e nel `PlattRefitter` che il grafo passa
+   * qui: il ciclo dice soltanto "e' un buon momento", non decide niente.
+   */
+  private val plattRefit: suspend (Long) -> Unit = {},
 ) {
 
   private val mutex = Mutex()
 
   suspend fun run(trigger: CycleTrigger): CycleOutcome = mutex.withLock {
     val now = clock()
-    val point = resolvePoint()
+    val point = resolvePoint(now)
     if (point == null) {
       val outcome = CycleOutcome(texts.cycleNoPosition(), null, null, emptyList())
       record(now, outcome)
@@ -194,32 +202,25 @@ class BackgroundCycle(
     // verdetto calcolato li' sarebbe un'allerta per una citta' dove il sensore non c'e', e
     // finirebbe anche nello storico e nella classifica del benchmark.
     val here = key == WeatherSnapshot.GPS_KEY
-    val nowcast = if (here) nowcastUseCase.evaluate(snapshot, now, calibrationProgress = null, record = true) else null
+    val nowcast = if (here) nowcastUseCase.evaluate(
+      snapshot, now, calibrationProgress = null, record = true, pointLatitude = latitude, pointLongitude = longitude,
+    ) else null
     val cleaning = nowcast?.cleaning
     val features = nowcast?.features
     val explanation = nowcast?.explanation
     val verdict = explanation?.verdict
-    // In classifica alla pari: il barometro si iscrive alla verifica quando si iscrivono i
-    // provider (una volta l'ora, lo decide il refresher), cosi' i conti sono confrontabili.
+    // L'iscrizione alla classifica pioggia e la riga dell'archivio da cui si impara non si fanno
+    // piu' qui: le scrive il registratore dei giri (`LocalRoundRegistrar`), dal gancio del refresher,
+    // con lo stesso istante del giro per il barometro, i provider e i riferimenti. Quando `refresh`
+    // torna il giro e' gia' iscritto; qui resta quello che dipende dal verdetto di questo passo.
     val registeredNow = snapshot?.predictionsRegisteredAtMillis?.let { abs(now - it) < 5 * 60_000L } == true
-    if (verdict != null && registeredNow) runCatching { barometerRegistrar.register(verdict, now) }
     if (explanation != null && features != null && registeredNow) {
-      // L'archivio da cui si impara: feature e probabilita' GREZZE del verdetto iscritto.
-      val raw = explanation.rawVerdict
-      runCatching {
-        learningRepository.recordIssue(
-          NowcastIssueRecord(
-            issuedAtMillis = now,
-            features = features.toList(),
-            rawProbability01 = raw.forWindow("0-1h")?.probability ?: 0.0,
-            rawProbability13 = raw.forWindow("1-3h")?.probability ?: 0.0,
-            rawProbability36 = raw.forWindow("3-6h")?.probability ?: 0.0,
-          ),
-        )
-      }
       refineCalibration(cleaning, snapshot, now)
-      maybeRefitPlatt(now)
     }
+    // La ristima non dipende da questo verdetto ne' da questo giro: legata al giro iscritto adesso
+    // saltava ogni volta che il ciclo non coincideva con un giro dei provider. Il passo di sei ore
+    // e la versione li decide la politica, non il ciclo.
+    if (here) runCatching { plattRefit(now) }
 
     // 3) Le allerte ufficiali, solo se il canale e' acceso: niente rete per niente.
     val settings = notificationSettings.current()
@@ -304,10 +305,14 @@ class BackgroundCycle(
     )
     val outcome = CycleOutcome(note, snapshot, verdict, delivered)
     ledgerStore.update { nextLedger.copy(lastCycleAtMillis = now, lastCycleNote = note) }
+
+    // 7) Per ultimo il lavoro senza fretta: a notifiche consegnate e registro scritto, un giudice
+    // lento non puo' ritardare niente a nessuno. Ma tiene il mutex, quindi ha un tetto: un giro di
+    // rete appeso non deve bloccare tutti i cicli che verranno.
+    runCatching { withTimeoutOrNull(AFTER_CYCLE_TIMEOUT_MILLIS) { afterCycle() } }
     outcome
   }
 
-  /** Ogni sei ore la ricalibrazione si ristima sulle coppie (grezza, esito) raccolte. */
   /**
    * Le quattro potature, ognuna col suo motivo scritto dove vive la costante.
    *
@@ -320,28 +325,7 @@ class BackgroundCycle(
     runCatching { nowcastHistory.prune(now) }
     runCatching { learningRepository.prune(now) }
     runCatching { verificationStore.prune(now) }
-  }
-
-  private suspend fun maybeRefitPlatt(now: Long) {
-    if (now - runCatching { learningStore.lastFitMillis() }.getOrDefault(0L) < REFIT_INTERVAL_MILLIS) return
-    runCatching {
-      val issues = learningRepository.issuesSince(now - LearningRepository.KEEP_MILLIS)
-      val outcomes = learningRepository.outcomesSince(now - LearningRepository.KEEP_MILLIS)
-      // I verdetti nati senza contesto dei provider si registrano comunque — escluderli
-      // introdurrebbe un errore sistematico legato al meteo (si resta senza campo fuori, in
-      // montagna, col brutto tempo, cioe' proprio dove il modello deve essere piu' giusto) e
-      // lascerebbe orfani i loro esiti, che si scrivono dopo e sono chiavati sull'ora d'emissione.
-      // Ma se ce ne sono abbastanza dei completi, la mappa si tara su quelli: due popolazioni con
-      // distribuzioni diverse dentro una regressione sola sono una media di due cose.
-      val withContext = issues.filter { FeatureExtractor.hasContext(it.features.toDoubleArray()) }
-      val corpus = if (withContext.size >= PlattCalibration.MIN_SAMPLES * 2) withContext else issues
-      val fitted = listOf("0-1h", "1-3h", "3-6h").mapNotNull { window ->
-        val samples = LearningStateBuilder.samples(window, corpus, outcomes)
-        PlattCalibration.fit(samples)?.let { PlattParamsRecord(window, it.a, it.b, samples.size, now) }
-      }
-      learningStore.save(fitted, fittedAtMillis = now)
-      nowcastUseCase.invalidateLearning()
-    }
+    runCatching { rainEventStore.prune(now) }
   }
 
   /**
@@ -368,15 +352,25 @@ class BackgroundCycle(
   private fun deliver(notification: AppNotification): Boolean =
     if (appVisibility.inForeground.value) inAppAlerts.emit(notification) else notifier.post(notification)
 
-  /** GPS se c'e', altrimenti la prima localita' salvata: le notifiche sono per dove sei. */
-  private suspend fun resolvePoint(): Triple<String, Double, Double>? {
-    if (locationProvider.hasPermission()) {
-      locationProvider.snapshot(timeoutMillis = LOCATION_TIMEOUT_MILLIS)?.let {
-        return Triple(WeatherSnapshot.GPS_KEY, it.latitude, it.longitude)
-      }
-    }
-    val saved = savedLocations.places.first().firstOrNull { !it.isGps } ?: return null
-    return Triple(WeatherSnapshot.keyFor(saved.id), saved.latitude, saved.longitude)
+  /**
+   * Dove fare il giro: il posto del telefono se lo si puo' dire, altrimenti la prima localita'
+   * salvata. La decisione e' di [PointResolver] (pura, provata); qui si raccolgono solo i fatti.
+   *
+   * Il fix nuovo in background spesso non arriva: senza l'ultimo fix recente il giro finiva sulla
+   * localita' salvata, dove il barometro non parla, e la classifica perdeva il caso.
+   */
+  private suspend fun resolvePoint(now: Long): ResolvedPoint? {
+    val permitted = locationProvider.hasPermission()
+    val current = if (permitted) locationProvider.snapshot(timeoutMillis = LOCATION_TIMEOUT_MILLIS) else null
+    return PointResolver.resolve(
+      nowMillis = now,
+      locationPermitted = permitted,
+      currentFix = current?.let { FixSample(it.latitude, it.longitude, it.fixedAtMillis ?: now) },
+      lastFix = runCatching { lastFixStore.current() }.getOrNull()
+        ?.let { FixSample(it.latitude, it.longitude, it.fixedAtMillis) },
+      lastInTransitMillis = runCatching { latestActivityStore.lastInTransitMillis() }.getOrNull(),
+      firstSavedPlace = savedLocations.places.first().firstOrNull { !it.isGps },
+    )
   }
 
   private suspend fun record(now: Long, outcome: CycleOutcome) {
@@ -394,7 +388,11 @@ class BackgroundCycle(
 
     const val LOCATION_TIMEOUT_MILLIS = 15_000L
 
-    const val REFIT_INTERVAL_MILLIS = 6 * 3_600_000L
-
+    /**
+     * Il tetto del lavoro di [afterCycle]: sono fino a otto richieste del giudice e due della
+     * climatologia, con quindici secondi di connessione e trenta di lettura ciascuna. Tre minuti
+     * bastano a una rete lenta e non tengono il mutex per una rete appesa.
+     */
+    const val AFTER_CYCLE_TIMEOUT_MILLIS = 3 * 60_000L
   }
 }

@@ -45,6 +45,11 @@ class SampleSynthesizer(
    * sporcando il segnale.
    */
   private val altitudeSigmaMeters: Double = ALTITUDE_SIGMA_METERS,
+  /**
+   * false (sempre, tranne che per la misura di sensibilita'): fra un'ora e l'altra la pressione si
+   * interpola verso l'ora dopo. true: prosegue la pendenza delle due ore gia' chiuse ([extrapolate]).
+   */
+  private val causalPressure: Boolean = false,
 ) {
 
   private val ordered = dataset.records.sortedBy { it.timestampMillis }
@@ -164,6 +169,7 @@ class SampleSynthesizer(
    */
   private fun interpolate(timestampMillis: Long): Double? {
     val index = indexAtOrAfter(timestampMillis)
+    if (causalPressure) return extrapolate(timestampMillis, index)
     if (index >= ordered.size) return null
     val after = ordered[index]
     if (after.timestampMillis == timestampMillis) return after.surfacePressureHpa
@@ -175,6 +181,26 @@ class SampleSynthesizer(
     if (span <= 0.0) return a
     val position = (timestampMillis - before.timestampMillis) / span
     return a + (b - a) * position
+  }
+
+  /**
+   * La variante causale: fra un'ora e l'altra la pressione prosegue la pendenza delle due ore gia'
+   * chiuse invece di andare verso l'ora dopo. Con l'interpolazione un campione delle 10:50 porta gia'
+   * dentro di se' l'ERA5 delle 11:00, cioe' otto minuti del futuro di un'emissione delle 10:52 — e
+   * l'ancora delle finestre e' proprio le 11:00. Qui nessun campione dipende da un'ora che si chiude
+   * dopo di lui. Non e' piu' vera (un fronte che arriva a meta' ora si vede solo all'ora dopo), e'
+   * piu' prudente: serve a misurare quanto pesa quell'anticipo (`replay-tiers <periodo> --barometro-causale`).
+   */
+  private fun extrapolate(timestampMillis: Long, index: Int): Double? {
+    if (index < ordered.size && ordered[index].timestampMillis == timestampMillis) return ordered[index].surfacePressureHpa
+    if (index < 2) return null
+    val before = ordered[index - 1]
+    val earlier = ordered[index - 2]
+    val a = before.surfacePressureHpa ?: return null
+    val a0 = earlier.surfacePressureHpa ?: return a
+    val span = (before.timestampMillis - earlier.timestampMillis).toDouble()
+    if (span <= 0.0) return a
+    return a + (a - a0) * (timestampMillis - before.timestampMillis) / span
   }
 
   private fun indexAtOrAfter(timestampMillis: Long): Int {

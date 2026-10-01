@@ -38,6 +38,8 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:${engine.serialization}"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
 
+  // Il DataStore vero su un file temporaneo: PlattRefitterTest prova la ristima fino al disco.
+  testImplementation "androidx.datastore:datastore-preferences:${engine.datastore}"
   testImplementation "junit:junit:${engine.junit}"
   testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"
 }

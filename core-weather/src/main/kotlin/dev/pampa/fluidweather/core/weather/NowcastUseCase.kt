@@ -17,14 +17,21 @@ import dev.pampa.fluidweather.core.model.SamplingCoverage
 import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
+import dev.pampa.fluidweather.nowcast.features.ContextTier
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
+import dev.pampa.fluidweather.nowcast.climatology.LocalPriors
+import dev.pampa.fluidweather.nowcast.features.NowcastContext
+import dev.pampa.fluidweather.nowcast.features.FeatureExtractorV3
+import dev.pampa.fluidweather.nowcast.learning.AnalogPolicy
 import dev.pampa.fluidweather.nowcast.learning.LearningState
 import dev.pampa.fluidweather.nowcast.learning.LearningStateBuilder
 import dev.pampa.fluidweather.nowcast.learning.NowcastEngine
 import dev.pampa.fluidweather.nowcast.learning.NowcastExplanation
+import dev.pampa.fluidweather.nowcast.learning.PlattRefitPolicy
 import dev.pampa.fluidweather.nowcast.learning.RainObservation
 import dev.pampa.fluidweather.nowcast.cleaning.SeaLevel
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
+import dev.pampa.fluidweather.nowcast.verdict.ModelVersions
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import dev.pampa.fluidweather.nowcast.verdict.toRecord
 import kotlin.math.abs
@@ -37,13 +44,29 @@ data class NowcastSnapshot(
   val samples: List<PressureSample>,
   val calibration: CalibrationRecord?,
   val cleaning: CleaningResult?,
-  /** Le 16 feature nell'ordine di [FeatureExtractor.names]; null se la storia non basta. */
+  /** Le feature del motore (le 42 di [FeatureExtractorV3.names] col v3); null se la storia non basta. */
   val features: DoubleArray?,
   val explanation: NowcastExplanation?,
   val readiness: BarometerReadiness,
   /** La quota con cui la riduzione ha lavorato, e la normale con cui si e' misurata l'anomalia. */
   val reductionAltitudeMeters: Double? = null,
   val normalHpa: Double? = null,
+  /**
+   * L'ombra "solo barometro": lo stesso segnale e lo stesso motore, senza il contesto dei provider e
+   * senza osservazione. Null se non richiesta o se la storia non basta. Non si mostra: si registra
+   * accanto al verdetto vero per sapere quanto vale il barometro da solo.
+   */
+  val soloExplanation: NowcastExplanation? = null,
+  /**
+   * Il livello di contesto con cui e' stato emesso il verdetto: quanto contesto dei provider c'era
+   * (eta' dal download vero, stesso posto) e se la climatologia locale era nota. Decide quale mappa
+   * di Platt corregge il verdetto, e con quale livello si iscrive il giro.
+   */
+  val tier: ContextTier? = null,
+  /** Il livello dell'ombra "solo barometro": NONE (o NONE_NOCLIMA), mai quello del verdetto vero. */
+  val soloTier: ContextTier? = null,
+  /** Le feature dell'ombra (contesto null): l'archivio da cui impara la mappa "none". */
+  val soloFeatures: DoubleArray? = null,
 ) {
   val verdict: NowcastVerdict? get() = explanation?.verdict
   val observation: RainObservation? get() = explanation?.observation
@@ -68,7 +91,7 @@ class NowcastUseCase(
   private val learningStore: LearningStore,
   private val nowcastHistory: NowcastHistoryStore,
   private val baselineStore: BarometerBaselineStore,
-  private val engine: NowcastEngine = NowcastEngine.trained(),
+  private val engine: NowcastEngine = NowcastEngine.v3(),
   /**
    * Il radar, quando qualcuno lo fornisce. Sta dietro una lambda e non dietro una dipendenza
    * perche' costa tile da scaricare: si accende solo quando c'e' qualcosa da guardare (vedi
@@ -81,6 +104,18 @@ class NowcastUseCase(
    * core-sensor, che sta sopra questo modulo: il grafo dell'app fa da ponte.
    */
   private val sensorAvailable: () -> Boolean = { true },
+  /**
+   * La climatologia locale della cella del punto e' gia' su disco? Serve al livello di contesto
+   * (NONE contro NONE_NOCLIMA). Una lambda, come `sensorAvailable`: la climatologia sta nello
+   * stesso modulo ma la sua cache e' del grafo dell'app. Senza rete e senza cella: false.
+   */
+  private val climatologyAvailable: suspend (latitude: Double, longitude: Double) -> Boolean = { _, _ -> false },
+  /**
+   * Le tabelle locali (climatologia e baseline) della cella del punto, se gia' su disco. Il v3 le usa
+   * come feature: sono le stesse regole "a occhio" che deve battere, cosi' in ogni posto puo' almeno
+   * riprodurle. Senza, il riferimento di tutti i posti ([V3Priors.pooled]).
+   */
+  private val localClimate: suspend (latitude: Double, longitude: Double) -> LocalClimate? = { _, _ -> null },
 ) {
 
   /**
@@ -99,12 +134,21 @@ class NowcastUseCase(
   /**
    * Il verdetto di adesso. [record] = true scrive anche nello storico dei verdetti (throttlato
    * dallo store a uno ogni dieci minuti): lo fanno la home e il ciclo, non l'assistente.
+   * [withSoloShadow] = true calcola anche l'ombra "solo barometro" ([NowcastSnapshot.soloExplanation]):
+   * la chiede solo il registratore dei giri, perche' serve solo alla classifica.
    */
   suspend fun evaluate(
     snapshot: WeatherSnapshot?,
     nowMillis: Long,
     calibrationProgress: Pair<Int, Int>? = null,
     record: Boolean = false,
+    withSoloShadow: Boolean = false,
+    /**
+     * Il punto del verdetto, quando chi chiama lo sa meglio dell'istantanea (il ciclo in background
+     * risolve il punto dall'ultimo fix). Senza, si usa l'istantanea e poi la memoria lenta.
+     */
+    pointLatitude: Double? = null,
+    pointLongitude: Double? = null,
   ): NowcastSnapshot {
     val baseline = runCatching { baselineStore.current() }.getOrNull()
     // L'ultima temperatura nota, non i quindici gradi standard: offline e online devono ridurre
@@ -130,21 +174,39 @@ class NowcastUseCase(
     }.getOrNull()
 
     val normal = runCatching { normalHpa(baseline, deviceCalibration, cleaning, temperature, nowMillis) }.getOrNull()
-    val features = cleaning?.let {
-      FeatureExtractor.extract(it, snapshot?.context?.toContext(nowMillis), normalHpa = normal, nowMillis = nowMillis)
-    }
+    val point = pointOf(pointLatitude, pointLongitude, snapshot, baseline)
+    val priors = priorsAt(point)
+    val hasClimatology = priors.isLocal || climatologyKnownAt(point)
+    val detected = ContextTierDetection.detect(snapshot?.context, point?.first, point?.second, nowMillis, hasClimatology)
+    // Il contesto entra solo se il livello dice che e' usabile: uno vecchio di ore o di un altro
+    // posto descriverebbe un altro tempo, e trattarlo da presente farebbe piu' danno che ignorarlo.
+    val usable = if (detected.hasContext) snapshot?.context?.toContext(nowMillis) else null
+    // Senza la pioggia dell'ultima ora chiusa il v3 non sa dire "piove adesso": a banco quelle righe
+    // non esistevano, e trattarle da contesto vorrebbe dire un regime mai visto. Si scende al livello
+    // senza contesto, che e' onesto sull'ignoranza.
+    val context = usable?.takeIf { !engine.speaksV3 || it.rainSlotsMm?.firstOrNull() != null }
+    val tier = if (detected.hasContext && context == null) noContextTier(priors) else detected
+    val referenceKnown = (baseline?.referenceAltitudeMeters ?: calibration?.altitudeMeters) != null
+    val features = cleaning?.let { featuresOf(engine, it, context, normal, nowMillis, priors, referenceKnown) }
 
     val learning = learningState(nowMillis)
     // Due passate: la prima senza osservazione, per sapere se vale la pena accendere il radar;
     // la seconda con quello che si e' visto. Il motore e' aritmetica pura, e chiamarlo due volte
     // costa infinitamente meno che scaricare tile di radar a ogni giro.
-    val blind = features?.let { engine.evaluate(it, learning) }
+    val blind = features?.let { engine.evaluate(it, learning, tier = tier) }
     val observation = runCatching { observe(snapshot, blind, nowMillis) }.getOrNull()
-    val explanation = if (observation == null) blind else features?.let { engine.evaluate(it, learning, observation) }
+    val explanation = if (observation == null) blind else features?.let { engine.evaluate(it, learning, observation, tier) }
+    val soloTier = noContextTier(priors)
+    val solo = if (withSoloShadow) cleaning?.let { soloOf(engine, it, normal, learning, nowMillis, soloTier, priors, referenceKnown) } else null
 
     if (record) explanation?.verdict?.let { runCatching { nowcastHistory.record(it.toRecord(nowMillis)) } }
     runCatching { rememberAltitude(cleaning) }
-    runCatching { baselineStore.observePlace(temperature, snapshot?.latitude, snapshot?.longitude) }
+    // Solo il posto del telefono: la memoria lenta del barometro (temperatura e coordinate di casa)
+    // non deve imparare da una localita' salvata o da un posto chiesto all'assistente, dove il
+    // sensore non c'e'.
+    if (snapshot?.placeKey == WeatherSnapshot.GPS_KEY) {
+      runCatching { baselineStore.observePlace(temperature, snapshot.latitude, snapshot.longitude) }
+    }
 
     val historyHours = cleaning?.historyHours ?: 0.0
     val blocked = samplingBlocked(samples, nowMillis)
@@ -165,8 +227,54 @@ class NowcastUseCase(
       ),
       reductionAltitudeMeters = cleaning?.reductionAltitudeMeters,
       normalHpa = normal,
+      soloExplanation = solo?.first,
+      tier = tier,
+      soloTier = if (solo != null) soloTier else null,
+      soloFeatures = solo?.second,
     )
   }
+
+  /**
+   * Il livello di contesto di un punto (l'istantanea GPS di solito), senza far girare il modello:
+   * serve alla pagina Precisione del motore. Non lancia mai.
+   */
+  suspend fun currentTier(
+    snapshot: WeatherSnapshot?,
+    nowMillis: Long,
+    pointLatitude: Double? = null,
+    pointLongitude: Double? = null,
+  ): ContextTier {
+    val baseline = runCatching { baselineStore.current() }.getOrNull()
+    val point = pointOf(pointLatitude, pointLongitude, snapshot, baseline)
+    return ContextTierDetection.detect(
+      snapshot?.context, point?.first, point?.second, nowMillis, climatologyKnownAt(point),
+    )
+  }
+
+  private fun pointOf(
+    latitude: Double?,
+    longitude: Double?,
+    snapshot: WeatherSnapshot?,
+    baseline: BarometerBaseline?,
+  ): Pair<Double, Double>? {
+    val lat = latitude ?: snapshot?.latitude ?: baseline?.latitude
+    val lon = longitude ?: snapshot?.longitude ?: baseline?.longitude
+    return if (lat != null && lon != null) lat to lon else null
+  }
+
+  /** La climatologia si chiede per il punto; senza punto non si sa, e "non si sa" e' "non c'e'". */
+  /** Le tabelle del punto per il v3: quelle locali se la cella e' su disco, altrimenti quelle di tutti. */
+  private suspend fun priorsAt(point: Pair<Double, Double>?): LocalPriors {
+    val climate = point?.let { runCatching { localClimate(it.first, it.second) }.getOrNull() }
+    return V3Priors.of(climate)
+  }
+
+  /** Il livello senza contesto: NONE se le tabelle del posto ci sono, NONE_NOCLIMA altrimenti. */
+  private fun noContextTier(priors: LocalPriors): ContextTier =
+    if (priors.isLocal) ContextTier.NONE else ContextTier.NONE_NOCLIMA
+
+  private suspend fun climatologyKnownAt(point: Pair<Double, Double>?): Boolean =
+    point != null && runCatching { climatologyAvailable(point.first, point.second) }.getOrDefault(false)
 
   /**
    * Il segnale pulito su una finestra qualsiasi, con la taratura e la quota di casa.
@@ -315,17 +423,31 @@ class NowcastUseCase(
     baselineStore.observeAltitude(altitudes[altitudes.size / 2])
   }
 
-  /** Lo stato dell'apprendimento (mappe di Platt, analoghi), in cache per un'ora. */
+  /**
+   * Lo stato dell'apprendimento (mappe di Platt attive, analoghi se la politica li vuole), in cache
+   * per un'ora o fino a una ristima ([invalidateLearning]).
+   *
+   * Le mappe si usano solo se la loro versione e' quella che il codice parla ([PlattRefitPolicy.VERSION]):
+   * una mappa di un altro modello o di altre regole non corregge questo verdetto. Con gli analoghi
+   * spenti (l'app) l'archivio delle emissioni non si legge affatto: erano due anni di righe da portare
+   * in memoria per niente.
+   */
   suspend fun learningState(nowMillis: Long): LearningState {
     fresh(nowMillis)?.let { return it }
     return learningMutex.withLock {
       // Ricontrollo dentro il lucchetto: chi ha aspettato in coda trova il lavoro gia' fatto.
       fresh(nowMillis)?.let { return@withLock it }
       val state = runCatching {
-        LearningStateBuilder.build(
-          platt = learningStore.current(),
-          issues = learningRepository.issuesSince(nowMillis - LearningRepository.KEEP_MILLIS),
-          outcomes = learningRepository.outcomesSince(nowMillis - LearningRepository.KEEP_MILLIS),
+        val maps = learningStore.snapshot()
+        val records = if (maps.version == PlattRefitPolicy.VERSION) maps.records else emptyList()
+        val withAnalogs = engine.analogPolicy.enabled
+        val since = nowMillis - LearningRepository.KEEP_MILLIS
+        LearningStateBuilder.buildForVariants(
+          maps = records,
+          issues = if (withAnalogs) learningRepository.issuesSince(since) else emptyList(),
+          outcomes = if (withAnalogs) learningRepository.outcomesSince(since) else emptyList(),
+          modelVersion = ModelVersions.TAG,
+          includeCases = withAnalogs,
         )
       }.getOrDefault(LearningState.EMPTY)
       learningCache = nowMillis to state
@@ -353,5 +475,57 @@ class NowcastUseCase(
 
     /** Sotto una decina di fix la mediana delle quote non e' una mediana, e' un caso. */
     const val MIN_ALTITUDES_TO_LEARN: Int = 10
+
+    /**
+     * L'ombra "solo barometro": lo stesso segnale pulito, la stessa normale e lo stesso stato
+     * dell'apprendimento del verdetto vero, ma **contesto null** e nessuna osservazione — il quarto
+     * d'ora e il radar sono dati dei provider anche loro. E' cio' che il telefono direbbe senza
+     * rete: misurarlo accanto al verdetto vero dice quanto del merito e' del sensore. Il livello e'
+     * NONE (o NONE_NOCLIMA): la mappa di Platt consultata e' quella del regime senza contesto, non
+     * quella del verdetto vero.
+     */
+    internal fun soloExplanationOf(
+      engine: NowcastEngine,
+      cleaning: CleaningResult,
+      normalHpa: Double?,
+      learning: LearningState,
+      nowMillis: Long,
+      tier: ContextTier = ContextTier.NONE,
+      priors: LocalPriors = V3Priors.pooledOnly,
+    ): NowcastExplanation? = soloOf(engine, cleaning, normalHpa, learning, nowMillis, tier, priors)?.first
+
+    /** L'ombra e le feature da cui viene: l'archivio della mappa "none" impara da queste. */
+    internal fun soloOf(
+      engine: NowcastEngine,
+      cleaning: CleaningResult,
+      normalHpa: Double?,
+      learning: LearningState,
+      nowMillis: Long,
+      tier: ContextTier,
+      priors: LocalPriors = V3Priors.pooledOnly,
+      referenceAltitudeKnown: Boolean = true,
+    ): Pair<NowcastExplanation, DoubleArray>? {
+      val features = featuresOf(engine, cleaning, null, normalHpa, nowMillis, priors, referenceAltitudeKnown)
+        ?: return null
+      return engine.evaluate(features, learning, tier = tier) to features
+    }
+
+    /**
+     * Le feature nella lingua del motore: le quarantadue del v3 quando il motore parla v3, le venti del
+     * v2 altrimenti (il banco e i test che costruiscono un motore v2).
+     */
+    internal fun featuresOf(
+      engine: NowcastEngine,
+      cleaning: CleaningResult,
+      context: NowcastContext?,
+      normalHpa: Double?,
+      nowMillis: Long,
+      priors: LocalPriors,
+      referenceAltitudeKnown: Boolean,
+    ): DoubleArray? = if (engine.speaksV3) {
+      FeatureExtractorV3.extract(cleaning, context, normalHpa, nowMillis, priors, referenceAltitudeKnown)
+    } else {
+      FeatureExtractor.extract(cleaning, context, normalHpa = normalHpa, nowMillis = nowMillis)
+    }
   }
 }

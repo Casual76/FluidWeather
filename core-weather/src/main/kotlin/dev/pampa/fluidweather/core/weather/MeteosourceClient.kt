@@ -15,7 +15,6 @@ import kotlin.math.abs
 class MeteosourceClient(
   override val descriptor: ProviderDescriptor,
   private val http: ProviderHttp,
-  private val clock: () -> Long = System::currentTimeMillis,
 ) : WeatherClient {
 
   override suspend fun fetch(latitude: Double, longitude: Double, apiKey: String?): ForecastBundle {
@@ -24,7 +23,7 @@ class MeteosourceClient(
     val lon = "${abs(longitude)}${if (longitude >= 0) "E" else "W"}"
     val url = "https://www.meteosource.com/api/v1/free/point" +
       "?lat=$lat&lon=$lon&sections=hourly&units=metric&key=$apiKey"
-    val root = http.readJson(url, FORECAST_TTL_MILLIS)
+    val (root, downloadedAt) = http.readJsonTimed(url, FORECAST_TTL_MILLIS)
 
     val zone = ZoneId.of(root["timezone"].string() ?: "UTC")
     val points = root["hourly"]["data"].asArray().mapNotNull { entry ->
@@ -42,7 +41,7 @@ class MeteosourceClient(
 
     return ForecastBundle(
       providerId = descriptor.id,
-      fetchedAtMillis = clock(),
+      fetchedAtMillis = downloadedAt,
       latitude = latitude,
       longitude = longitude,
       hourly = points,

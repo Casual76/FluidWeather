@@ -15,12 +15,11 @@ import java.time.Instant
 class MetNorwayClient(
   override val descriptor: ProviderDescriptor,
   private val http: ProviderHttp,
-  private val clock: () -> Long = System::currentTimeMillis,
 ) : WeatherClient {
 
   override suspend fun fetch(latitude: Double, longitude: Double, apiKey: String?): ForecastBundle {
     val url = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=$latitude&lon=$longitude"
-    val root = http.readJson(url, FORECAST_TTL_MILLIS)
+    val (root, downloadedAt) = http.readJsonTimed(url, FORECAST_TTL_MILLIS)
 
     val points = root["properties"]["timeseries"].asArray().mapNotNull { entry ->
       val time = entry["time"].string() ?: return@mapNotNull null
@@ -44,7 +43,7 @@ class MetNorwayClient(
 
     return ForecastBundle(
       providerId = descriptor.id,
-      fetchedAtMillis = clock(),
+      fetchedAtMillis = downloadedAt,
       latitude = latitude,
       longitude = longitude,
       hourly = points,

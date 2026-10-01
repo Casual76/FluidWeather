@@ -12,14 +12,13 @@ import dev.pampa.fluidweather.core.model.WeatherKind
 class OpenWeatherMapClient(
   override val descriptor: ProviderDescriptor,
   private val http: ProviderHttp,
-  private val clock: () -> Long = System::currentTimeMillis,
 ) : WeatherClient {
 
   override suspend fun fetch(latitude: Double, longitude: Double, apiKey: String?): ForecastBundle {
     requireNotNull(apiKey) { "OpenWeatherMap richiede la chiave dell'utente" }
     val url = "https://api.openweathermap.org/data/2.5/forecast" +
       "?lat=$latitude&lon=$longitude&units=metric&appid=$apiKey"
-    val root = http.readJson(url, FORECAST_TTL_MILLIS)
+    val (root, downloadedAt) = http.readJsonTimed(url, FORECAST_TTL_MILLIS)
 
     val points = root["list"].asArray().mapNotNull { entry ->
       val timestamp = entry["dt"].double()?.toLong()?.times(1_000) ?: return@mapNotNull null
@@ -44,7 +43,7 @@ class OpenWeatherMapClient(
 
     return ForecastBundle(
       providerId = descriptor.id,
-      fetchedAtMillis = clock(),
+      fetchedAtMillis = downloadedAt,
       latitude = latitude,
       longitude = longitude,
       hourly = points,

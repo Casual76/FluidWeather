@@ -14,6 +14,7 @@ import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.data.SavedLocationsRepository
 import dev.pampa.fluidweather.core.data.SelectedPlaceStore
 import dev.pampa.fluidweather.core.data.UnitsStore
+import dev.pampa.fluidweather.core.model.RainEventStore
 import dev.pampa.fluidweather.core.model.VerificationStore
 import dev.pampa.fluidweather.core.sensor.CalibrationController
 import dev.pampa.fluidweather.core.sensor.LocationProvider
@@ -54,6 +55,10 @@ class AiDataSources(
   val rainViewer: RainViewerClient,
   val radarSampler: RadarSampler,
   val observations: ObservationRepository,
+  /** Le verifiche della pioggia, giudicate dal pannello: la classifica del barometro e dei provider. */
+  val rainEventStore: RainEventStore,
+  /** Il telefono ha il barometro? Decide l'ancora della classifica pioggia (barometro o climatologia). */
+  val barometerAvailable: () -> Boolean,
   val notificationSettings: NotificationSettingsStore,
   val notificationLedger: NotificationLedgerStore,
   val manualBurst: ManualBurstController,

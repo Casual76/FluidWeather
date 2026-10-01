@@ -11,6 +11,8 @@ import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.OfficialAlertSource
 import dev.pampa.fluidweather.core.model.WeatherKind
 import java.nio.file.Files
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -138,6 +140,63 @@ class SnapshotAndAlertsTest {
     assertNull(refresher.fresh("gps", 43.9, 11.2, maxAgeMillis = 60_000L))
     clock += 2 * 60_000L
     assertNull(refresher.fresh("gps", 43.8, 11.2, maxAgeMillis = 60_000L))
+  }
+
+  @Test
+  fun `il gancio del registratore parte una volta, sui giri del telefono che seminano`() = runTest {
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    var clock = now
+    val hooked = mutableListOf<RegisteredRound>()
+    val sorgente = roundSourceOf({ at -> WeatherRound(listOf(fetchOf(43.8, 11.2, at)), FusedForecast(emptyList(), emptyMap())) }) { clock }
+    val refresher = WeatherSnapshotRefresher(sorgente, store, onGpsRoundRegistered = { hooked += it }) { clock }
+
+    refresher.refresh(WeatherSnapshot.GPS_KEY, 43.8, 11.2)
+    // Una localita' salvata semina per i provider, ma non e' il posto del barometro.
+    refresher.refresh(WeatherSnapshot.keyFor(1), 45.4, 9.2)
+    // Venti minuti dopo il giro non semina: niente iscrizione.
+    clock += 20 * 60_000L
+    refresher.refresh(WeatherSnapshot.GPS_KEY, 43.8, 11.2)
+
+    val round = hooked.single()
+    assertEquals(now, round.roundId)
+    assertEquals(now, round.snapshot.fetchedAtMillis)
+    assertEquals(now, round.snapshot.predictionsRegisteredAtMillis)
+    assertEquals(1, round.fetches.size)
+  }
+
+  @Test
+  fun `un gancio che lancia non fa fallire il giro`() = runTest {
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    val sorgente = roundSourceOf({ at -> WeatherRound(listOf(fetchOf(43.8, 11.2, at)), FusedForecast(emptyList(), emptyMap())) }) { now }
+    val refresher = WeatherSnapshotRefresher(sorgente, store, onGpsRoundRegistered = { error("registratore rotto") }) { now }
+
+    val snapshot = refresher.refresh(WeatherSnapshot.GPS_KEY, 43.8, 11.2)
+
+    assertEquals(now, snapshot.fetchedAtMillis)
+    assertNotNull(store.read(WeatherSnapshot.GPS_KEY))
+  }
+
+  @Test
+  fun `due giri insieme sullo stesso posto seminano una volta sola`() = runTest {
+    // La home e il ciclo in background che chiedono il posto nello stesso istante: senza lucchetto
+    // entrambi leggevano "mai seminato" e lo stesso giro finiva due volte in classifica.
+    val registered = mutableListOf<Boolean>()
+    val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
+    val lenta = object : RoundSource {
+      override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
+        registered += registerPredictions
+        delay(1_000L)
+        return WeatherRound(listOf(fetchOf(latitude, longitude, now)), FusedForecast(emptyList(), emptyMap()))
+      }
+    }
+    val refresher = WeatherSnapshotRefresher(lenta, store) { now }
+
+    val first = async { refresher.refresh(WeatherSnapshot.GPS_KEY, 43.8, 11.2) }
+    val second = async { refresher.refresh(WeatherSnapshot.GPS_KEY, 43.8, 11.2) }
+    first.await()
+    second.await()
+
+    assertEquals(listOf(true, false), registered)
   }
 
   /** Un provider che ha risposto: quel che basta perche' il giro non sia a vuoto. */

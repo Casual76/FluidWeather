@@ -14,16 +14,21 @@ import kotlinx.serialization.json.JsonObject
 /**
  * Il barometro del telefono e' della posizione attuale: per un altro posto il verdetto non
  * esiste, e il tool lo dice invece di inventarlo.
+ *
+ * Nemmeno per una localita' salvata che e' quella selezionata: il sensore non e' li', e un verdetto
+ * calcolato sull'istantanea di un'altra citta' e' una previsione inventata col nome del barometro.
  */
 internal suspend fun ToolContext.nowcastFor(place: dev.pampa.fluidweather.core.ai.data.ResolvedPlace?, resolver: PlaceResolver): NowcastSnapshot? {
   val here = place ?: selected ?: return null
-  if (!here.isGps && !here.isSelected) return null
+  if (!here.isGps) return null
   val snapshot = resolver.snapshot(here)
   return sources.nowcast.evaluate(
     snapshot = snapshot,
     nowMillis = nowMillis,
     calibrationProgress = sources.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
     record = false,
+    pointLatitude = here.latitude,
+    pointLongitude = here.longitude,
   )
 }
 
@@ -38,7 +43,7 @@ class NowcastVerdictTool(private val resolver: PlaceResolver) : AiTool {
 
   override suspend fun run(args: JsonObject, ctx: ToolContext): String {
     val place = ctx.selected
-    if (place != null && !place.isGps && !place.isSelected) return NOWCAST_ELSEWHERE
+    if (place != null && !place.isGps) return NOWCAST_ELSEWHERE
     val nowcast = ctx.nowcastFor(place, resolver) ?: return "nessun verdetto: posizione del telefono sconosciuta"
     val readiness = nowcast.readiness
     val explanation = nowcast.explanation
@@ -90,7 +95,7 @@ class BarometerStateTool(private val resolver: PlaceResolver) : AiTool {
 
   override suspend fun run(args: JsonObject, ctx: ToolContext): String {
     val place = ctx.selected
-    if (place != null && !place.isGps && !place.isSelected) return NOWCAST_ELSEWHERE
+    if (place != null && !place.isGps) return NOWCAST_ELSEWHERE
     val nowcast = ctx.nowcastFor(place, resolver) ?: return "barometro non disponibile: posizione sconosciuta"
     val u = ctx.units
     val cleaning = nowcast.cleaning
@@ -143,6 +148,7 @@ class PressureSeriesTool(private val resolver: PlaceResolver) : AiTool {
   override val parameters = Schema.obj(mapOf("ore" to Schema.int("quante ore indietro (1-24)", 1, 24)))
 
   override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+    if (ctx.selected?.isGps == false) return NOWCAST_ELSEWHERE
     val nowcast = ctx.nowcastFor(ctx.selected, resolver) ?: return "barometro non disponibile"
     val hours = (args.int("ore") ?: 12).coerceIn(1, 24)
     val since = ctx.nowMillis - hours * 3_600_000L

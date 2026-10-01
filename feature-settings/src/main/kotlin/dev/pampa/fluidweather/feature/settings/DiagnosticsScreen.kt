@@ -480,7 +480,9 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
                       roundFailed = true
                       round = null
                     } else {
-                      round = deps.fusionCoordinator.refresh(here.latitude, here.longitude)
+                      // Una domanda al volo dalla diagnostica: si interrogano i provider e si mostra,
+                      // ma non si semina niente da giudicare (non e' un giro del ciclo).
+                      round = deps.fusionCoordinator.refresh(here.latitude, here.longitude, registerPredictions = false)
                     }
                   } finally {
                     fetching = false

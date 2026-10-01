@@ -94,11 +94,12 @@ class MinutelyRainTest {
   }
 
   @Test
-  fun `il contesto del nowcast prende la pioggia dai quarti d'ora quando coprono l'ora`() {
+  fun `il contesto del nowcast prende la pioggia dallo slot orario, non dai quarti d'ora`() {
     val b = bundle(-3 * quarter to 0.1, -2 * quarter to 0.2, -quarter to 0.3, 0L to 0.4)
     val context = b.toContext(now)!!
 
-    assertEquals(1.0, context.rainLastHourMm!!, 1e-9)
+    // Come in addestramento: lo slot orario chiuso (qui vuoto), non la somma dei quarti (1,0 mm).
+    assertEquals(0.0, context.rainLastHourMm!!, 1e-9)
     assertEquals(1013.0, context.pressureMslHpa!!, 1e-9)
   }
 

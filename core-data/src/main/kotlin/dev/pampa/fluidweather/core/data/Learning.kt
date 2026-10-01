@@ -3,13 +3,17 @@ package dev.pampa.fluidweather.core.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Index
@@ -19,20 +23,31 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import dev.pampa.fluidweather.core.model.NowcastIssueRecord
 import dev.pampa.fluidweather.core.model.NowcastOutcomeRecord
-import dev.pampa.fluidweather.core.model.PlattParamsRecord
+import dev.pampa.fluidweather.core.model.PlattMapRecord
+import dev.pampa.fluidweather.core.model.PlattMaps
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-/** Un verdetto iscritto alla verifica: feature e probabilita' grezze (colonne piatte, CSV per le feature). */
+/**
+ * Un verdetto iscritto alla verifica: feature e probabilita' grezze (colonne piatte, CSV per le feature).
+ *
+ * [modelVersion], [tier] e [roundId] sono le colonne della migrazione 6->7: con quale modello e in
+ * quale regime di contesto e' stato emesso il verdetto, e in quale giro. I valori di default
+ * sono quelli che la migrazione da' alle righe gia' presenti ("legacy", nessun livello, giro 0) e
+ * vanno scritti anche nell'annotazione: Room confronta lo schema reale con questo, default compresi.
+ */
 @Entity(tableName = "nowcast_issues")
 data class NowcastIssueEntity(
   @PrimaryKey val issuedAtMillis: Long,
-  /** Le 16 feature, separate da virgola, "NaN" dove mancavano. */
+  /** Le 20 feature, separate da virgola, "NaN" dove mancavano. */
   val features: String,
   val rawProbability01: Double,
   val rawProbability13: Double,
   val rawProbability36: Double,
+  @ColumnInfo(defaultValue = "legacy") val modelVersion: String = "legacy",
+  val tier: String? = null,
+  @ColumnInfo(defaultValue = "0") val roundId: Long = 0L,
 )
 
 /** L'esito di una finestra di un verdetto iscritto. */
@@ -79,6 +94,9 @@ class LearningRepository(private val dao: LearningDao) {
         rawProbability01 = record.rawProbability01,
         rawProbability13 = record.rawProbability13,
         rawProbability36 = record.rawProbability36,
+        modelVersion = record.modelVersion,
+        tier = record.tier,
+        roundId = record.roundId,
       ),
     )
   }
@@ -95,6 +113,9 @@ class LearningRepository(private val dao: LearningDao) {
         rawProbability01 = entity.rawProbability01,
         rawProbability13 = entity.rawProbability13,
         rawProbability36 = entity.rawProbability36,
+        modelVersion = entity.modelVersion,
+        tier = entity.tier,
+        roundId = entity.roundId,
       )
     }
 
@@ -127,49 +148,113 @@ private val Context.learningStore: DataStore<Preferences> by preferencesDataStor
   corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
 )
 
-/** Le mappe di ricalibrazione per finestra, e quando sono state stimate. */
-class LearningStore(private val context: Context) {
+/**
+ * Le mappe di ricalibrazione per variante di contesto e finestra, con la diagnosi di ognuna, la
+ * versione con cui sono state stimate e quando.
+ *
+ * Il salvataggio **sostituisce tutto** ([replaceAll]): una finestra la cui ristima fallisce perde
+ * la vecchia mappa, invece di tenerne una stimata su dati che oggi non basterebbero. E se la
+ * versione (modello + regole) non e' quella corrente ([clearIfVersionMismatch]) si azzera ogni
+ * cosa, anche le vecchie chiavi `platt_a_<finestra>` di prima delle varianti: nessuna mappa di un
+ * modello che non c'e' piu' resta a correggere quello nuovo.
+ *
+ * Il costruttore col [DataStore] e' quello dei test (un file temporaneo, niente `Context`); l'app
+ * usa quello col `Context`.
+ */
+class LearningStore(private val store: DataStore<Preferences>) {
 
-  val platt: Flow<Map<String, PlattParamsRecord>> = context.learningStore.data.map { preferences ->
-    WINDOWS.mapNotNull { window ->
-      val a = preferences[aKey(window)] ?: return@mapNotNull null
-      val b = preferences[bKey(window)] ?: return@mapNotNull null
-      window to PlattParamsRecord(
-        window = window,
-        a = a,
-        b = b,
-        samples = preferences[samplesKey(window)] ?: 0,
-        fittedAtMillis = preferences[fittedKey(window)] ?: 0L,
-      )
-    }.toMap()
-  }
+  constructor(context: Context) : this(context.learningStore)
 
-  suspend fun current(): Map<String, PlattParamsRecord> = platt.first()
+  val maps: Flow<PlattMaps> = store.data.map { readMaps(it) }
 
-  suspend fun lastFitMillis(): Long = context.learningStore.data.map { it[LastFit] ?: 0L }.first()
+  suspend fun snapshot(): PlattMaps = maps.first()
 
-  suspend fun save(records: List<PlattParamsRecord>, fittedAtMillis: Long) {
-    context.learningStore.edit { preferences ->
-      records.forEach { record ->
-        preferences[aKey(record.window)] = record.a
-        preferences[bKey(record.window)] = record.b
-        preferences[samplesKey(record.window)] = record.samples
-        preferences[fittedKey(record.window)] = record.fittedAtMillis
-      }
+  suspend fun lastFitMillis(): Long = store.data.map { it[LastFit] ?: 0L }.first()
+
+  /** Una sola modifica atomica: niente stati intermedi in cui le mappe sono meta' vecchie e meta' nuove. */
+  suspend fun replaceAll(version: String, records: List<PlattMapRecord>, fittedAtMillis: Long) {
+    store.edit { preferences ->
+      preferences.clear()
+      records.forEach { write(preferences, it) }
+      preferences[Version] = version
       preferences[LastFit] = fittedAtMillis
     }
   }
 
+  /** Vero se ha azzerato: la versione salvata (o la sua assenza) non era [version]. */
+  suspend fun clearIfVersionMismatch(version: String): Boolean {
+    var cleared = false
+    store.edit { preferences ->
+      if (preferences[Version] != version) {
+        preferences.clear()
+        preferences[Version] = version
+        cleared = true
+      }
+    }
+    return cleared
+  }
+
   suspend fun clear() {
-    context.learningStore.edit { it.clear() }
+    store.edit { it.clear() }
+  }
+
+  private fun readMaps(preferences: Preferences): PlattMaps {
+    val records = VARIANT_KEYS.flatMap { variant ->
+      WINDOWS.mapNotNull { window ->
+        val prefix = "platt_${variant}_${window}_"
+        // La riga esiste se esiste il conteggio: e' la prima chiave che si scrive e l'unica sempre presente.
+        val samples = preferences[intPreferencesKey(prefix + "n")] ?: return@mapNotNull null
+        PlattMapRecord(
+          variant = variant,
+          window = window,
+          a = preferences[doublePreferencesKey(prefix + "a")],
+          b = preferences[doublePreferencesKey(prefix + "b")],
+          samples = samples,
+          wet = preferences[intPreferencesKey(prefix + "wet")] ?: 0,
+          dry = preferences[intPreferencesKey(prefix + "dry")] ?: 0,
+          status = preferences[stringPreferencesKey(prefix + "status")] ?: "",
+          active = preferences[booleanPreferencesKey(prefix + "active")] ?: false,
+          guardDeltaBrier = preferences[doublePreferencesKey(prefix + "dbrier")],
+          guardUpperBound = preferences[doublePreferencesKey(prefix + "dhigh")],
+          guardTestDays = preferences[intPreferencesKey(prefix + "tdays")] ?: 0,
+          useRule = preferences[booleanPreferencesKey(prefix + "rule")] ?: false,
+          ruleDeltaBrier = preferences[doublePreferencesKey(prefix + "rdbrier")],
+          ruleUpperBound = preferences[doublePreferencesKey(prefix + "rdhigh")],
+          fittedAtMillis = preferences[longPreferencesKey(prefix + "at")] ?: 0L,
+        )
+      }
+    }
+    return PlattMaps(
+      version = preferences[Version],
+      lastFitMillis = preferences[LastFit] ?: 0L,
+      records = records,
+    )
+  }
+
+  private fun write(preferences: MutablePreferences, record: PlattMapRecord) {
+    val prefix = "platt_${record.variant}_${record.window}_"
+    preferences[intPreferencesKey(prefix + "n")] = record.samples
+    preferences[intPreferencesKey(prefix + "wet")] = record.wet
+    preferences[intPreferencesKey(prefix + "dry")] = record.dry
+    preferences[stringPreferencesKey(prefix + "status")] = record.status
+    preferences[booleanPreferencesKey(prefix + "active")] = record.active
+    preferences[intPreferencesKey(prefix + "tdays")] = record.guardTestDays
+    preferences[booleanPreferencesKey(prefix + "rule")] = record.useRule
+    record.ruleDeltaBrier?.let { preferences[doublePreferencesKey(prefix + "rdbrier")] = it }
+    record.ruleUpperBound?.let { preferences[doublePreferencesKey(prefix + "rdhigh")] = it }
+    preferences[longPreferencesKey(prefix + "at")] = record.fittedAtMillis
+    record.a?.let { preferences[doublePreferencesKey(prefix + "a")] = it }
+    record.b?.let { preferences[doublePreferencesKey(prefix + "b")] = it }
+    record.guardDeltaBrier?.let { preferences[doublePreferencesKey(prefix + "dbrier")] = it }
+    record.guardUpperBound?.let { preferences[doublePreferencesKey(prefix + "dhigh")] = it }
   }
 
   private companion object {
     val WINDOWS = listOf("0-1h", "1-3h", "3-6h")
+
+    /** Le chiavi delle varianti (`PlattVariant.key`): core-data non dipende da :nowcast, quindi sono qui. */
+    val VARIANT_KEYS = listOf("fresh", "stale", "none", "enh")
+    val Version = stringPreferencesKey("platt_version")
     val LastFit = longPreferencesKey("platt_last_fit")
-    fun aKey(window: String) = doublePreferencesKey("platt_a_$window")
-    fun bKey(window: String) = doublePreferencesKey("platt_b_$window")
-    fun samplesKey(window: String) = intPreferencesKey("platt_n_$window")
-    fun fittedKey(window: String) = longPreferencesKey("platt_at_$window")
   }
 }

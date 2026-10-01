@@ -85,9 +85,11 @@ interface PressureDao {
     ObservationEntity::class,
     NowcastIssueEntity::class,
     NowcastOutcomeEntity::class,
+    RainEventPendingEntity::class,
+    RainEventVerificationEntity::class,
   ],
-  version = 6,
-  exportSchema = false,
+  version = 7,
+  exportSchema = true,
 )
 abstract class FluidWeatherDatabase : RoomDatabase() {
 
@@ -103,15 +105,22 @@ abstract class FluidWeatherDatabase : RoomDatabase() {
 
   abstract fun learningDao(): LearningDao
 
+  abstract fun rainEventDao(): RainEventDao
+
   companion object {
     fun build(context: Context): FluidWeatherDatabase =
       // Niente `fallbackToDestructiveMigration()`: c'era, contro il suo stesso commento, e
       // rendeva "gratis" ogni cambio di schema perche' cancellava in silenzio l'archivio
       // barometrico di chiunque. Ora un cambio di versione senza migrazione fa fallire l'apertura
-      // in sviluppo, che e' il momento giusto per accorgersene. Toglierla lasciando la versione
-      // dov'e' non tocca nessuna installazione esistente: Room chiede una migrazione solo quando
-      // il numero cambia.
+      // in sviluppo, che e' il momento giusto per accorgersene.
+      //
+      // La versione 7 e' la prima con una migrazione vera (`MIGRATION_6_7`): crea le tabelle
+      // della verifica onesta della pioggia e aggiunge colonne, e basta. Non tocca i dati di
+      // prima — letture, verifiche, pesi della fusione, classifica generale, apprendimento —
+      // perche' chi aggiorna da 1.4.5 ha mesi di barometro che non si riscrivono. Dalla 7 in poi
+      // ogni cambio di schema porta la sua migrazione, e la sua fotografia in `schemas/`.
       Room.databaseBuilder(context, FluidWeatherDatabase::class.java, "fluidweather.db")
+        .addMigrations(*ALL_MIGRATIONS)
         // Il declassamento e' l'unico caso in cui cancellare e' l'unica cosa che si puo' fare:
         // uno schema del futuro non si riporta indietro, e chi installa un APK piu' vecchio dal
         // Pampa Store si troverebbe altrimenti un'app che non apre nemmeno il database — e ogni

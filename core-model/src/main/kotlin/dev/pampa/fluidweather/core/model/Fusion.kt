@@ -55,13 +55,22 @@ enum class HorizonBucket(val label: String) {
   }
 }
 
-/** Una previsione in attesa di giudizio: cosa ha detto chi, per quando, detto quando. */
+/**
+ * Una previsione in attesa di giudizio: cosa ha detto chi, per quando, detto quando.
+ *
+ * [latitude] e [longitude] sono il punto del bundle che l'ha prodotta: chi giudica una variabile
+ * verificata usa solo i bundle entro 3 km da li', perche' la mediana di un altro posto non e' la
+ * verita' di questo. Null nelle righe scritte prima che il punto si registrasse: quelle si
+ * giudicano come prima finche' non scadono.
+ */
 data class PendingPrediction(
   val providerId: String,
   val variable: String,
   val targetTimestampMillis: Long,
   val predictedValue: Double,
   val issuedAtMillis: Long,
+  val latitude: Double? = null,
+  val longitude: Double? = null,
 ) {
   val horizonHours: Int
     get() = ((targetTimestampMillis - issuedAtMillis) / 3_600_000L).toInt()

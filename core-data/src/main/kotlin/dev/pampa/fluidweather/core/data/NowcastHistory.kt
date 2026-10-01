@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.core.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Insert
@@ -8,7 +9,11 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
 
-/** Un verdetto del nowcast, com'era: lo storico che la pagina mostra e la pagella giudichera'. */
+/**
+ * Un verdetto del nowcast, com'era: lo storico che la pagina mostra e la pagella giudichera'.
+ * [variant] e' la colonna della migrazione 6->7: "ind" (l'indipendente, tutto lo storico di prima)
+ * o una variante registrata accanto.
+ */
 @Entity(tableName = "nowcast_verdicts")
 data class NowcastVerdictEntity(
   @PrimaryKey val timestampMillis: Long,
@@ -16,6 +21,7 @@ data class NowcastVerdictEntity(
   val probability13: Double,
   val probability36: Double,
   val level: String,
+  @ColumnInfo(defaultValue = "ind") val variant: String = "ind",
 )
 
 @Dao
@@ -51,6 +57,7 @@ class NowcastHistoryStore(private val dao: NowcastHistoryDao) {
         probability13 = record.probability13,
         probability36 = record.probability36,
         level = record.level,
+        variant = record.variant,
       ),
     )
     return true
@@ -58,7 +65,7 @@ class NowcastHistoryStore(private val dao: NowcastHistoryDao) {
 
   suspend fun since(sinceMillis: Long): List<NowcastVerdictRecord> =
     dao.since(sinceMillis).map {
-      NowcastVerdictRecord(it.timestampMillis, it.probability01, it.probability13, it.probability36, it.level)
+      NowcastVerdictRecord(it.timestampMillis, it.probability01, it.probability13, it.probability36, it.level, it.variant)
     }
 
   suspend fun prune(nowMillis: Long) {

@@ -4,14 +4,23 @@ import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 import dev.pampa.fluidweather.core.ai.tools.Args.int
 import dev.pampa.fluidweather.core.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.RainBoardIds
 import dev.pampa.fluidweather.core.weather.Benchmark
 import dev.pampa.fluidweather.core.weather.Coverage
 import dev.pampa.fluidweather.core.weather.ProviderRegistry
-import dev.pampa.fluidweather.core.weather.RainEvent
+import dev.pampa.fluidweather.core.weather.RainBoard
+import dev.pampa.fluidweather.core.weather.RainBoardReport
+import dev.pampa.fluidweather.nowcast.verdict.ModelVersions
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonObject
 
-private fun providerLabel(id: String): String = ProviderRegistry.all.firstOrNull { it.id == id }?.label ?: if (id == RainEvent.LOCAL_BAROMETER_ID) "barometro del telefono" else id
+private fun providerLabel(id: String): String = ProviderRegistry.all.firstOrNull { it.id == id }?.label ?: when (id) {
+  RainBoardIds.BAROMETER -> "barometro del telefono"
+  RainBoardIds.BAROMETER_SOLO -> "solo barometro"
+  RainBoardIds.ALWAYS_ZERO -> "sempre 0%"
+  RainBoardIds.CLIMATOLOGY -> "climatologia del posto"
+  else -> id
+}
 
 /** Quali servizi coprono il posto, con chiave e orizzonte, e come e' andato l'ultimo giro. */
 class ProvidersAvailableTool(private val resolver: PlaceResolver) : AiTool {
@@ -121,18 +130,25 @@ class ProviderComparisonTool(private val resolver: PlaceResolver) : AiTool {
   }
 }
 
-/** La pagella: chi ci prende di piu' qui, per variabile, e il barometro in gara sull'evento pioggia. */
+/** La pagella: chi ci prende di piu' qui, per variabile, e il barometro in gara sulla pioggia. */
 class BenchmarkTool : AiTool {
   override val name = "benchmark"
   override val group = ToolGroup.PROVIDERS
-  override val description = "La classifica dei servizi sulle verifiche locali (ultimi 14 giorni): quota di peso, numero di verifiche, dove sono i migliori, errore medio per variabile a 0-6 h, e il barometro del telefono in gara sull'evento pioggia."
+  override val description = "La classifica dei servizi sulle verifiche locali (ultimi 14 giorni): quota di peso, numero di verifiche, dove sono i migliori, errore medio per variabile a 0-6 h. E la classifica della pioggia, dove il barometro del telefono gareggia con i provider: punteggio di Brier (0 e' perfetto, piu' basso e' meglio), stessi giri per tutti, giudici fuori classifica."
   override val parameters = Schema.obj(emptyMap())
 
   override suspend fun run(args: JsonObject, ctx: ToolContext): String {
     val since = ctx.nowMillis - Benchmark.DAYS * 86_400_000L
     val verifications = runCatching { ctx.sources.verificationStore.allVerifications(since) }.getOrDefault(emptyList())
     val report = Benchmark.build(verifications, ctx.nowMillis)
-    if (report.totalVerifications == 0) return "nessuna verifica ancora: la pagella si forma dopo qualche giorno di uso"
+    val rain = runCatching {
+      RainBoard.build(
+        ctx.sources.rainEventStore.verifications(ModelVersions.TAG, ctx.nowMillis - RainBoard.WINDOW_MILLIS),
+        ctx.nowMillis,
+        ctx.sources.barometerAvailable(),
+      )
+    }.getOrNull()?.takeIf { board -> board.windows.any { it.rows.isNotEmpty() } }
+    if (report.totalVerifications == 0 && rain == null) return "nessuna verifica ancora: la pagella si forma dopo qualche giorno di uso"
     val u = ctx.units
     return ToolText.build {
       line("verifiche negli ultimi ${Benchmark.DAYS} giorni", report.totalVerifications)
@@ -148,11 +164,37 @@ class BenchmarkTool : AiTool {
           line("errore medio ${variableLabel(variable)} (0-6 h)", best.joinToString(", ") { "${providerLabel(it.providerId)} ${formatError(u, variable, it.decayedMae)}${if (!it.learned) " (poche verifiche)" else ""}" })
         }
       }
-      report.rainEvent.entries.firstOrNull()?.let { (window, scores) ->
-        val label = window.removePrefix(RainEvent.PREFIX).replace('_', '-') + "h"
-        line("evento pioggia $label (errore 0..1, il barometro in gara)", scores.sortedBy { it.decayedMae }.joinToString(", ") { "${providerLabel(it.providerId)} ${"%.2f".format(ctx.locale, it.decayedMae)}" })
+      rain?.let { rainLines(it, ctx) }
+    }
+  }
+
+  /**
+   * La pioggia, una riga per finestra piu' il confronto con l'ancora. Il punteggio e' il Brier con
+   * il suo "±" (meta' dell'intervallo al 95%): chi ha pochi dati si dice, non si classifica.
+   */
+  private fun ToolText.Builder.rainLines(board: RainBoardReport, ctx: ToolContext) {
+    val anchor = providerLabel(board.anchorId)
+    board.windows.filter { it.rows.isNotEmpty() }.forEach { window ->
+      line(
+        "pioggia ${window.window} (Brier, piu' basso e' meglio; ${window.rounds} giri uguali per tutti in ${window.days} giorni)",
+        window.rows.joinToString(", ") { row ->
+          val few = if (row.fewData) ", pochi dati" else ""
+          "${providerLabel(row.providerId)} ${"%.3f".format(ctx.locale, row.brier)} ±${"%.3f".format(ctx.locale, row.halfWidth)} (n ${row.cases}$few)"
+        },
+      )
+      // I primi tre: il resto e' nella schermata, e il testo di un tool ha un tetto.
+      val deltas = window.rows.filter { it.deltaVsAnchor != null && !it.fewData }.take(3)
+      if (deltas.isNotEmpty()) {
+        line(
+          "  differenza di Brier rispetto a $anchor (negativo = meglio dell'ancora)",
+          deltas.joinToString(", ") { row ->
+            val delta = row.deltaVsAnchor!!
+            "${providerLabel(row.providerId)} ${"%+.3f".format(ctx.locale, delta.mean)} [${"%+.3f".format(ctx.locale, delta.low)}, ${"%+.3f".format(ctx.locale, delta.high)}]"
+          },
+        )
       }
     }
+    line("nota pioggia", "i giudici sono tre modelli fuori classifica (Meteo-France, UK Met Office, GEM canadese), letti un giorno dopo la finestra; il barometro riparte da zero a ogni versione del modello")
   }
 
   private fun variableLabel(variable: String): String = when (variable) {

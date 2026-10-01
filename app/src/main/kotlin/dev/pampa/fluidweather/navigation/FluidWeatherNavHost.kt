@@ -20,6 +20,7 @@ import dev.pampa.fluidweather.feature.benchmark.BenchmarkDependencies
 import dev.pampa.fluidweather.feature.benchmark.BenchmarkSheet
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ui.AppDestination
+import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.ui.AppRequest
 import dev.pampa.fluidweather.core.ui.AppScreen
 import dev.pampa.fluidweather.core.ui.HomeWidget
@@ -300,6 +301,8 @@ private fun FluidWeatherRoutes(
           verificationStore = graph.verificationStore,
           fusionSettings = graph.fusionSettingsStore,
           snapshotStore = graph.weatherSnapshotStore,
+          rainEventStore = graph.rainEventStore,
+          barometerAvailable = graph.barometer.isAvailable,
         )
       }
       BenchmarkSheet(open = benchmarkOpen, deps = benchmarkDeps, onDismiss = { benchmarkOpen = false })
@@ -350,6 +353,13 @@ private fun FluidWeatherRoutes(
           nowcast = graph.nowcastUseCase,
           learningStore = graph.learningStore,
           learningRepository = graph.learningRepository,
+          // Il livello dell'ultima istantanea del posto del telefono: niente fix nuovo per una riga di sola lettura.
+          currentTier = {
+            graph.nowcastUseCase.currentTier(
+              graph.weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY),
+              System.currentTimeMillis(),
+            )
+          },
           barometerAvailable = graph.barometer.isAvailable,
         )
       }
@@ -423,6 +433,8 @@ private fun FluidWeatherRoutes(
           pressureRepository = graph.pressureRepository,
           verificationStore = graph.verificationStore,
           observations = graph.observationRepository,
+          rainEventStore = graph.rainEventStore,
+          learningRepository = graph.learningRepository,
           wipeAll = { graph.wipeAllData() },
         )
       }

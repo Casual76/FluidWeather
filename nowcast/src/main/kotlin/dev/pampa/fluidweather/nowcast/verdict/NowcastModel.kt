@@ -60,9 +60,28 @@ class NowcastModel(
   private val featureMeans: DoubleArray,
   private val featureSds: DoubleArray,
   private val windows: List<WindowCoefficients>,
-) {
+  /**
+   * I nomi delle colonne, nell'ordine dei coefficienti: di default le venti del v2
+   * ([FeatureExtractor.names]); le tabelle del v3 passano le quarantadue di
+   * [dev.pampa.fluidweather.nowcast.features.FeatureExtractorV3.names]. Sono i nomi dei fattori.
+   */
+  private val featureNames: List<String> = FeatureExtractor.names,
+) : RainModel {
 
-  fun verdict(rawFeatures: DoubleArray): NowcastVerdict {
+  init {
+    require(featureMeans.size == featureNames.size && featureSds.size == featureNames.size) {
+      "medie e deviazioni (${featureMeans.size}/${featureSds.size}) non corrispondono ai nomi (${featureNames.size})"
+    }
+    require(windows.all { w -> w.bags.all { it.size == featureNames.size + 1 } }) {
+      "ogni bag deve avere intercetta + ${featureNames.size} coefficienti"
+    }
+  }
+
+  /** Le finestre che il modello conosce, nell'ordine dei verdetti. */
+  val windowLabels: List<String> get() = windows.map { it.window }
+
+  override fun verdict(rawFeatures: DoubleArray): NowcastVerdict {
+    require(rawFeatures.size == featureNames.size) { "attese ${featureNames.size} feature, arrivate ${rawFeatures.size}" }
     val standardized = DoubleArray(rawFeatures.size) { i ->
       if (rawFeatures[i].isNaN()) {
         0.0
@@ -79,7 +98,7 @@ class NowcastModel(
       // non per opinione, e una sola tabella e' piu' onesta di una media di tabelle.
       val reference = coefficients.bags.first()
       val factors = standardized.indices
-        .map { i -> Factor(FeatureExtractor.names[i], reference[i + 1] * standardized[i]) }
+        .map { i -> Factor(featureNames[i], reference[i + 1] * standardized[i]) }
         .filter { abs(it.contribution) > FACTOR_FLOOR }
         .sortedByDescending { abs(it.contribution) }
         .take(4)
@@ -128,16 +147,7 @@ class NowcastModel(
  * ricalibra (fase 16): ALLERTA quando la pioggia a breve e' piu' probabile che no, SORVEGLIANZA
  * quando una finestra qualsiasi esce chiaramente dalla climatologia.
  */
-fun alertLevelOf(verdicts: List<WindowVerdict>): AlertLevel {
-  val shortTerm = verdicts.firstOrNull { it.window == "0-1h" }?.probability ?: 0.0
-  val medium = verdicts.firstOrNull { it.window == "1-3h" }?.probability ?: 0.0
-  val maxAny = verdicts.maxOfOrNull { it.probability } ?: 0.0
-  return when {
-    shortTerm >= 0.55 || medium >= 0.6 -> AlertLevel.ALLERTA
-    maxAny >= 0.35 -> AlertLevel.SORVEGLIANZA
-    else -> AlertLevel.QUIETE
-  }
-}
+fun alertLevelOf(verdicts: List<WindowVerdict>): AlertLevel = AlertThresholds.DEFAULT.levelOf(verdicts)
 
 /** Il verdetto com'e' adesso, pronto per lo storico: le tre finestre e il livello. */
 fun NowcastVerdict.toRecord(timestampMillis: Long): NowcastVerdictRecord = NowcastVerdictRecord(

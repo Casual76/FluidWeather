@@ -10,7 +10,13 @@ import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.PendingPrediction
 import dev.pampa.fluidweather.core.model.VerificationStore
 
-/** Una previsione in attesa del suo giudizio (fusione, fase 7). */
+/**
+ * Una previsione in attesa del suo giudizio (fusione, fase 7).
+ *
+ * [latitude] e [longitude] sono il punto del bundle che l'ha prodotta (colonne nullable, aggiunte
+ * dalla migrazione 6->7): le righe di prima non li hanno e si giudicano come sempre finche' non
+ * scadono, quelle nuove solo contro i bundle entro 3 km.
+ */
 @Entity(
   tableName = "pending_predictions",
   primaryKeys = ["providerId", "variable", "targetTimestampMillis"],
@@ -22,6 +28,8 @@ data class PendingPredictionEntity(
   val targetTimestampMillis: Long,
   val predictedValue: Double,
   val issuedAtMillis: Long,
+  val latitude: Double? = null,
+  val longitude: Double? = null,
 )
 
 /** Un giudizio emesso: errore assoluto contro la mediana delle analisi. */
@@ -82,6 +90,8 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
           targetTimestampMillis = it.targetTimestampMillis,
           predictedValue = it.predictedValue,
           issuedAtMillis = it.issuedAtMillis,
+          latitude = it.latitude,
+          longitude = it.longitude,
         )
       },
     )
@@ -95,6 +105,8 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
         targetTimestampMillis = it.targetTimestampMillis,
         predictedValue = it.predictedValue,
         issuedAtMillis = it.issuedAtMillis,
+        latitude = it.latitude,
+        longitude = it.longitude,
       )
     }
 

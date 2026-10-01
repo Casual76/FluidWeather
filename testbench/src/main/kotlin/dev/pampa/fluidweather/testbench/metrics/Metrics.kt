@@ -1,5 +1,8 @@
 package dev.pampa.fluidweather.testbench.metrics
 
+import dev.pampa.fluidweather.nowcast.scoring.ForecastCase
+import dev.pampa.fluidweather.nowcast.scoring.ProperScores
+
 /**
  * Una previsione probabilistica accoppiata a cio' che e' successo davvero. Tutte le metriche
  * del banco si calcolano da liste di queste coppie: non c'e' altro stato.
@@ -87,6 +90,28 @@ object Probabilistic {
   fun baseRate(verifications: List<Verification>): Double =
     if (verifications.isEmpty()) Double.NaN
     else verifications.count { it.occurred }.toDouble() / verifications.size
+
+  /** Le verifiche nella forma dei punteggi propri condivisi con il telefono ([ProperScores]). */
+  fun cases(verifications: List<Verification>): List<ForecastCase> =
+    verifications.map { ForecastCase(it.probability, it.occurred) }
+
+  /**
+   * Log-loss medio (ritagliato a [ProperScores.LOG_LOSS_CLIP]): come il Brier e' un punteggio
+   * proprio, ma punisce molto di piu' il "mai" detto su un evento accaduto.
+   */
+  fun logLoss(verifications: List<Verification>): Double = ProperScores.logLoss(cases(verifications))
+
+  /** L'errore assoluto medio |p - esito|: la metrica della vecchia classifica, tenuta come secondaria. */
+  fun mae(verifications: List<Verification>): Double = ProperScores.mae(cases(verifications))
+
+  /**
+   * Il Brier skill score contro un riferimento qualsiasi (climatologia locale, persistenza, "sempre
+   * 0%"): `1 - Brier / BrierRiferimento`. Positivo = meglio del riferimento. A differenza di
+   * [brierSkillScore] il riferimento non e' il tasso base dei casi stessi ma un altro previsore,
+   * giudicato sugli stessi casi.
+   */
+  fun brierSkillScoreAgainst(verifications: List<Verification>, referenceBrier: Double): Double =
+    ProperScores.bss(brier(verifications), referenceBrier)
 
   /** La curva di affidabilita' su [bins] gradini uguali; i gradini vuoti non compaiono. */
   fun reliability(verifications: List<Verification>, bins: Int = 10): List<ReliabilityBin> =

@@ -2,6 +2,7 @@ plugins {
   id 'com.android.library'
   id 'org.jetbrains.kotlin.android'
   id 'com.google.devtools.ksp'
+  id 'androidx.room'
 }
 
 apply from: "${rootDir}/engine/versions.gradle"
@@ -13,6 +14,7 @@ android {
 
   defaultConfig {
     minSdk engine.minSdk
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
   compileOptions {
@@ -23,6 +25,12 @@ android {
   kotlinOptions {
     jvmTarget = engine.jvmTarget
   }
+}
+
+// Le fotografie dello schema, una per versione, SOTTO controllo di versione: sono il riferimento
+// contro cui MigrationTest verifica che chi aggiorna da 1.4.5 non perda nulla.
+room {
+  schemaDirectory("$projectDir/schemas")
 }
 
 dependencies {
@@ -38,4 +46,11 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
 
   testImplementation "junit:junit:${engine.junit}"
+
+  androidTestImplementation "androidx.room:room-testing:${appVersions.room}"
+  androidTestImplementation "androidx.test.ext:junit:${appVersions.androidxTestExtJunit}"
+  androidTestImplementation "androidx.test:runner:${appVersions.androidxTestRunner}"
+  androidTestImplementation "androidx.test:core:${appVersions.androidxTestRunner}"
+  androidTestImplementation "junit:junit:${engine.junit}"
+  androidTestImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
 }

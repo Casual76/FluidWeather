@@ -24,6 +24,8 @@ class VerifierAndFusionTest {
     providerId: String,
     temperatureAt: (hourFromNow: Int) -> Double?,
     kind: WeatherKind? = null,
+    latitude: Double = 43.83,
+    longitude: Double = 11.2,
   ): ProviderFetch {
     val descriptor = ProviderRegistry.all.first { it.id == providerId }
     val hours = (-6..24).map { h ->
@@ -37,7 +39,7 @@ class VerifierAndFusionTest {
         kind = kind,
       )
     }
-    return ProviderFetch(descriptor, ForecastBundle(providerId, now, 43.83, 11.2, hours), null)
+    return ProviderFetch(descriptor, ForecastBundle(providerId, now, latitude, longitude, hours), null)
   }
 
   @Test
@@ -65,6 +67,66 @@ class VerifierAndFusionTest {
     assertEquals(0.0, judged.first { it.providerId == descriptorId(2) }.absoluteError, 1e-9)
     // Le pendenti scadute sono state saldate e tolte.
     assertTrue(store.pending.none { it.targetTimestampMillis <= clock })
+  }
+
+  @Test
+  fun `le previsioni si seminano col punto del bundle`() = runTest {
+    val store = InMemoryVerificationStore()
+    val verifier = ForecastVerifier(store, clock = { now })
+
+    verifier.registerPending(listOf(bundle(descriptorId(0), { 20.0 }, latitude = 43.832, longitude = 11.199)))
+
+    assertTrue(store.pending.isNotEmpty())
+    assertTrue(store.pending.all { it.latitude == 43.832 && it.longitude == 11.199 })
+  }
+
+  @Test
+  fun `la verita' di un altro posto non giudica`() = runTest {
+    val store = InMemoryVerificationStore()
+    var clock = now
+    val verifier = ForecastVerifier(store, clock = { clock })
+    // Seminata a Sesto (43,83), giudicata con tre bundle a 13 km piu' a nord (43,95).
+    store.pending += PendingPrediction(descriptorId(0), FusionVariables.TEMPERATURE, now + 3_600_000L, 20.0, now, 43.83, 11.2)
+    clock = now + 2 * 3_600_000L
+    val altrove = listOf(
+      bundle(descriptorId(0), { 25.0 }, latitude = 43.95),
+      bundle(descriptorId(1), { 25.0 }, latitude = 43.95),
+      bundle(descriptorId(2), { 25.0 }, latitude = 43.95),
+    )
+
+    verifier.settle(altrove)
+    assertTrue("nessun giudizio con la mediana di un altro posto", store.verifications.isEmpty())
+    assertEquals(1, store.pending.size)
+
+    // Con tre bundle del posto (a meno di un km) si giudica.
+    verifier.settle(
+      listOf(
+        bundle(descriptorId(0), { 21.0 }, latitude = 43.835),
+        bundle(descriptorId(1), { 21.0 }, latitude = 43.835),
+        bundle(descriptorId(2), { 21.0 }, latitude = 43.835),
+      ),
+    )
+    assertEquals(1.0, store.verifications.single().absoluteError, 1e-9)
+    assertTrue(store.pending.isEmpty())
+  }
+
+  @Test
+  fun `una riga di prima, senza punto, si giudica come allora`() = runTest {
+    val store = InMemoryVerificationStore()
+    var clock = now
+    val verifier = ForecastVerifier(store, clock = { clock })
+    store.pending += PendingPrediction(descriptorId(0), FusionVariables.TEMPERATURE, now + 3_600_000L, 20.0, now)
+    clock = now + 2 * 3_600_000L
+
+    verifier.settle(
+      listOf(
+        bundle(descriptorId(0), { 22.0 }, latitude = 43.95),
+        bundle(descriptorId(1), { 22.0 }, latitude = 43.95),
+        bundle(descriptorId(2), { 22.0 }, latitude = 43.95),
+      ),
+    )
+
+    assertEquals(2.0, store.verifications.single().absoluteError, 1e-9)
   }
 
   @Test

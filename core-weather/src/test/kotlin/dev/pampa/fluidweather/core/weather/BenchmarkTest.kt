@@ -5,9 +5,8 @@ import dev.pampa.fluidweather.core.model.ForecastVerification
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.HourlyPoint
-import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
-import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
-import dev.pampa.fluidweather.nowcast.verdict.WindowVerdict
+import dev.pampa.fluidweather.core.model.PendingPrediction
+import dev.pampa.fluidweather.core.model.RainBoardIds
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -38,57 +37,45 @@ class BenchmarkTest {
     )
 
   @Test
-  fun `l'evento pioggia si semina per finestra e si giudica sulla mediana delle analisi`() = runTest {
+  fun `le righe pioggia rimaste nelle tabelle generali si tolgono senza giudizio`() = runTest {
+    // La loro verita' era la mediana dei provider in classifica: circolare. Il barometro non le
+    // scrive piu': sono le righe che un'installazione vecchia si porta nel database.
     val store = InMemoryVerificationStore()
     var clock = now
     val verifier = ForecastVerifier(store, clock = { clock })
-
-    // Tre provider: piove alle +2 e +3 secondo tutti; le probabilita' variano.
-    val rain: (Int) -> Double = { h -> if (h == 2 || h == 3) 1.0 else 0.0 }
-    val fetches = listOf(
-      bundle(ProviderRegistry.OPEN_METEO, { h -> if (h in 2..3) 80.0 else 10.0 }, rain),
-      bundle(ProviderRegistry.OPEN_METEO_ICON, { h -> if (h in 2..3) 40.0 else 10.0 }, rain),
-      bundle(ProviderRegistry.MET_NORWAY, { 20.0 }, rain),
+    store.addPending(
+      listOf(
+        Triple("0_1", 1, 0.10),
+        Triple("1_3", 3, 0.70),
+        Triple("3_6", 6, 0.30),
+      ).map { (window, toHour, probability) ->
+        PendingPrediction(
+          providerId = RainBoardIds.BAROMETER,
+          variable = "${RainEvent.PREFIX}$window",
+          targetTimestampMillis = now + toHour * 3_600_000L,
+          predictedValue = probability,
+          issuedAtMillis = now,
+        )
+      },
     )
-    verifier.registerRainEvents(fetches)
-    // 3 provider x 3 finestre.
-    assertEquals(9, store.pending.size)
-    val openMeteo13 = store.pending.first { it.providerId == ProviderRegistry.OPEN_METEO && it.variable == "${RainEvent.PREFIX}1_3" }
-    assertEquals(0.8, openMeteo13.predictedValue, 1e-9)
-    assertEquals(now + 3 * 3_600_000L, openMeteo13.targetTimestampMillis)
+    assertEquals(3, store.pending.size)
 
-    // Il barometro alla pari: 0-1h 10%, 1-3h 70%, 3-6h 30%.
-    verifier.registerBarometer(
-      NowcastVerdict(
-        listOf(
-          WindowVerdict("0-1h", 0.10, 0.05, 0.15, emptyList()),
-          WindowVerdict("1-3h", 0.70, 0.6, 0.8, emptyList()),
-          WindowVerdict("3-6h", 0.30, 0.2, 0.4, emptyList()),
-        ),
-        AlertLevel.SORVEGLIANZA,
-      ),
-      now,
-    )
-    assertEquals(12, store.pending.size)
-
-    // Sette ore dopo tutte le finestre sono chiuse: 0-1h asciutta (y=0), 1-3h e 3-6h bagnate (y=1).
     clock = now + 7 * 3_600_000L
-    // Le analisi: gli stessi bundle (le ore +2 e +3 sono ormai passate e valgono come analisi).
-    verifier.settle(fetches)
-    assertTrue(store.pending.isEmpty())
+    val rain: (Int) -> Double = { h -> if (h == 2 || h == 3) 1.0 else 0.0 }
+    verifier.settle(
+      listOf(
+        bundle(ProviderRegistry.OPEN_METEO, { 10.0 }, rain),
+        bundle(ProviderRegistry.OPEN_METEO_ICON, { 10.0 }, rain),
+        bundle(ProviderRegistry.MET_NORWAY, { 10.0 }, rain),
+      ),
+    )
 
-    fun error(providerId: String, window: String) =
-      store.verifications.first { it.providerId == providerId && it.variable == "${RainEvent.PREFIX}$window" }.absoluteError
-    assertEquals(0.10, error(RainEvent.LOCAL_BAROMETER_ID, "0_1"), 1e-9) // 0.10 - 0
-    assertEquals(0.30, error(RainEvent.LOCAL_BAROMETER_ID, "1_3"), 1e-9) // |0.70 - 1|
-    assertEquals(0.20, error(ProviderRegistry.OPEN_METEO, "1_3"), 1e-9) // |0.80 - 1|
-    assertEquals(0.60, error(ProviderRegistry.OPEN_METEO_ICON, "1_3"), 1e-9) // |0.40 - 1|
-    assertEquals(0.10, error(ProviderRegistry.OPEN_METEO, "0_1"), 1e-9) // |0.10 - 0|
-    assertTrue(store.verifications.all { it.horizonBucket == HorizonBucket.SHORT })
+    assertTrue(store.pending.isEmpty())
+    assertTrue(store.verifications.isEmpty())
   }
 
   @Test
-  fun `la pagella ordina per quota appresa, trova il migliore per variabile e il barometro sulla pioggia`() {
+  fun `la pagella ordina per quota appresa e trova il migliore per variabile, senza contare le righe pioggia di una volta`() {
     fun verification(providerId: String, variable: String, error: Double, daysAgo: Int = 0) = ForecastVerification(
       providerId = providerId,
       variable = variable,
@@ -105,13 +92,16 @@ class BenchmarkTest {
       }
       // Pochi giudizi sulla pressione: compaiono ma non "appresi".
       repeat(5) { add(verification("met-norway", FusionVariables.PRESSURE_MSL, 0.5)) }
-      // L'evento pioggia, barometro compreso.
+    }
+    // Le righe pioggia delle tabelle generali (legacy): il magazzino le restituisce ancora, la
+    // pagella non le conta ne' le mostra, la pioggia ha la sua classifica.
+    val legacyRain = buildList {
       repeat(10) {
-        add(verification(RainEvent.LOCAL_BAROMETER_ID, "${RainEvent.PREFIX}1_3", 0.2))
+        add(verification(RainBoardIds.BAROMETER, "${RainEvent.PREFIX}1_3", 0.2))
         add(verification("open-meteo", "${RainEvent.PREFIX}1_3", 0.35))
       }
     }
-    val report = Benchmark.build(verifications, now)
+    val report = Benchmark.build(verifications + legacyRain, now)
 
     assertEquals(3, report.ranking.size)
     // Quote: temperatura 1/(1.3)^2 vs 1/(2.3)^2 -> open-meteo domina; vento il contrario.
@@ -124,9 +114,8 @@ class BenchmarkTest {
     assertTrue(!report.byVariable.getValue(FusionVariables.PRESSURE_MSL).first().learned)
     assertEquals(50, openMeteo.verifications)
 
-    val rain = report.rainEvent.getValue("${RainEvent.PREFIX}1_3")
-    assertEquals(RainEvent.LOCAL_BAROMETER_ID, rain.first().providerId)
-    assertEquals(0.2, rain.first().decayedMae, 1e-9)
+    assertTrue(report.ranking.none { it.providerId == RainBoardIds.BAROMETER })
+    assertTrue(report.dailyError.values.none { byVariable -> byVariable.keys.any { RainEvent.isRainEvent(it) } })
 
     val daily = report.dailyError.getValue("open-meteo").getValue(FusionVariables.TEMPERATURE)
     assertEquals(5, daily.size)

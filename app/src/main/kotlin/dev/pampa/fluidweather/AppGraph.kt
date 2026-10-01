@@ -5,10 +5,10 @@ import dev.antigravity.fluidengine.net.EngineHttp
 import dev.antigravity.fluidengine.storage.EngineSettingsStore
 import dev.pampa.fluidweather.core.cycle.networkLikelyAvailable
 import dev.pampa.fluidweather.core.data.CrashLog
+import dev.pampa.fluidweather.core.data.DataWipeGuard
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.cycle.AppVisibility
 import dev.pampa.fluidweather.core.cycle.BackgroundCycle
-import dev.pampa.fluidweather.core.cycle.BarometerRegistrar
 import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.core.cycle.DailySummaryAlarm
 import dev.pampa.fluidweather.core.cycle.InAppAlertBus
@@ -17,9 +17,11 @@ import dev.pampa.fluidweather.core.cycle.SystemNotifier
 import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.radar.RadarObservations
+import dev.pampa.fluidweather.core.data.LastFixStore
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.LearningRepository
 import dev.pampa.fluidweather.core.data.LearningStore
+import dev.pampa.fluidweather.core.data.LocalClimatologyStore
 import dev.pampa.fluidweather.core.data.NotificationLedgerStore
 import dev.pampa.fluidweather.core.data.NotificationSettingsStore
 import dev.pampa.fluidweather.core.data.NowcastHistoryStore
@@ -30,6 +32,8 @@ import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NowcastOutcomeRecord
 import dev.pampa.fluidweather.core.data.ObservationRepository
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.RainMaintenanceStore
+import dev.pampa.fluidweather.core.data.RoomRainEventStore
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.BarometerBaselineStore
@@ -49,18 +53,23 @@ import dev.pampa.fluidweather.core.weather.ForecastFusion
 import dev.pampa.fluidweather.core.weather.ForecastVerifier
 import dev.pampa.fluidweather.core.weather.FusionCoordinator
 import dev.pampa.fluidweather.core.weather.GeocodingClient
+import dev.pampa.fluidweather.core.weather.LocalClimatology
+import dev.pampa.fluidweather.core.weather.LocalRoundRegistrar
 import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
+import dev.pampa.fluidweather.core.weather.PlattRefitter
 import dev.pampa.fluidweather.core.weather.PointWeatherClient
 import dev.pampa.fluidweather.core.weather.ProviderHttp
 import dev.pampa.fluidweather.core.weather.ProviderScoreboard
-import dev.pampa.fluidweather.core.weather.RainEvent
+import dev.pampa.fluidweather.core.weather.RainTruthMaintenance
 import dev.pampa.fluidweather.core.weather.RainViewerClient
+import dev.pampa.fluidweather.core.weather.TruthPanelSettler
 import dev.pampa.fluidweather.core.weather.UrlCache
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
 import dev.pampa.fluidweather.core.weather.WeatherRepository
 import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
+import dev.pampa.fluidweather.core.weather.asLocalEvaluator
 import dev.pampa.fluidweather.core.weather.buildWeatherClients
 import java.io.File
 import dev.pampa.fluidweather.core.sensor.ActivityRecognizer
@@ -75,6 +84,8 @@ import dev.pampa.fluidweather.core.sensor.SamplingEngine
 import dev.pampa.fluidweather.core.sensor.SamplingScheduler
 import dev.pampa.fluidweather.core.sensor.SurveillanceController
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
+import dev.pampa.fluidweather.nowcast.learning.AnalogPolicy
+import dev.pampa.fluidweather.nowcast.learning.NowcastEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -109,6 +120,12 @@ class AppGraph(context: Context) {
   // Apprendimento on-device (fase 16): l'archivio da cui si impara e le mappe di ricalibrazione.
   val learningRepository = LearningRepository(database.learningDao())
   val learningStore = LearningStore(context)
+
+  /**
+   * Cancellare tutto e scrivere in background non si incrociano: chi scrive fotografa la generazione
+   * prima del lavoro e, se nel frattempo e' passata una cancellazione, non scrive. Vedi [DataWipeGuard].
+   */
+  val wipeGuard = DataWipeGuard()
   val samplingSettingsStore = SamplingSettingsStore(context)
   val engineSettingsStore = EngineSettingsStore(context)
   val calibrationStore = CalibrationStore(context)
@@ -132,8 +149,18 @@ class AppGraph(context: Context) {
   )
   val latestActivityStore = LatestActivityStore(context)
 
+  // La classifica pioggia (verifiche oneste): le sue righe in Room, l'ultimo fix GPS e la
+  // climatologia del posto su file a parte — sono dati di posizione, e "Dati e privacy" deve poterli
+  // cancellare da soli.
+  val rainEventStore = RoomRainEventStore(database.rainEventDao())
+  val lastFixStore = LastFixStore(context)
+  val localClimatologyStore = LocalClimatologyStore(context)
+  private val rainMaintenanceStore = RainMaintenanceStore(context)
+
   val barometer = Barometer(context)
-  val locationProvider = LocationProvider(context)
+  // Ogni fix che legge lo ricorda: in background il fix nuovo non sempre arriva, e l'ultimo recente
+  // dice ancora dov'e' il telefono (vedi PointResolver).
+  val locationProvider = LocationProvider(context, lastFixStore)
   private val surveillanceController = SurveillanceController(context)
 
   // Un solo EngineHttp per tutta l'app, con lo User-Agent descrittivo che MET Norway pretende
@@ -168,6 +195,9 @@ class AppGraph(context: Context) {
   )
   val airQualityClient = AirQualityClient(providerHttp)
 
+  /** La climatologia della pioggia del posto: si scarica una volta a cella, si rinnova ogni sei mesi. */
+  val localClimatology = LocalClimatology(providerHttp, localClimatologyStore, wipeGuard = wipeGuard)
+
   // Radar (fase 12): i fotogrammi RainViewer e il "adesso" dei pin in una chiamata sola.
   val rainViewerClient = RainViewerClient(providerHttp)
   val pointWeatherClient = PointWeatherClient(providerHttp)
@@ -177,20 +207,10 @@ class AppGraph(context: Context) {
   val fusionSettingsStore = FusionSettingsStore(context)
   val fusionCoordinator = FusionCoordinator(
     repository = weatherRepository,
-    verifier = ForecastVerifier(
-      store = verificationStore,
-      // Ogni giudizio sul barometro diventa un esito da cui imparare (fase 16).
-      onJudged = { prediction, truth ->
-        if (prediction.providerId == RainEvent.LOCAL_BAROMETER_ID) {
-          RainEvent.windowOf(prediction.variable)?.let { window ->
-            learningRepository.recordOutcome(NowcastOutcomeRecord(prediction.issuedAtMillis, window.nowcastLabel, truth >= 0.5))
-          }
-        }
-      },
-    ),
+    // La pioggia non passa piu' di qui: la iscrive il registratore dei giri e la giudica il pannello.
+    verifier = ForecastVerifier(store = verificationStore),
     fusion = ForecastFusion(ProviderScoreboard(verificationStore)),
     fusionSettings = fusionSettingsStore,
-    observations = { since -> observationRepository.since(since) },
   )
 
   /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */
@@ -208,12 +228,56 @@ class AppGraph(context: Context) {
     learningStore = learningStore,
     nowcastHistory = nowcastHistoryStore,
     baselineStore = barometerBaselineStore,
+    // Niente analoghi: somiglianze misurate su feature barometriche senza abilita' trascinerebbero
+    // ogni verdetto verso il tasso base dell'archivio.
+    engine = NowcastEngine.trained(analogPolicy = AnalogPolicy.OFF),
     // Il campionatore del radar nasce dentro l'assistente, che si costruisce piu' in basso: la
     // lambda lo raggiunge quando serve, cioe' sempre dopo che il grafo e' finito di nascere.
     radarObservation = { latitude, longitude ->
       RadarObservations.of(aiAssistant.radarSampler, latitude, longitude)
     },
     sensorAvailable = { barometer.isAvailable },
+    // Il livello di contesto (NONE contro NONE_NOCLIMA) chiede solo se la cella e' su disco: niente rete.
+    climatologyAvailable = { latitude, longitude -> localClimatology.cached(latitude, longitude) != null },
+    localClimate = { latitude, longitude -> localClimatology.cached(latitude, longitude) },
+  )
+
+  /**
+   * L'iscrizione di un giro del posto del telefono alla classifica pioggia: barometro, provider e
+   * riferimenti sullo stesso istante. Lo chiama il refresher appena il giro e' scritto.
+   */
+  val localRoundRegistrar = LocalRoundRegistrar(
+    evaluator = nowcastUseCase.asLocalEvaluator(),
+    store = rainEventStore,
+    recordIssue = { learningRepository.recordIssue(it) },
+    climatology = { latitude, longitude -> localClimatology.cached(latitude, longitude) },
+    sensorAvailable = { barometer.isAvailable },
+    wipeGuard = wipeGuard,
+  )
+
+  /**
+   * Il giudice della pioggia: tre modelli fuori classifica, un giorno dopo la finestra. L'esito dei
+   * giri del barometro torna all'apprendimento (fase 16), chiavato sull'istante del giro.
+   */
+  val truthPanelSettler = TruthPanelSettler(
+    http = providerHttp,
+    store = rainEventStore,
+    observations = { since -> observationRepository.since(since) },
+    onBarometerOutcome = { roundId, window, rained ->
+      learningRepository.recordOutcome(NowcastOutcomeRecord(roundId, window, rained))
+    },
+    wipeGuard = wipeGuard,
+  )
+
+  /**
+   * La ristima delle mappe di Platt per variante di contesto: ogni sei ore, con la prova fuori
+   * campione. Dopo ogni ristima lo stato dell'apprendimento in cache si butta.
+   */
+  val plattRefitter = PlattRefitter(
+    learningRepository = learningRepository,
+    learningStore = learningStore,
+    onRefit = { nowcastUseCase.invalidateLearning() },
+    wipeGuard = wipeGuard,
   )
 
   val samplingEngine = SamplingEngine(
@@ -265,7 +329,20 @@ class AppGraph(context: Context) {
   // Ciclo in background e notifiche (fase 11): l'istantanea che la home legge subito, i
   // quattro canali, la memoria di cio' che e' gia' stato detto.
   val weatherSnapshotStore = WeatherSnapshotStore(File(context.filesDir, "snapshots"))
-  val snapshotRefresher = WeatherSnapshotRefresher(fusionCoordinator, weatherSnapshotStore)
+  val snapshotRefresher = WeatherSnapshotRefresher(
+    coordinator = fusionCoordinator,
+    store = weatherSnapshotStore,
+    onGpsRoundRegistered = { round -> localRoundRegistrar.register(round) },
+  )
+
+  /** Giudizio e climatologia della pioggia, al piu' una volta l'ora: dal ciclo e all'apertura dell'app. */
+  val rainTruthMaintenance = RainTruthMaintenance(
+    settler = truthPanelSettler,
+    climatology = localClimatology,
+    throttle = rainMaintenanceStore,
+    homePoint = { weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY)?.let { it.latitude to it.longitude } },
+  )
+
   val officialAlertsClient = OfficialAlertsClient(providerHttp)
   val notificationSettingsStore = NotificationSettingsStore(context)
   val notificationLedgerStore = NotificationLedgerStore(context)
@@ -287,14 +364,15 @@ class AppGraph(context: Context) {
     cleaningPipeline = cleaningPipeline,
     calibrationStore = calibrationStore,
     learningRepository = learningRepository,
-    learningStore = learningStore,
     samplingSettings = samplingSettingsStore,
     notificationSettings = notificationSettingsStore,
     ledgerStore = notificationLedgerStore,
     nowcastHistory = nowcastHistoryStore,
     verificationStore = verificationStore,
     nowcastUseCase = nowcastUseCase,
-    barometerRegistrar = BarometerRegistrar { verdict, at -> fusionCoordinator.registerBarometer(verdict, at) },
+    lastFixStore = lastFixStore,
+    latestActivityStore = latestActivityStore,
+    rainEventStore = rainEventStore,
     officialAlerts = officialAlertsClient,
     placeContext = PlaceContextResolver(context),
     notifier = systemNotifier,
@@ -303,6 +381,8 @@ class AppGraph(context: Context) {
     texts = notificationTexts,
     // Solo un risparmio: con tutto spento non si sveglia un giro che aspetterebbe dieci timeout.
     networkLikelyAvailable = { networkLikelyAvailable(appContext) },
+    afterCycle = { rainTruthMaintenance.runIfDue() },
+    plattRefit = { plattRefitter.runIfDue(it) },
   )
 
   // Taratura iniziale (fase 15): dieci minuti in un foreground service, riferimento dai provider.
@@ -331,7 +411,16 @@ class AppGraph(context: Context) {
     val here = runCatching { locationProvider.snapshot() }.getOrNull()
     val snapshot = if (here != null) {
       snapshotRefresher.fresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude, maxAgeMillis = REFERENCE_MAX_AGE_MILLIS)
-        ?: runCatching { snapshotRefresher.refresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude) }.getOrNull()
+        ?: runCatching {
+          // Un giro del posto del telefono si iscrive alla classifica solo con un fix di adesso:
+          // l'ultima posizione nota di ore fa aggiorna il riferimento, non la classifica.
+          snapshotRefresher.refresh(
+            WeatherSnapshot.GPS_KEY,
+            here.latitude,
+            here.longitude,
+            registerPredictions = if (here.isFreshAt(now)) null else false,
+          )
+        }.getOrNull()
     } else {
       weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY)?.takeIf { it.ageMillis(now) <= REFERENCE_MAX_AGE_MILLIS }
     } ?: return null
@@ -382,6 +471,8 @@ class AppGraph(context: Context) {
         rainViewer = rainViewerClient,
         radarSampler = radarSampler,
         observations = observationRepository,
+        rainEventStore = rainEventStore,
+        barometerAvailable = { barometer.isAvailable },
         notificationSettings = notificationSettingsStore,
         notificationLedger = notificationLedgerStore,
         manualBurst = manualBurstController,
@@ -392,19 +483,30 @@ class AppGraph(context: Context) {
 
   /** Dati e privacy: via tutto l'archivio locale; le impostazioni restano. */
   suspend fun wipeAllData() {
-    pressureRepository.clear()
-    verificationStore.clear()
-    nowcastHistoryStore.clear()
-    observationRepository.clear()
-    calibrationStore.clear()
-    barometerBaselineStore.clear()
-    learningRepository.clear()
-    learningStore.clear()
-    notificationLedgerStore.update { NotificationLedger() }
-    weatherSnapshotStore.clear()
-    File(appContext.cacheDir, "providers").deleteRecursively()
-    File(appContext.cacheDir, "radar-tiles").deleteRecursively()
-    aiAssistant.diagnostics.clear()
+    // Sotto il guardiano: chi sta scrivendo in background (ristima, giudice, registratore) o finisce
+    // prima o, se aveva letto prima della cancellazione, si accorge che e' passata e non scrive.
+    wipeGuard.wipe {
+      pressureRepository.clear()
+      verificationStore.clear()
+      nowcastHistoryStore.clear()
+      observationRepository.clear()
+      calibrationStore.clear()
+      barometerBaselineStore.clear()
+      learningRepository.clear()
+      learningStore.clear()
+      // Le righe della classifica pioggia e tutto cio' che dice dove sei stato: l'ultimo fix e le
+      // climatologie per cella (che svuota anche il freno orario del giudice).
+      rainEventStore.clear()
+      lastFixStore.clear()
+      localClimatologyStore.clear()
+      notificationLedgerStore.update { NotificationLedger() }
+      weatherSnapshotStore.clear()
+      File(appContext.cacheDir, "providers").deleteRecursively()
+      File(appContext.cacheDir, "radar-tiles").deleteRecursively()
+      aiAssistant.diagnostics.clear()
+    }
+    // La cache dell'apprendimento da un'ora teneva in vita le mappe appena cancellate.
+    nowcastUseCase.invalidateLearning()
   }
 
   /** Il riepilogo giornaliero segue l'impostazione: programmato all'ora scelta, o cancellato. */

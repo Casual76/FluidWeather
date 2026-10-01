@@ -30,6 +30,21 @@ class StringsTest {
   }
 
   @Test
+  fun `i segnaposto sono gli stessi nelle due lingue`() {
+    // Un %2$s in meno in una lingua sola non rompe la compilazione: rompe la schermata, e solo
+    // quando il telefono e' in quella lingua.
+    val segnaposto = Regex("""%(?:\d+\$)?[sdf]""")
+    english.forEach { (key, value) ->
+      val italiano = italian[key] ?: return@forEach
+      assertEquals(
+        "$key: segnaposto diversi fra inglese e italiano",
+        segnaposto.findAll(value).map { it.value }.sorted().toList(),
+        segnaposto.findAll(italiano).map { it.value }.sorted().toList(),
+      )
+    }
+  }
+
+  @Test
   fun `un suggerimento sta in una frase e in due parole di titolo`() {
     listOf("titoli inglesi" to english, "titoli italiani" to italian).forEach { (lingua, strings) ->
       strings.filterKeys { it.startsWith("tut_") && it.endsWith("_title") }.forEach { (key, value) ->

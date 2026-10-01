@@ -8,10 +8,14 @@ import dev.pampa.fluidweather.core.model.GlassLevel
 import dev.pampa.fluidweather.core.model.MoonPhase
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.ObservedCondition
+import dev.pampa.fluidweather.core.model.RainBoardIds
 import dev.pampa.fluidweather.core.model.SampleSource
 import dev.pampa.fluidweather.core.model.SamplingMode
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.nowcast.cleaning.RejectionReason
+import dev.pampa.fluidweather.nowcast.features.ContextTier
+import dev.pampa.fluidweather.nowcast.learning.PlattStatus
+import dev.pampa.fluidweather.nowcast.learning.PlattVariant
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 
 /*
@@ -198,7 +202,7 @@ fun windowPhraseRes(window: String): Int = when (window) {
 }
 
 /**
- * I nomi delle feature del modello ([dev.pampa.fluidweather.nowcast.features.FeatureExtractor.names])
+ * I nomi delle feature del modello ([dev.pampa.fluidweather.nowcast.features.FeatureExtractorV3.names])
  * sono il contratto del modello addestrato e non cambiano; qui diventano parole.
  */
 @StringRes
@@ -222,11 +226,42 @@ fun featureLabelRes(name: String): Int = when (name) {
   "pioggia-ultime-3h" -> R.string.feature_rain_last_3h
   "tendenza-provider-3h" -> R.string.feature_provider_trend_3h
   "ora-sin", "ora-cos" -> R.string.feature_hour
+  // Le ventidue del v3 (FeatureExtractorV3.TAIL). Le baseline esistono una volta per finestra, ma ogni
+  // modello di finestra vede solo la sua: la parola e' la stessa.
+  "eta-contesto-ore" -> R.string.feature_context_age
+  "piove-adesso" -> R.string.feature_raining_now
+  "pioggia-ultime-6h" -> R.string.feature_rain_last_6h
+  "ore-da-ultima-pioggia" -> R.string.feature_hours_since_rain
+  "tendenza-nuvole-3h" -> R.string.feature_cloud_trend_3h
+  "tendenza-rugiada-3h" -> R.string.feature_dew_trend_3h
+  "tendenza-temperatura-3h" -> R.string.feature_temperature_trend_3h
+  "giorno-sin", "giorno-cos" -> R.string.feature_season
+  "convezione-pomeridiana" -> R.string.feature_afternoon_convection
+  "clima-0-1h", "clima-1-3h", "clima-3-6h" -> R.string.feature_local_climatology
+  "persistenza-0-1h", "persistenza-1-3h", "persistenza-3-6h" -> R.string.feature_local_persistence
+  "regola-barometrica-0-1h", "regola-barometrica-1-3h", "regola-barometrica-3-6h" -> R.string.feature_barometric_rule
+  "livello-mare" -> R.string.feature_sea_level
+  "normale-assente" -> R.string.feature_normal_missing
+  "clima-locale" -> R.string.feature_local_tables
   else -> R.string.feature_unknown
 }
 
-/** Il nome del provider dove non c'e' un descrittore: il barometro locale della pagella. */
-const val LOCAL_BAROMETER_ID: String = "barometro"
+/**
+ * Le righe locali e di riferimento della classifica pioggia: il barometro, la sua ombra, "sempre 0%"
+ * e la climatologia non hanno un descrittore di provider, e il nome lo mette chi le mostra.
+ *
+ * Gli id sono quelli di [RainBoardIds], l'unica fonte: prima ce n'erano due copie scritte a mano
+ * (qui e in `ForecastVerifier`) e nessun legame fra loro. Un provider vero restituisce null: la sua
+ * etichetta sta nel registro dei provider, che questo modulo non vede.
+ */
+@StringRes
+fun rainRowLabelRes(id: String): Int? = when (id) {
+  RainBoardIds.BAROMETER -> R.string.your_barometer
+  RainBoardIds.BAROMETER_SOLO -> R.string.ref_barometer_solo
+  RainBoardIds.ALWAYS_ZERO -> R.string.ref_always_zero
+  RainBoardIds.CLIMATOLOGY -> R.string.ref_climatology
+  else -> null
+}
 
 /** I sedici punti della rosa dei venti nella lingua corrente, da dove il vento VIENE. */
 fun compassPoint(resources: Resources, degrees: Double): String {
@@ -261,4 +296,41 @@ fun dewPointLabelRes(dewPointC: Double): Int = when {
   dewPointC < 16 -> R.string.details_dew_comfortable
   dewPointC < 21 -> R.string.details_dew_humid
   else -> R.string.details_dew_muggy
+}
+
+/** Il livello di contesto a parole: quanto contesto dei provider ha il verdetto, e se la climatologia c'e'. */
+@StringRes
+fun ContextTier.labelRes(): Int = when (this) {
+  ContextTier.FRESH -> R.string.nowcast_tier_fresh
+  ContextTier.STALE -> R.string.nowcast_tier_stale
+  ContextTier.NONE -> R.string.nowcast_tier_none
+  ContextTier.NONE_NOCLIMA -> R.string.nowcast_tier_none_noclima
+}
+
+/** La famiglia di mappe di Platt (un regime di contesto) a parole. */
+@StringRes
+fun PlattVariant.labelRes(): Int = when (this) {
+  PlattVariant.FRESH -> R.string.learning_variant_fresh
+  PlattVariant.STALE -> R.string.learning_variant_stale
+  PlattVariant.NONE -> R.string.learning_variant_none
+  // Il modello arricchito (P5) non ha ancora mappe: finche' non le ha, dice come il regime senza contesto.
+  PlattVariant.ENHANCED -> R.string.learning_variant_none
+}
+
+/**
+ * Perche' una mappa di Platt e' attiva o no. Lo stato viaggia su disco come nome ([PlattStatus.name])
+ * e qui trova le parole; `null` per un nome che questa versione non conosce (scritto da una piu' nuova).
+ * ACTIVE non ha una frase fissa: la pagina mostra il guadagno fuori campione.
+ */
+@StringRes
+fun plattStatusLabelRes(status: String): Int? = when (runCatching { PlattStatus.valueOf(status) }.getOrNull()) {
+  PlattStatus.ACTIVE -> R.string.learning_active_gain
+  PlattStatus.NO_OUT_OF_SAMPLE_GAIN -> R.string.learning_reason_no_gain
+  PlattStatus.TOO_FEW_SAMPLES -> R.string.learning_reason_too_few
+  PlattStatus.TOO_FEW_WET -> R.string.learning_reason_too_few_wet
+  PlattStatus.TOO_FEW_DRY -> R.string.learning_reason_too_few_dry
+  PlattStatus.GUARD_TOO_FEW_TEST -> R.string.learning_reason_guard_test
+  PlattStatus.GUARD_TRAIN_TOO_SMALL -> R.string.learning_reason_guard_train
+  PlattStatus.NOT_CONVERGED -> R.string.learning_reason_not_converged
+  null -> null
 }
