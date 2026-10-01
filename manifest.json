@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "1.4.5",
+        "releaseDate": "2026-09-26",
+        "changelog": "Tablet, dispositivi senza barometro e la storia barometrica che si fermava.\n\nSui tablet la home passa a quattro colonne: le tessere larghe stanno affiancate, l'orario prende tutta la riga, la barra in basso e le pagine di dettaglio restano centrate. In orizzontale la testata è più bassa e la luna non finisce più dietro le tessere. Il widget si può allargare di più.\n\nSenza barometro (molti tablet) la tessera del nowcast non compare più e la pressione arriva dai servizi meteo, detto chiaramente; la presentazione salta i passi del sensore.\n\nSe il telefono ferma l'app in background (su Samsung: le «App in sospensione»), la barra del barometro non resta più a «0 di 13 ore»: dice che il campionamento è fermo e porta dove si sistema. Aprendo l'app il campionamento riparte subito. L'esenzione dalla batteria si propone in ogni modalità, e la Diagnostica mostra cosa concede il sistema.\n\nPiccole cose: «max» e «min» dei grafici col loro spazio.",
+        "releaseTag": "stable-fluidweather-v1.4.5",
+        "apkAsset": "fluidweather-1.4.5.apk",
+        "sizeBytes": 5170037
+      },
+      {
         "version": "1.4.4",
         "releaseDate": "2026-09-19",
         "changelog": "Gli interruttori sono quelli di vetro vero.\n\nIl pomello e' l'unica lastra del controllo: a riposo e' bianco pieno, e tenuto premuto il bianco sparisce e sotto si apre una copia schiacciata della pista, con la frangia cromatica sul bordo. Si commutano con un tocco in qualunque punto, oppure trascinando il pomello, e prendono il colore d'accento dell'app.\n\nFluid Engine 2.3.2.",
@@ -129,20 +137,20 @@
       }
     ],
     "beta": {
-      "version": "1.4.5",
-      "releaseDate": "2026-09-26",
-      "changelog": "Tablet, dispositivi senza barometro e la storia barometrica che si fermava.\n\nSui tablet la home passa a quattro colonne: le tessere larghe stanno affiancate, l'orario prende tutta la riga, la barra in basso e le pagine di dettaglio restano centrate. In orizzontale la testata è più bassa e la luna non finisce più dietro le tessere. Il widget si può allargare di più.\n\nSenza barometro (molti tablet) la tessera del nowcast non compare più e la pressione arriva dai servizi meteo, detto chiaramente; la presentazione salta i passi del sensore.\n\nSe il telefono ferma l'app in background (su Samsung: le «App in sospensione»), la barra del barometro non resta più a «0 di 13 ore»: dice che il campionamento è fermo e porta dove si sistema. Aprendo l'app il campionamento riparte subito. L'esenzione dalla batteria si propone in ogni modalità, e la Diagnostica mostra cosa concede il sistema.\n\nPiccole cose: «max» e «min» dei grafici col loro spazio.",
-      "releaseTag": "stable-fluidweather-v1.4.5",
-      "apkAsset": "fluidweather-1.4.5.apk",
-      "sizeBytes": 5170037
+      "version": "1.5.0",
+      "releaseDate": "2026-10-01",
+      "changelog": "Il barometro che dice il vero.\n\nLa classifica \"La pioggia arriva?\" giudica tutti sugli stessi giri e con un metro onesto: il punteggio di Brier al posto dell'errore medio, che premiava chi diceva sempre 0%. I giudici sono tre modelli che non sono in gara (Meteo-France, UK Met Office, GEM), e ogni finestra si giudica un giorno dopo, nel posto in cui era stata prevista. Accanto ai provider ci sono due riferimenti: \"sempre 0%\" e la climatologia del posto. Il barometro riparte da zero verifiche.\n\nIl nowcast del barometro e' nuovo: un modello per ogni situazione (dati meteo freschi, vecchi o assenti), che conosce il clima del posto e le regole \"a occhio\" che deve battere. Senza rete, se sul tuo telefono la regola del barometro si dimostra migliore del modello, parla la regola. La ricalibrazione personale impara solo dal modello attuale e solo quando migliora davvero.\n\nPiu' casi verificati per il barometro, anche quando il GPS tarda; la posizione ripiega sull'ultima nota quando serve.\n\nNota: dopo l'aggiornamento il database passa a una versione nuova; tornare alla 1.4.5 cancellerebbe i dati.",
+      "releaseTag": "stable-fluidweather-v1.5.0",
+      "apkAsset": "fluidweather-1.5.0.apk",
+      "sizeBytes": 5243542
     },
     "stable": {
-      "version": "1.4.5",
-      "releaseDate": "2026-09-26",
-      "changelog": "Tablet, dispositivi senza barometro e la storia barometrica che si fermava.\n\nSui tablet la home passa a quattro colonne: le tessere larghe stanno affiancate, l'orario prende tutta la riga, la barra in basso e le pagine di dettaglio restano centrate. In orizzontale la testata è più bassa e la luna non finisce più dietro le tessere. Il widget si può allargare di più.\n\nSenza barometro (molti tablet) la tessera del nowcast non compare più e la pressione arriva dai servizi meteo, detto chiaramente; la presentazione salta i passi del sensore.\n\nSe il telefono ferma l'app in background (su Samsung: le «App in sospensione»), la barra del barometro non resta più a «0 di 13 ore»: dice che il campionamento è fermo e porta dove si sistema. Aprendo l'app il campionamento riparte subito. L'esenzione dalla batteria si propone in ogni modalità, e la Diagnostica mostra cosa concede il sistema.\n\nPiccole cose: «max» e «min» dei grafici col loro spazio.",
-      "releaseTag": "stable-fluidweather-v1.4.5",
-      "apkAsset": "fluidweather-1.4.5.apk",
-      "sizeBytes": 5170037
+      "version": "1.5.0",
+      "releaseDate": "2026-10-01",
+      "changelog": "Il barometro che dice il vero.\n\nLa classifica \"La pioggia arriva?\" giudica tutti sugli stessi giri e con un metro onesto: il punteggio di Brier al posto dell'errore medio, che premiava chi diceva sempre 0%. I giudici sono tre modelli che non sono in gara (Meteo-France, UK Met Office, GEM), e ogni finestra si giudica un giorno dopo, nel posto in cui era stata prevista. Accanto ai provider ci sono due riferimenti: \"sempre 0%\" e la climatologia del posto. Il barometro riparte da zero verifiche.\n\nIl nowcast del barometro e' nuovo: un modello per ogni situazione (dati meteo freschi, vecchi o assenti), che conosce il clima del posto e le regole \"a occhio\" che deve battere. Senza rete, se sul tuo telefono la regola del barometro si dimostra migliore del modello, parla la regola. La ricalibrazione personale impara solo dal modello attuale e solo quando migliora davvero.\n\nPiu' casi verificati per il barometro, anche quando il GPS tarda; la posizione ripiega sull'ultima nota quando serve.\n\nNota: dopo l'aggiornamento il database passa a una versione nuova; tornare alla 1.4.5 cancellerebbe i dati.",
+      "releaseTag": "stable-fluidweather-v1.5.0",
+      "apkAsset": "fluidweather-1.5.0.apk",
+      "sizeBytes": 5243542
     }
   },
   "engine": {
