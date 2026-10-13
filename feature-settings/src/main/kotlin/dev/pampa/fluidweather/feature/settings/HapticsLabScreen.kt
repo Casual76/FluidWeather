@@ -64,6 +64,7 @@ private enum class HapticGroup(val titleRes: Int, val events: List<FluidHapticEv
       FluidHapticEvent.GestureStart,
       FluidHapticEvent.Tick,
       FluidHapticEvent.FrequentTick,
+      FluidHapticEvent.DragTick,
       FluidHapticEvent.Threshold,
       FluidHapticEvent.GestureEnd,
     ),
@@ -101,6 +102,7 @@ internal fun FluidHapticEvent.labelRes(): Int = when (this) {
   FluidHapticEvent.Threshold -> R.string.hapt_ev_threshold
   FluidHapticEvent.Tick -> R.string.hapt_ev_tick
   FluidHapticEvent.FrequentTick -> R.string.hapt_ev_frequent_tick
+  FluidHapticEvent.DragTick -> R.string.hapt_ev_drag_tick
   FluidHapticEvent.GestureStart -> R.string.hapt_ev_gesture_start
   FluidHapticEvent.GestureEnd -> R.string.hapt_ev_gesture_end
   FluidHapticEvent.Open -> R.string.hapt_ev_open
@@ -131,6 +133,7 @@ internal fun FluidHapticEvent.descriptionRes(): Int = when (this) {
   FluidHapticEvent.Threshold -> R.string.hapt_ev_threshold_desc
   FluidHapticEvent.Tick -> R.string.hapt_ev_tick_desc
   FluidHapticEvent.FrequentTick -> R.string.hapt_ev_frequent_tick_desc
+  FluidHapticEvent.DragTick -> R.string.hapt_ev_drag_tick_desc
   FluidHapticEvent.GestureStart -> R.string.hapt_ev_gesture_start_desc
   FluidHapticEvent.GestureEnd -> R.string.hapt_ev_gesture_end_desc
   FluidHapticEvent.Open -> R.string.hapt_ev_open_desc

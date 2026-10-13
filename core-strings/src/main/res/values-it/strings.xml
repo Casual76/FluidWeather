@@ -447,6 +447,8 @@
   <string name="hapt_ev_error_desc">Un aggiornamento che fallisce, una richiesta che non passa</string>
   <string name="hapt_ev_frequent_tick">Tacca leggera</string>
   <string name="hapt_ev_frequent_tick_desc">La stessa, trascinando in fretta: la barra del tempo del radar</string>
+  <string name="hapt_ev_drag_tick">Tacca di trascinamento</string>
+  <string name="hapt_ev_drag_tick_desc">Sotto il dito che scorre su un pulsante o su un cursore: una ogni 10 dp, mai più di una ogni 55 ms</string>
   <string name="hapt_ev_gesture_end">Fine gesto</string>
   <string name="hapt_ev_gesture_end_desc">Il dito lascia e la tessera si posa</string>
   <string name="hapt_ev_gesture_start">Inizio gesto</string>

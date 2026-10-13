@@ -447,6 +447,8 @@
   <string name="hapt_ev_error_desc">An update that fails, a request that does not go through</string>
   <string name="hapt_ev_frequent_tick">Light notch</string>
   <string name="hapt_ev_frequent_tick_desc">The same, while dragging fast: the radar timeline</string>
+  <string name="hapt_ev_drag_tick">Drag notch</string>
+  <string name="hapt_ev_drag_tick_desc">Under the finger as it slides across a button or a slider: one every 10 dp, never more than one every 55 ms</string>
   <string name="hapt_ev_gesture_end">Gesture ends</string>
   <string name="hapt_ev_gesture_end_desc">The finger lets go and the tile settles</string>
   <string name="hapt_ev_gesture_start">Gesture starts</string>
