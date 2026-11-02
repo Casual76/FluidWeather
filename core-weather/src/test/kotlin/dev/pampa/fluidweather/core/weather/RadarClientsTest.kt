@@ -36,6 +36,11 @@ class RadarClientsTest {
       "https://tilecache.rainviewer.com${last.path}/512/7/1/2/8/0_0.png",
       frames.tileUrl(last, 7, 1, 2, colorScheme = 8, smooth = false, snow = false, size = 512),
     )
+    // La forma con i segnaposto, per la sorgente raster della mappa: stesso formato, numeri a parte.
+    assertEquals(
+      "https://tilecache.rainviewer.com${last.path}/256/{z}/{x}/{y}/2/1_1.png",
+      frames.tileTemplate(last),
+    )
   }
 
   @Test

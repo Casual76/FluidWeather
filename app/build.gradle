@@ -6,9 +6,8 @@ plugins {
 
 apply from: "${rootDir}/engine/versions.gradle"
 
-// La chiave Google Maps del radar vive in local.properties (fuori da git) ed entra nel
-// manifest come meta-data: e' l'unico modo in cui l'SDK la legge. Assente = radar che
-// spiega il motivo, non build rotta.
+// local.properties (fuori da git) porta la firma di release. La chiave Google Maps che c'era
+// (maps.apiKey) non si legge piu': il radar e' su MapLibre e OpenFreeMap, che non ne chiedono.
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
@@ -40,7 +39,6 @@ android {
     targetSdk engine.compileSdk
     versionCode 17
     versionName '1.5.1'
-    manifestPlaceholders = [mapsApiKey: localProperties.getProperty('maps.apiKey', '')]
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
     // La 1.1.0 promuove l'app a stable (decisione 2026-09-03): chi la installa segue stable
     // finche' non sceglie altro in Informazioni. Il canale e' compilato dentro l'APK, quindi
@@ -76,6 +74,12 @@ android {
       // traccia offuscata li' non serve a niente. Il taglio del codice morto resta.
       minifyEnabled true
       shrinkResources true
+      // MapLibre porta il suo motore nativo per quattro ABI (11 MB l'una, 7,7 la armeabi). Le due
+      // x86 servono solo agli emulatori, che usano la build di debug: nella release restano le
+      // due ARM dei telefoni, come in Fluid-transit.
+      ndk {
+        abiFilters 'arm64-v8a', 'armeabi-v7a'
+      }
       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
       if (hasReleaseKey) {
         signingConfig signingConfigs.release

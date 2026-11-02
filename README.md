@@ -20,11 +20,13 @@ aggiornamento in-app, config remota), distribuita fuori dagli store tramite il P
 
 ## Compilare
 
-Serve `local.properties` con `sdk.dir`. Facoltativi, sempre fuori da git:
+Serve `local.properties` con `sdk.dir`. Facoltative, sempre fuori da git:
 
-- `maps.apiKey` — la chiave Google Maps del radar (senza, il radar spiega perche' non si apre);
 - `pampa.storeFile`, `pampa.storePassword`, `pampa.keyAlias`, `pampa.keyPassword` — la firma di
   release (senza, la release resta non firmata).
+
+Il radar non chiede chiavi: la mappa e' MapLibre con i tile di OpenFreeMap (prima era Google Maps,
+la cui chiave `maps.apiKey` non si legge piu').
 
 ```bash
 ./gradlew.bat --no-daemon :app:assembleDebug testDebugUnitTest :core-model:test :nowcast:test :testbench:test
@@ -55,4 +57,5 @@ release sono GitHub Release di questo repo, pubblicate col publisher del Pampa S
 
 ## Licenza
 
-Vedi [LICENSE](LICENSE). I dati meteo hanno le attribuzioni elencate in Impostazioni > Informazioni.
+Vedi [LICENSE](LICENSE). I dati meteo e la mappa del radar (OpenFreeMap, © OpenMapTiles, dati
+© OpenStreetMap) hanno le attribuzioni elencate in Impostazioni > Informazioni.

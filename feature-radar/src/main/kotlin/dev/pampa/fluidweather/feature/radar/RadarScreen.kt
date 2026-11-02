@@ -3,13 +3,13 @@ package dev.pampa.fluidweather.feature.radar
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -53,6 +54,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -60,24 +66,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.ComposeMapColorScheme
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.MarkerComposable
-import com.google.maps.android.compose.TileOverlay
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberUpdatedMarkerState
 import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.antigravity.fluidengine.foundation.ThemeMode
 import dev.antigravity.fluidengine.storage.EngineSettingsStore
@@ -132,7 +126,7 @@ class RadarDependencies(
 )
 
 /** Un pin sulla mappa: una localita' salvata (o il telefono) con la sua temperatura. */
-private data class RadarPin(val name: String, val position: LatLng, val temperatureC: Double?)
+private data class RadarPin(val name: String, val latitude: Double, val longitude: Double, val temperatureC: Double?)
 
 /**
  * I colori della schermata, dal tema.
@@ -164,26 +158,18 @@ private val Accent: Color @Composable get() = LocalRadarPalette.current.accent
  * Il radar a schermo intero, come nella reference: X in alto a sinistra, selettore dei livelli
  * in alto a destra (un morph di vetro), legenda in basso a sinistra, tasto posizione in basso a
  * destra, pin con la temperatura delle localita' salvate, barra del tempo con play e scrub, e
- * l'attribuzione. Base cartografica Google Maps in tema scuro (decisione 2026-09-02); livello
- * precipitazioni dal radar RainViewer, in loop sulle ultime due ore.
+ * l'attribuzione. Base cartografica MapLibre con i tile liberi di OpenFreeMap (prima Google Maps,
+ * uscito per la GPL-3.0 dell'engine 3.0: vedi [RadarMapCatalog]), chiara o scura col tema;
+ * livello precipitazioni dal radar RainViewer, in loop sulle ultime due ore.
  */
 @Composable
 fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
-  val context = LocalContext.current
-  val preflight = remember { MapsAvailability.check(context) }
-  // La mappa ha disegnato almeno una volta? Finche' non lo fa, e oltre un certo tempo, si smette
-  // di aspettare in silenzio: e' l'unico modo che l'SDK lascia per accorgersi di una chiave
-  // rifiutata invece che assente.
-  var mapLoaded by remember { mutableStateOf(false) }
-  var waitedTooLong by remember { mutableStateOf(false) }
-  LaunchedEffect(preflight) {
-    if (preflight != MapsStatus.READY) return@LaunchedEffect
-    delay(MapsAvailability.LOAD_TIMEOUT_MILLIS)
-    waitedTooLong = !mapLoaded
-  }
-  val status = if (preflight == MapsStatus.READY && waitedTooLong) MapsStatus.KEY_REFUSED else preflight
-  if (status != MapsStatus.READY) {
-    RadarUnavailable(status, onBack)
+  // Niente chiave e niente Play Services da controllare prima: l'unico modo di non avere la mappa
+  // e' che lo stile non arrivi, e MapLibre lo dice. Allora lo si dice anche qui, invece di
+  // lasciare un rettangolo vuoto.
+  var mapFailed by remember { mutableStateOf(false) }
+  if (mapFailed) {
+    RadarUnavailable(onBack)
     return
   }
   // La stessa regola dell'engine: Sistema segue il telefono, Chiaro e' chiaro, Scuro e' scuro.
@@ -200,31 +186,20 @@ fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
     brand = WeatherAccent.presetFor(null, if (dark) DayPhase.NIGHT else DayPhase.DAY),
   ) {
     CompositionLocalProvider(LocalRadarPalette provides RadarPalette(dark)) {
-      RadarShell(deps, onBack, dark, onMapLoaded = { mapLoaded = true })
+      RadarShell(deps, onBack, dark, onMapFailed = { mapFailed = true })
     }
   }
 }
 
 @Composable
-private fun RadarUnavailable(status: MapsStatus, onBack: () -> Unit) {
+private fun RadarUnavailable(onBack: () -> Unit) {
   FluidScreen(title = stringResource(R.string.radar_title), onBack = onBack) {
     item {
       FluidListGroup {
-        when (status) {
-          MapsStatus.PLAY_SERVICES_MISSING -> FluidListRow(
-            title = stringResource(R.string.radar_no_play),
-            subtitle = stringResource(R.string.radar_no_play_desc),
-          )
-          MapsStatus.KEY_MISSING -> FluidListRow(
-            title = stringResource(R.string.radar_no_key),
-            subtitle = stringResource(R.string.radar_no_key_desc),
-          )
-          MapsStatus.KEY_REFUSED -> FluidListRow(
-            title = stringResource(R.string.radar_key_refused),
-            subtitle = stringResource(R.string.radar_key_refused_desc),
-          )
-          MapsStatus.READY -> Unit
-        }
+        FluidListRow(
+          title = stringResource(R.string.radar_map_failed),
+          subtitle = stringResource(R.string.radar_map_failed_desc),
+        )
       }
     }
   }
@@ -235,12 +210,14 @@ private fun RadarShell(
   deps: RadarDependencies,
   onBack: () -> Unit,
   dark: Boolean,
-  onMapLoaded: () -> Unit,
+  onMapFailed: () -> Unit,
 ) {
   val scope = rememberCoroutineScope()
-  // La mappa e' una View di sistema: il vetro non puo' registrarla. Il backdrop resta vuoto e i
-  // controlli mostrano la loro pellicola: e' il degrado dichiarato, non un errore.
+  // La mappa e' una View di sistema e non e' registrata come sorgente di vetro (sarebbe una
+  // sorgente a schermo intero sempre viva, il costo misurato sull'S25). Il backdrop resta vuoto e
+  // i controlli mostrano la loro pellicola: e' il degrado dichiarato, non un errore.
   val chromeBackdrop = rememberGlassBackdrop()
+  val map = rememberRadarMapController()
   val places by deps.savedLocations.places.collectAsState(initial = emptyList())
   val selectedId by deps.selectedPlaceStore.selectedId.collectAsState()
   val keys by deps.providerKeys.keys.collectAsState(initial = emptyMap())
@@ -274,10 +251,8 @@ private fun RadarShell(
   }
   var layer by remember { mutableStateOf(RadarLayer.PRECIPITATION) }
 
-  // La camera: sulla localita' scelta, altrimenti sul telefono, altrimenti sull'Italia.
-  val cameraPositionState = rememberCameraPositionState {
-    position = CameraPosition.fromLatLngZoom(LatLng(42.5, 12.5), 5f)
-  }
+  // La camera: sulla localita' scelta, altrimenti sul telefono, altrimenti sull'Italia (la
+  // posizione iniziale della mappa, in RadarMap).
   // Si ricentra a ogni cambio di localita', non solo la prima volta: chi cambia posto nella
   // pillola della home e poi apre il radar si aspetta di trovarci quel posto. La chiave e' la
   // localita' su cui siamo GIA' centrati, non un "fatto" una volta per sempre: cosi' i gesti
@@ -286,11 +261,11 @@ private fun RadarShell(
   LaunchedEffect(places, selectedId) {
     if (places.isEmpty() || centeredOn == selectedId) return@LaunchedEffect
     val place = places.firstOrNull { it.id == selectedId && !it.isGps }
-    val target = place?.let { LatLng(it.latitude, it.longitude) }
-      ?: deps.locationProvider.snapshot()?.let { LatLng(it.latitude, it.longitude) }
+    val target = place?.let { it.latitude to it.longitude }
+      ?: deps.locationProvider.snapshot()?.let { it.latitude to it.longitude }
     if (target != null) {
       centeredOn = selectedId
-      cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(target, 7f))
+      map.flyTo(target.first, target.second, googleZoom = 7.0)
     }
   }
 
@@ -314,9 +289,9 @@ private fun RadarShell(
       listOfNotNull(here?.let { it.latitude to it.longitude })
     val now = runCatching { deps.pointWeather.current(points) }.getOrDefault(emptyList())
     value = saved.mapIndexed { index, place ->
-      RadarPin(place.name, LatLng(place.latitude, place.longitude), now.getOrNull(index)?.temperatureC)
+      RadarPin(place.name, place.latitude, place.longitude, now.getOrNull(index)?.temperatureC)
     } + listOfNotNull(
-      here?.let { RadarPin(hereLabel, LatLng(it.latitude, it.longitude), now.getOrNull(saved.size)?.temperatureC) },
+      here?.let { RadarPin(hereLabel, it.latitude, it.longitude, now.getOrNull(saved.size)?.temperatureC) },
     )
   }
 
@@ -328,65 +303,30 @@ private fun RadarShell(
       .fillMaxSize()
       .background(Ink),
   ) {
-    GoogleMap(
+    val density = LocalDensity.current
+    val language = LocalConfiguration.current.locales[0]?.language ?: "en"
+    val owmLayer = layer.owmLayer
+    RadarMap(
+      controller = map,
+      scene = RadarMapScene(
+        dark = dark,
+        frames = frames,
+        frameIndex = frameIndex,
+        precipitation = layer == RadarLayer.PRECIPITATION,
+        owmTemplate = if (owmLayer != null && owmKey != null) RadarMapCatalog.owmTemplate(owmLayer, owmKey) else null,
+        location = hasLocationPermission,
+        // La camera centra fra i tasti in alto e la barra del tempo, come il contentPadding di prima.
+        topPaddingPx = with(density) { 72.dp.roundToPx() },
+        bottomPaddingPx = with(density) { (navigationBottom + barHeight).roundToPx() },
+        language = language,
+      ),
+      loadColor = Ink,
+      onFailed = onMapFailed,
       modifier = Modifier.fillMaxSize(),
-      cameraPositionState = cameraPositionState,
-      properties = MapProperties(
-        isMyLocationEnabled = hasLocationPermission,
-        minZoomPreference = 3f,
-        // Era 12, lo zoom nativo del radar: oltre, i tile si ricavano dal padre ingrandito
-        // (OverzoomTileProvider) e nessuno e' piu' obbligato a un livello scelto da noi.
-        maxZoomPreference = 16f,
-      ),
-      uiSettings = MapUiSettings(
-        compassEnabled = false,
-        indoorLevelPickerEnabled = false,
-        mapToolbarEnabled = false,
-        myLocationButtonEnabled = false,
-        rotationGesturesEnabled = false,
-        tiltGesturesEnabled = false,
-        zoomControlsEnabled = false,
-      ),
-      // Non FOLLOW_SYSTEM: quello seguirebbe il telefono anche quando l'utente ha scelto "Chiaro"
-      // dentro l'app, e mappa e interfaccia si contraddirebbero.
-      mapColorScheme = if (dark) ComposeMapColorScheme.DARK else ComposeMapColorScheme.LIGHT,
-      // Il logo di Google resta visibile sopra la barra del tempo: e' la sua condizione d'uso.
-      contentPadding = PaddingValues(top = 72.dp, bottom = navigationBottom + barHeight),
-      onMapLoaded = onMapLoaded,
-    ) {
-      val available = frames
-      if (layer == RadarLayer.PRECIPITATION && available != null) {
-        // Un overlay per fotogramma, tutti montati e uno solo visibile: dal secondo giro i tile
-        // sono gia' in cache e il loop scorre senza buchi.
-        available.all.forEachIndexed { index, frame ->
-          key(frame.path) {
-            val provider = remember(available, frame) { RainViewerTileProvider(available, frame) }
-            TileOverlay(
-              tileProvider = provider,
-              fadeIn = false,
-              transparency = 0.15f,
-              visible = index == frameIndex,
-              zIndex = 1f,
-            )
-          }
-        }
-      }
-      val owmLayer = layer.owmLayer
-      if (owmLayer != null && owmKey != null) {
-        val provider = remember(owmLayer, owmKey) { OwmTileProvider(owmLayer, owmKey) }
-        TileOverlay(tileProvider = provider, transparency = 0.1f, zIndex = 1f)
-      }
-      pins.forEach { pin ->
-        MarkerComposable(
-          pin.name,
-          pin.temperatureC ?: Double.NaN,
-          state = rememberUpdatedMarkerState(pin.position),
-          anchor = Offset(0.5f, 1f),
-        ) {
-          PinLabel(pin)
-        }
-      }
-    }
+    )
+
+    // Le etichette dei posti sopra la mappa, sotto i controlli.
+    RadarPins(pins, map)
 
     // X in alto a sinistra.
     FluidGlassIconButton(
@@ -439,7 +379,7 @@ private fun RadarShell(
       )
     }
 
-    // Legenda in basso a sinistra, sopra il logo di Google.
+    // Legenda in basso a sinistra, sopra la barra del tempo.
     if (layer == RadarLayer.PRECIPITATION) {
       RadarLegend(
         backdrop = chromeBackdrop,
@@ -454,9 +394,7 @@ private fun RadarShell(
       FluidGlassIconButton(
         onClick = {
           scope.launch {
-            deps.locationProvider.snapshot()?.let {
-              cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 8f))
-            }
+            deps.locationProvider.snapshot()?.let { map.flyTo(it.latitude, it.longitude, googleZoom = 8.0) }
           }
         },
         backdrop = chromeBackdrop,
@@ -486,6 +424,7 @@ private fun RadarShell(
         playing = false
         frameIndex = chosen
       },
+      onAttribution = map::showAttribution,
       modifier = Modifier
         .align(Alignment.BottomCenter)
         .padding(start = 12.dp, end = 12.dp, bottom = navigationBottom + 8.dp)
@@ -507,10 +446,41 @@ private fun layerIcon(layer: RadarLayer): ImageVector = when (layer) {
 }
 
 /**
+ * Le etichette dei posti, appoggiate sulla mappa con la punta in basso al centro sul punto (come
+ * l'`anchor (0.5, 1)` dei marker di Google). Sono Compose sopra la mappa, non simboli dentro lo
+ * stile: restano esattamente [PinLabel], con il tema e le unita' dell'utente. Il posto si legge
+ * nella fase di piazzamento, quindi un trascinamento le sposta senza ricomporre niente; senza
+ * tocchi propri, il dito che parte da un'etichetta muove la mappa sotto.
+ */
+@Composable
+private fun RadarPins(pins: List<RadarPin>, map: RadarMapController) {
+  pins.forEach { pin ->
+    key(pin.name, pin.latitude, pin.longitude) {
+      Box(
+        Modifier.layout { measurable, _ ->
+          val placeable = measurable.measure(Constraints())
+          layout(placeable.width, placeable.height) {
+            // La lettura che fa ripiazzare l'etichetta a ogni movimento della camera.
+            map.cameraTick.intValue
+            val point = map.screenPoint(pin.latitude, pin.longitude) ?: return@layout
+            placeable.place(
+              (point.x - placeable.width / 2f).roundToInt(),
+              (point.y - placeable.height).roundToInt(),
+            )
+          }
+        },
+      ) {
+        PinLabel(pin)
+      }
+    }
+  }
+}
+
+/**
  * L'etichetta di una localita' sulla mappa.
  *
- * Un marker e' una bitmap che Google Maps compone da se', quindi il vetro vero — che campiona cio'
- * che ha dietro — qui non puo' esistere. Si prende allora la stessa pellicola dei controlli di
+ * Il vetro vero, che campiona cio' che ha dietro, qui non puo' esistere: la mappa non e' una
+ * sorgente di vetro (vedi [RadarShell]). Si prende allora la stessa pellicola dei controlli di
  * vetro (il velo e il filo di luce del tema), cosi' l'etichetta somiglia ai tasti accanto e segue
  * il tema: prima era un nero scritto a mano, e con l'app in chiaro restava l'unica cosa scura.
  */
@@ -579,6 +549,7 @@ private fun RadarTimelineBar(
   playing: Boolean,
   onTogglePlay: () -> Unit,
   onScrub: (Int) -> Unit,
+  onAttribution: () -> Unit,
   backdrop: GlassBackdropState,
   modifier: Modifier = Modifier,
 ) {
@@ -687,6 +658,9 @@ private fun RadarTimelineBar(
         modifier = Modifier.width(96.dp),
       )
     }
+    // L'attribuzione del radar e della mappa, sempre a vista: OpenFreeMap la chiede scritta
+    // ("© OpenMapTiles", i dati di OpenStreetMap) a chi non usa MapLibre GL JS. Un tocco apre le
+    // fonti con i loro link.
     Text(
       stringResource(R.string.radar_attribution, RainViewerClient.ATTRIBUTION),
       style = MaterialTheme.typography.labelSmall,
@@ -694,6 +668,11 @@ private fun RadarTimelineBar(
       textAlign = TextAlign.End,
       modifier = Modifier
         .fillMaxWidth()
+        .clickable(
+          onClickLabel = stringResource(R.string.radar_attribution_open),
+          role = Role.Button,
+          onClick = onAttribution,
+        )
         .padding(top = 4.dp, end = 4.dp),
     )
   }

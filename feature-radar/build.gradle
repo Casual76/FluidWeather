@@ -37,8 +37,8 @@ dependencies {
   api project(':core-sensor')
   api project(':core-weather')
 
-  implementation "com.google.maps.android:maps-compose:${appVersions.mapsCompose}"
-  implementation "com.google.android.gms:play-services-maps:${appVersions.playServicesMaps}"
+  // La mappa: MapLibre, libero (BSD-2-Clause), senza chiave e senza Play Services.
+  implementation "org.maplibre.gl:android-sdk-opengl:${appVersions.maplibre}"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
 
   testImplementation "junit:junit:${engine.junit}"

@@ -21,7 +21,7 @@
   <string name="about_alerts">Allerte ufficiali dei servizi meteorologici nazionali, riportate senza reinterpretazione</string>
   <string name="about_barometer_desc">Il sensore del telefono, con le formule di Mass &amp; Madaus, Meeus e Montenbruck</string>
   <string name="about_engine_desc">Le fondamenta condivise delle app Pampa</string>
-  <string name="about_maps">Base cartografica del radar, Google Maps Platform</string>
+  <string name="about_maps">Base cartografica del radar: OpenFreeMap, © OpenMapTiles, dati © contributori di OpenStreetMap (ODbL); disegnata con MapLibre (BSD-2-Clause)</string>
   <string name="about_moon">Luna</string>
   <string name="about_moon_desc">Immagine del lato visibile: NASA/GSFC Scientific Visualization Studio, Lunar Reconnaissance Orbiter (pubblico dominio)</string>
   <string name="about_notice">Avviso</string>
@@ -779,7 +779,8 @@
   <string name="provider_why_nws">il servizio ufficiale statunitense, sul suo territorio</string>
   <string name="provider_why_open_meteo">il miglior modello disponibile per il punto, scelto da Open-Meteo</string>
   <string name="provider_why_owm">un\'opinione globale in più, con la chiave dell\'utente</string>
-  <string name="radar_attribution">%1$s · Mappa © Google</string>
+  <string name="radar_attribution">%1$s · Mappa © OpenMapTiles © OpenStreetMap</string>
+  <string name="radar_attribution_open">Fonti e licenze della mappa</string>
   <string name="radar_here">Qui</string>
   <string name="radar_layer_air">Qualità aria</string>
   <string name="radar_layer_no_service">nessun servizio gratuito lo serve come mappa</string>
@@ -794,12 +795,8 @@
   <string name="radar_legend_moderate">moderata</string>
   <string name="radar_legend_very_heavy">molto forte</string>
   <string name="radar_loading">radar…</string>
-  <string name="radar_no_key">Chiave Google Maps assente</string>
-  <string name="radar_no_key_desc">Aggiungi maps.apiKey a local.properties e ricompila: la chiave resta fuori da git.</string>
-  <string name="radar_key_refused">La mappa non si carica</string>
-  <string name="radar_key_refused_desc">La chiave è presente, ma Google non serve i tile. Nella console Cloud controlla che Maps SDK for Android sia abilitato e che la restrizione della chiave corrisponda al pacchetto dev.pampa.fluidweather e allo SHA-1 della firma.</string>
-  <string name="radar_no_play">Google Play Services assenti</string>
-  <string name="radar_no_play_desc">La mappa del radar poggia su Google Maps: su questo dispositivo non può aprirsi.</string>
+  <string name="radar_map_failed">La mappa non si carica</string>
+  <string name="radar_map_failed_desc">I tile della mappa (OpenFreeMap) non arrivano: controlla la connessione e riapri il radar.</string>
   <string name="radar_now">adesso</string>
   <string name="radar_offset_h">%1$s%2$s h</string>
   <string name="radar_offset_h_min">%1$s%2$s h %3$s min</string>

@@ -40,7 +40,22 @@ data class RadarFrames(
     smooth: Boolean = true,
     snow: Boolean = true,
     size: Int = 256,
-  ): String = "$host${frame.path}/$size/$zoom/$x/$y/$colorScheme/${if (smooth) 1 else 0}_${if (snow) 1 else 0}.png"
+  ): String = tileTemplate(frame, colorScheme, smooth, snow, size)
+    .replace("{z}", zoom.toString())
+    .replace("{x}", x.toString())
+    .replace("{y}", y.toString())
+
+  /**
+   * Lo stesso indirizzo con i segnaposto `{z}/{x}/{y}` al posto dei numeri: e' la forma che una
+   * sorgente raster di MapLibre vuole, e il formato resta scritto in un posto solo.
+   */
+  fun tileTemplate(
+    frame: RadarFrame,
+    colorScheme: Int = RainViewerPalette.UNIVERSAL_BLUE,
+    smooth: Boolean = true,
+    snow: Boolean = true,
+    size: Int = 256,
+  ): String = "$host${frame.path}/$size/{z}/{x}/{y}/$colorScheme/${if (smooth) 1 else 0}_${if (snow) 1 else 0}.png"
 }
 
 /**

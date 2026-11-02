@@ -4,12 +4,13 @@ ext.appVersions = [
   room                : '2.8.4',
   work                : '2.11.2',
   playServicesLocation: '21.4.0',
-  // Radar (fase 12): Google Maps SDK e il suo binding Compose.
-  // maps-compose 8.2.2: l'ultima che compila contro android-36 con Kotlin <= 2.3 (le 8.3+
-  // pretendono compileSdk 37, le 8.4+ anche Kotlin 2.4 e AGP 9.1). play-services-maps la
-  // decide maps-ktx; 19.2.0 e' il minimo che chiediamo noi.
-  playServicesMaps    : '19.2.0',
-  mapsCompose         : '8.2.2',
+  // Radar: la mappa e' MapLibre Native Android (BSD-2-Clause) con i tile di OpenFreeMap, al posto
+  // di Google Maps SDK + maps-compose (proprietari: fuori da un'app GPL-3.0, engine 3.0).
+  // L'artefatto `android-sdk-opengl` (OpenGL ES): dalla serie 12 `android-sdk` e' il motore Vulkan,
+  // e quello OpenGL disegna anche sugli emulatori. 13.7.1 (15/10/2026) e' l'ultima stabile, chiede
+  // compileSdk >= 34 (aar-metadata) e gira con AGP 8.13.2 e Kotlin 2.2.20, come MyCloud-Gallery-2.
+  // Porta a runtime OkHttp 4.12.0 e le librerie geojson/turf/gesti di MapLibre.
+  maplibre            : '13.7.1',
   // I test strumentati (MigrationTest di :core-data): runner e junit-ext di androidx.test.
   androidxTestRunner  : '1.7.0',
   androidxTestExtJunit: '1.3.0',

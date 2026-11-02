@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+  <!--
+      MapLibre (il radar) dichiara anche lo stato del Wi-Fi, un'eredita' della telemetria che non
+      c'e' piu': il suo codice non lo legge (verificato nella 13.7.1), e l'app non lo chiede.
+  -->
+  <uses-permission
+      android:name="android.permission.ACCESS_WIFI_STATE"
+      tools:node="remove" />
 
   <application
       android:name=".FluidWeatherApp"
@@ -9,10 +18,6 @@
       android:label="@string/app_name"
       android:supportsRtl="true"
       android:theme="@style/Theme.FluidWeather">
-    <!-- Google Maps SDK (radar): la chiave arriva da local.properties via manifestPlaceholders. -->
-    <meta-data
-        android:name="com.google.android.geo.API_KEY"
-        android:value="${mapsApiKey}" />
     <!--
         launchMode="singleTask" e' cio' che impedisce la seconda home.
 
