@@ -40,6 +40,7 @@ import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.TransitionOptions
 import org.maplibre.android.style.sources.RasterSource
 import org.maplibre.android.style.sources.TileSet
 
@@ -198,15 +199,17 @@ internal class RadarMapController(private val context: Context) {
           val tiles = TileSet("2.2.0", frames.tileTemplate(frame))
           tiles.setMaxZoom(RadarMapCatalog.RAINVIEWER_MAX_ZOOM)
           style.addSource(RasterSource(RadarMapCatalog.frameSourceId(index), tiles, RadarMapCatalog.TILE_SIZE))
-          addBelowLabels(
-            style,
-            RasterLayer(RadarMapCatalog.frameLayerId(index), RadarMapCatalog.frameSourceId(index)).withProperties(
-              PropertyFactory.rasterOpacity(0f),
-              // Il fotogramma cambia di colpo, come con `fadeIn = false`: una dissolvenza su un
-              // loop da 450 ms impasterebbe due istanti diversi.
-              PropertyFactory.rasterFadeDuration(0f),
-            ),
+          val layer = RasterLayer(RadarMapCatalog.frameLayerId(index), RadarMapCatalog.frameSourceId(index)).withProperties(
+            PropertyFactory.rasterOpacity(0f),
+            // Il fotogramma cambia di colpo, come con `fadeIn = false`: una dissolvenza su un
+            // loop da 450 ms impasterebbe due istanti diversi.
+            PropertyFactory.rasterFadeDuration(0f),
           )
+          // E anche l'opacita': MapLibre anima ogni cambio di proprieta' in 300 ms, e sul loop due
+          // fotogrammi restavano sovrapposti per meta' del tempo (visto sull'emulatore: i bordi
+          // dei temporali doppi). Il cambio di fotogramma e' un taglio, non una dissolvenza.
+          layer.setRasterOpacityTransition(TransitionOptions(0, 0))
+          addBelowLabels(style, layer)
         }
         installedFrameCount = frames.all.size
       }
