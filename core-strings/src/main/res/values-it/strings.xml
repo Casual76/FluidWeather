@@ -1076,11 +1076,12 @@
   <string name="ai_enabled">Assistente attivo</string>
   <string name="ai_enabled_desc">Un tasto fra la pillola della località e il menu: tocca per parlare, tieni premuto per scrivere</string>
   <string name="ai_error_blocked">Il servizio ha rifiutato la richiesta</string>
+  <string name="ai_error_context_too_long">La domanda non ci stava, nemmeno con la storia accorciata: ricomincia la conversazione</string>
   <string name="ai_error_mic_denied">Microfono non consentito: puoi scrivere</string>
   <string name="ai_error_mic_settings">Consentilo nelle impostazioni di sistema</string>
+  <string name="ai_error_model_unavailable">Il modello scelto non c\'è più: scegline un altro nelle Impostazioni</string>
   <string name="ai_error_network">Serve la rete</string>
   <string name="ai_error_no_keys">Nessuna chiave: configura l\'assistente nelle Impostazioni</string>
-  <string name="ai_error_no_location">Posizione sconosciuta</string>
   <string name="ai_error_provider">Il servizio ha risposto con un errore</string>
   <string name="ai_error_rate_limited">Limite raggiunto: riprova tra %1$d s</string>
   <string name="ai_error_rate_limited_generic">Limite del servizio raggiunto: riprova tra poco</string>

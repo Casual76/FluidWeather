@@ -28,10 +28,10 @@ import dev.antigravity.fluidengine.ui.fluid.FluidTextField
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
-import dev.pampa.fluidweather.core.ai.provider.ModelCatalogue
-import dev.pampa.fluidweather.core.ai.provider.ModelInfo
-import dev.pampa.fluidweather.core.ai.provider.OpenRouterCatalog
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.provider.ModelCatalogue
+import dev.antigravity.fluidengine.ai.provider.ModelInfo
+import dev.antigravity.fluidengine.ai.provider.OpenRouterCatalog
+import dev.antigravity.fluidengine.ai.provider.ProviderId
 import dev.pampa.fluidweather.core.ui.BlackSheet
 import dev.pampa.fluidweather.core.ui.BlackSheetNote
 import dev.pampa.fluidweather.core.ui.BlackSheetSectionTitle

@@ -1,20 +1,22 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.strings.labelRes
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonObject
 
 /** Le allerte ufficiali (NWS negli USA, Meteoalarm in Europa) per il posto, senza reinterpretarle. */
-class OfficialAlertsTool(private val resolver: PlaceResolver) : AiTool {
+class OfficialAlertsTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "allerte_ufficiali"
   override val group = ToolGroup.ALERTS
   override val description = "Le allerte ufficiali attive per il posto (protezione civile / servizi nazionali): evento, severita', inizio e fine, area, fonte. Riportarle senza reinterpretarle."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val context = runCatching { ctx.sources.placeContext.resolve(place.latitude, place.longitude) }.getOrNull()
     val alerts = runCatching {
@@ -39,13 +41,13 @@ class OfficialAlertsTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Cosa fanno le notifiche dell'app: canali accesi, ultima allerta del barometro, ultimo ciclo. */
-class NotificationsStateTool : AiTool {
+class NotificationsStateTool : WeatherTool() {
   override val name = "notifiche_stato"
   override val group = ToolGroup.ALERTS
   override val description = "Lo stato delle notifiche dell'app: quali canali sono accesi, l'ultima allerta del barometro inviata, l'ultimo inizio/fine pioggia notificato, l'ultimo ciclo in background."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val settings = ctx.sources.notificationSettings.current()
     val ledger = ctx.sources.notificationLedger.current()
     return ToolText.build {

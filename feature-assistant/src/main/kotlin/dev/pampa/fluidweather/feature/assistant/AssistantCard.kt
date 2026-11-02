@@ -56,12 +56,10 @@ import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import dev.antigravity.fluidengine.ui.fluid.fluidPressable
 import dev.antigravity.fluidengine.ui.fluid.glassControlSurface
 import dev.antigravity.fluidengine.ui.fluid.glassSurface
-import dev.pampa.fluidweather.core.ai.orchestrator.AnswerChip
-import dev.pampa.fluidweather.core.ai.orchestrator.AssistantSession
-import dev.pampa.fluidweather.core.ai.orchestrator.AssistantState
-import dev.pampa.fluidweather.core.ai.tools.AssistantAction
+import dev.pampa.fluidweather.core.ai.orchestrator.WeatherChip
+import dev.antigravity.fluidengine.ai.orchestrator.AssistantState
+import dev.antigravity.fluidengine.ai.orchestrator.PendingConfirmation
 import dev.pampa.fluidweather.strings.R
-import dev.pampa.fluidweather.strings.labelRes
 
 /**
  * La card sotto l'aureola: domanda in piccolo, riga di stato col puntino che respira, risposta
@@ -71,10 +69,9 @@ import dev.pampa.fluidweather.strings.labelRes
 @Composable
 fun AssistantCard(
   state: AssistantState,
-  pending: AssistantSession.PendingAction?,
   backdrop: GlassBackdropState,
   onStop: () -> Unit,
-  onChip: (AnswerChip) -> Unit,
+  onChip: (WeatherChip) -> Unit,
   onConfirm: (Long, Boolean) -> Unit,
   onTapBody: () -> Unit,
   modifier: Modifier = Modifier,
@@ -128,19 +125,21 @@ fun AssistantCard(
         }
       }
     }
-    if (state is AssistantState.AwaitingConfirmation && pending != null) {
+    if (state is AssistantState.AwaitingConfirmation) {
+      val confirmation = state.confirmation
       Spacer(Modifier.height(12.dp))
-      ConfirmationRow(pending.action, onConfirm = { onConfirm(pending.id, it) })
+      ConfirmationRow(confirmation, onConfirm = { onConfirm(confirmation.id, it) })
     }
-    if (state is AssistantState.Done && state.chips.isNotEmpty()) {
+    val chips = (state as? AssistantState.Done)?.let { WeatherChip.of(it.chips) }.orEmpty()
+    if (chips.isNotEmpty()) {
       Spacer(Modifier.height(12.dp))
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        state.chips.forEach { chip ->
+        chips.forEach { chip ->
           ChipPill(
             backdrop = backdrop,
             label = when (chip) {
-              is AnswerChip.Open -> stringResource(AssistantStrings.targetRes(chip.target))
-              is AnswerChip.Place -> chip.name
+              is WeatherChip.Open -> stringResource(AssistantStrings.targetRes(chip.target))
+              is WeatherChip.Place -> chip.name
             },
             onClick = { onChip(chip) },
           )
@@ -204,7 +203,7 @@ private fun StatusLine(state: AssistantState) {
 @Composable
 private fun failureText(state: AssistantState.Failed): String {
   val retry = state.retryAfterSec
-  return if (state.kind == dev.pampa.fluidweather.core.ai.orchestrator.FailureKind.RATE_LIMITED && retry != null) {
+  return if (state.kind == dev.antigravity.fluidengine.ai.orchestrator.FailureKind.RATE_LIMITED && retry != null) {
     stringResource(R.string.ai_error_rate_limited, retry)
   } else {
     stringResource(AssistantStrings.failureRes(state.kind))
@@ -268,20 +267,14 @@ private fun ChipPill(backdrop: GlassBackdropState, label: String, onClick: () ->
 }
 
 @Composable
-private fun ConfirmationRow(action: AssistantAction, onConfirm: (Boolean) -> Unit) {
-  val label = when (action) {
-    AssistantAction.StartBurst -> stringResource(R.string.ai_action_burst)
-    is AssistantAction.RecordObservation -> stringResource(R.string.ai_action_observation, stringResource(action.condition.labelRes()))
-    is AssistantAction.SavePlace -> stringResource(R.string.ai_action_save_place, action.place.name)
-    is AssistantAction.Open -> stringResource(R.string.ai_action_open, stringResource(AssistantStrings.targetRes(action.target)))
-    is AssistantAction.SelectPlace -> stringResource(R.string.ai_action_select_place, action.place.name)
-    is AssistantAction.SetUnit -> stringResource(R.string.ai_action_set_unit, action.kind)
-    is AssistantAction.RemovePlace -> stringResource(R.string.ai_action_remove_place, action.label)
-    is AssistantAction.DeleteObservation -> stringResource(R.string.ai_action_delete_observation, action.label)
-    AssistantAction.StartCalibration -> stringResource(R.string.ai_action_calibrate)
-  }
+private fun ConfirmationRow(confirmation: PendingConfirmation, onConfirm: (Boolean) -> Unit) {
+  // Le parole le ha gia' scritte la sessione (AssistantSession.confirmationTitle), con le stesse
+  // stringhe di prima: la card le mostra e basta, come fara' quella dell'engine.
   Column {
-    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    Text(confirmation.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    confirmation.detail?.let { detail ->
+      Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       FluidButton(text = stringResource(R.string.ai_confirm), onClick = { onConfirm(true) }, style = FluidButtonStyle.Tinted, size = FluidButtonSize.Small)

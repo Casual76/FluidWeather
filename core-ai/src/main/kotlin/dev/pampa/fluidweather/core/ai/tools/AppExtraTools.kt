@@ -1,7 +1,9 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.CalibrationOutcome
 import dev.pampa.fluidweather.core.model.DistanceUnit
 import dev.pampa.fluidweather.core.model.PrecipitationUnit
@@ -24,7 +26,7 @@ private fun outcome(outcome: ActionOutcome, done: String): String = when (outcom
 }
 
 /** Le unita' di misura dell'utente: leggerle, e cambiarle quando lo chiede. */
-class UnitsTool : AiTool {
+class UnitsTool : WeatherTool() {
   override val name = "unita_imposta"
   override val group = ToolGroup.APP
   override val description = "Legge o cambia le unita' di misura dell'app: temperatura (celsius/fahrenheit), vento (kmh/ms/mph/nodi/beaufort), pressione (hpa/mbar/mmhg/inhg), pioggia (mm/pollici), distanza (km/miglia). Senza argomenti dice quelle in uso."
@@ -35,7 +37,7 @@ class UnitsTool : AiTool {
     ),
   )
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val store = ctx.sources.unitsStore
     val kind = args.str("grandezza")
     val unit = args.str("unita")
@@ -101,13 +103,13 @@ class UnitsTool : AiTool {
 }
 
 /** Toglie una localita' dai preferiti (con conferma: e' una cosa che l'utente aveva salvato). */
-class RemovePlaceTool(private val resolver: PlaceResolver) : AiTool {
+class RemovePlaceTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "localita_rimuovi"
   override val group = ToolGroup.APP
   override val description = "Toglie una localita' dall'elenco di quelle salvate. Chiede conferma."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.str("il nome della localita' salvata da togliere")), required = listOf("luogo"))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF_EXTRA
     val query = args.str("luogo") ?: return "errore: dimmi quale localita'"
     val saved = ctx.sources.savedLocations.places.first()
@@ -120,13 +122,13 @@ class RemovePlaceTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Cancella un'osservazione registrata per sbaglio: e' un dato che tara il barometro, quindi conta. */
-class DeleteObservationTool : AiTool {
+class DeleteObservationTool : WeatherTool() {
   override val name = "osservazione_elimina"
   override val group = ToolGroup.APP
   override val description = "Cancella un'osservazione registrata (quella piu' recente, o quella di un momento preciso). Chiede conferma."
   override val parameters = Schema.obj(mapOf("quale" to Schema.str("\"ultima\" per la piu' recente, oppure l'ora dell'osservazione (es. 14:30)")))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF_EXTRA
     val recent = ctx.sources.observations.recent(20).first()
     if (recent.isEmpty()) return "non ci sono osservazioni registrate"
@@ -142,13 +144,13 @@ class DeleteObservationTool : AiTool {
 }
 
 /** A che punto e' la taratura del barometro, e la avvia se serve. */
-class CalibrationStateTool : AiTool {
+class CalibrationStateTool : WeatherTool() {
   override val name = "calibrazione_stato"
   override val group = ToolGroup.NOWCAST
   override val description = "Lo stato della taratura del barometro (fatta o no, quanto e' affidabile, quando): con avvia=si la fa partire, chiedendo conferma. Serve quando il nowcast sembra sbagliato."
   override val parameters = Schema.obj(mapOf("avvia" to Schema.str("si per avviare una nuova taratura")))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val record = ctx.sources.calibrationStore.current()
     val progress = ctx.sources.calibrationController.progress.value
     val start = args.str("avvia")?.lowercase()?.trim()?.let { it == "si" || it == "sì" || it == "true" } == true

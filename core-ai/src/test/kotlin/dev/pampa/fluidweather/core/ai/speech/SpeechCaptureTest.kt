@@ -1,5 +1,9 @@
 package dev.pampa.fluidweather.core.ai.speech
 
+import dev.antigravity.fluidengine.ai.speech.MicrophoneException
+import dev.antigravity.fluidengine.ai.speech.MicrophoneFailure
+import dev.antigravity.fluidengine.ai.speech.PcmSource
+import dev.antigravity.fluidengine.ai.speech.SpeechCapture
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder

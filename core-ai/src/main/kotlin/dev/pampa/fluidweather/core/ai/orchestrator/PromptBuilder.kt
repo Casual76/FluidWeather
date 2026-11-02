@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.core.ai.orchestrator
 
+import dev.antigravity.fluidengine.ai.orchestrator.AskMode
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
 import dev.pampa.fluidweather.core.model.SamplingMode
@@ -94,8 +95,4 @@ Rules:
 Context:
 ${contextBlock(ctx, p, italian = false)}
 """.trim()
-
-  /** Il system prompt aggiunto all'ultimo giro: niente altri strumenti, si risponde con quello che c'e'. */
-  fun forceFinal(language: String): String =
-    if (language == "it") "Rispondi ora con quello che sai, senza chiamare altri strumenti. Se qualcosa manca, dillo." else "Answer now with what you know, without calling more tools. If something is missing, say so."
 }

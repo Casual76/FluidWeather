@@ -64,10 +64,10 @@ import dev.antigravity.fluidengine.ui.fluid.glassSurface
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.ai.AiAssistant
-import dev.pampa.fluidweather.core.ai.orchestrator.AnswerChip
-import dev.pampa.fluidweather.core.ai.orchestrator.AskMode
-import dev.pampa.fluidweather.core.ai.orchestrator.AssistantState
+import dev.antigravity.fluidengine.ai.orchestrator.AskMode
+import dev.antigravity.fluidengine.ai.orchestrator.AssistantState
 import dev.pampa.fluidweather.core.ai.orchestrator.UiCommand
+import dev.pampa.fluidweather.core.ai.orchestrator.WeatherChip
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.strings.R
 import kotlinx.coroutines.launch
@@ -188,7 +188,6 @@ fun BoxScope.AssistantOverlay(
   // Il livello del microfono viaggia per conto suo (cinquanta volte al secondo): lo leggono
   // l'aureola e il feedback tattile del primo parlato, e nessun altro.
   val mic by session.micLevel.collectAsState()
-  val pending by session.pendingAction.collectAsState()
   val settings by assistant.settings.settings.collectAsState(initial = null)
   val scope = rememberCoroutineScope()
   val speaker = remember { TtsSpeaker(context) }
@@ -434,16 +433,15 @@ fun BoxScope.AssistantOverlay(
         } else {
           AssistantCard(
             state = state,
-            pending = pending,
             backdrop = backdrop,
             onStop = { session.cancel() },
             onChip = { chip ->
               when (chip) {
-                is AnswerChip.Open -> {
+                is WeatherChip.Open -> {
                   overlay.collapsed = true
                   navigator.open(chip.target)
                 }
-                is AnswerChip.Place -> navigator.selectPlace(chip.name)
+                is WeatherChip.Place -> navigator.selectPlace(chip.name)
               }
             },
             onConfirm = { id, yes ->

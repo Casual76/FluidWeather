@@ -1,18 +1,20 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
 
 /** Cercare un posto per nome: fino a cinque risultati del geocoding. */
-class SearchPlaceTool(private val resolver: PlaceResolver) : AiTool {
+class SearchPlaceTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "cerca_luogo"
   override val group = ToolGroup.PLACES
   override val description = "Cerca una localita' per nome; restituisce fino a 5 risultati con regione e paese."
   override val parameters = Schema.obj(mapOf("nome" to Schema.str("nome del posto da cercare")), required = listOf("nome"))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val query = args.str("nome") ?: return "errore: manca il nome"
     val results = resolver.search(query, limit = 5)
     if (results.isEmpty()) return "nessun risultato per \"$query\""
@@ -25,13 +27,13 @@ class SearchPlaceTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Le localita' salvate, con quella selezionata in home. */
-class SavedPlacesTool : AiTool {
+class SavedPlacesTool : WeatherTool() {
   override val name = "localita_salvate"
   override val group = ToolGroup.PLACES
   override val description = "Elenca le localita' salvate dall'utente e quale e' selezionata in home."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val places = ctx.sources.savedLocations.places.first()
     val selectedId = ctx.sources.selectedPlaceStore.current()
     return ToolText.build {

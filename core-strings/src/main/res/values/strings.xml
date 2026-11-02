@@ -1076,11 +1076,12 @@
   <string name="ai_enabled">Assistant on</string>
   <string name="ai_enabled_desc">A button between the location pill and the menu: tap to talk, hold to type</string>
   <string name="ai_error_blocked">The service refused the request</string>
+  <string name="ai_error_context_too_long">The question did not fit, even with a shorter history: start a new conversation</string>
   <string name="ai_error_mic_denied">Microphone not allowed: you can type</string>
   <string name="ai_error_mic_settings">Allow it in system settings</string>
+  <string name="ai_error_model_unavailable">The chosen model is no longer available: pick another in Settings</string>
   <string name="ai_error_network">No connection</string>
   <string name="ai_error_no_keys">No key yet: set the assistant up in Settings</string>
-  <string name="ai_error_no_location">Location unknown</string>
   <string name="ai_error_provider">The service returned an error</string>
   <string name="ai_error_rate_limited">Limit reached: try again in %1$d s</string>
   <string name="ai_error_rate_limited_generic">Service limit reached: try again shortly</string>

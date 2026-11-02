@@ -1,26 +1,36 @@
 package dev.pampa.fluidweather.core.ai.orchestrator
 
-import dev.pampa.fluidweather.core.ai.keys.AiSettings
-import dev.pampa.fluidweather.core.ai.net.AiError
-import dev.pampa.fluidweather.core.ai.net.RateLimitInfo
-import dev.pampa.fluidweather.core.ai.provider.ChatDelta
-import dev.pampa.fluidweather.core.ai.provider.ChatProvider
-import dev.pampa.fluidweather.core.ai.provider.ChatRequest
-import dev.pampa.fluidweather.core.ai.provider.ChatTurn
-import dev.pampa.fluidweather.core.ai.provider.FinishReason
-import dev.pampa.fluidweather.core.ai.provider.Message
-import dev.pampa.fluidweather.core.ai.provider.ModelCatalogue
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
-import dev.pampa.fluidweather.core.ai.provider.ReadyProvider
-import dev.pampa.fluidweather.core.ai.provider.ToolChoice
-import dev.pampa.fluidweather.core.ai.provider.TranscribeOptions
-import dev.pampa.fluidweather.core.ai.provider.Transcript
+import dev.antigravity.fluidengine.ai.keys.AiSettings
+import dev.antigravity.fluidengine.ai.net.AiError
+import dev.antigravity.fluidengine.ai.net.RateLimitInfo
+import dev.antigravity.fluidengine.ai.orchestrator.AiDiagnosticsLog
+import dev.antigravity.fluidengine.ai.orchestrator.AnswerChip
+import dev.antigravity.fluidengine.ai.orchestrator.AskInput
+import dev.antigravity.fluidengine.ai.orchestrator.AskMode
+import dev.antigravity.fluidengine.ai.orchestrator.AssistantFailure
+import dev.antigravity.fluidengine.ai.orchestrator.AssistantState
+import dev.antigravity.fluidengine.ai.orchestrator.Conversation
+import dev.antigravity.fluidengine.ai.orchestrator.FailureKind
+import dev.antigravity.fluidengine.ai.provider.ChatDelta
+import dev.antigravity.fluidengine.ai.provider.ChatProvider
+import dev.antigravity.fluidengine.ai.provider.ChatRequest
+import dev.antigravity.fluidengine.ai.provider.ChatTurn
+import dev.antigravity.fluidengine.ai.provider.FinishReason
+import dev.antigravity.fluidengine.ai.provider.Message
+import dev.antigravity.fluidengine.ai.provider.ModelCatalogue
+import dev.antigravity.fluidengine.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.provider.ReadyProvider
+import dev.antigravity.fluidengine.ai.provider.ToolChoice
+import dev.antigravity.fluidengine.ai.provider.TranscribeOptions
+import dev.antigravity.fluidengine.ai.provider.Transcript
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolRegistry
 import dev.pampa.fluidweather.core.ai.tools.ActionSink
-import dev.pampa.fluidweather.core.ai.tools.AiTool
-import dev.pampa.fluidweather.core.ai.tools.Schema
+import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
 import dev.pampa.fluidweather.core.ai.tools.ToolGroup
-import dev.pampa.fluidweather.core.ai.tools.ToolRegistry
+import dev.pampa.fluidweather.core.ai.tools.WeatherTool
+import dev.pampa.fluidweather.core.ai.tools.weatherRegistry
 import java.io.File
 import java.time.ZoneId
 import java.util.Locale
@@ -36,6 +46,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,7 +57,7 @@ private sealed interface Scripted {
   data class Fail(val error: Throwable) : Scripted
 }
 
-private class FakeProvider(override val id: ProviderId, turns: List<Scripted>, private val classifier: String = """{"gruppi":["orario"]}""") : ChatProvider {
+private class FakeProvider(override val id: ProviderId, turns: List<Scripted>, private val router: String = """{"gruppi":["orario"],"profondo":false}""") : ChatProvider {
   private val queue = ArrayDeque(turns)
   val requests = mutableListOf<ChatRequest>()
   val streamed = mutableListOf<ChatRequest>()
@@ -54,7 +65,7 @@ private class FakeProvider(override val id: ProviderId, turns: List<Scripted>, p
   override suspend fun complete(request: ChatRequest): ChatTurn {
     requests += request
     if (request.jsonSchema != null) {
-      return ChatTurn(Message.Assistant(classifier), FinishReason.STOP, null, RateLimitInfo.EMPTY)
+      return ChatTurn(Message.Assistant(router), FinishReason.STOP, null, RateLimitInfo.EMPTY)
     }
     error("complete() non previsto nel giro dei tool")
   }
@@ -82,23 +93,30 @@ private class FakeProvider(override val id: ProviderId, turns: List<Scripted>, p
   override suspend fun transcribe(audio: File, mime: String, options: TranscribeOptions): Transcript = Transcript("", null)
 }
 
-private class EchoTool(override val name: String, override val group: ToolGroup, private val slowMillis: Long = 0) : AiTool {
+private class EchoTool(override val name: String, override val group: ToolGroup, private val slowMillis: Long = 0) : WeatherTool() {
   override val description = "eco"
   override val parameters = Schema.obj(mapOf("x" to Schema.str("x")))
   val calls = mutableListOf<JsonObject>()
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     calls += args
     if (slowMillis > 0) delay(slowMillis)
     return "$name ha ricevuto ${args["x"]?.let { (it as JsonPrimitive).content } ?: "-"}"
   }
 }
 
-class AssistantOrchestratorTest {
+/**
+ * Il vecchio orchestratore di casa aveva questi test; l'orchestratore ora e' quello di `engine-ai`,
+ * e questi dicono che, configurato come lo configura l'app ([WeatherOrchestrator]), si comporta
+ * come prima: stadio 1 sul modello piccolo, giri paralleli, 429 che passa al servizio dopo, sei
+ * giri al massimo, `altri_tool`, OpenRouter senza stadio 1, i chip del meteo.
+ */
+class WeatherOrchestratorTest {
 
   private val now = EchoTool("adesso", ToolGroup.HOURLY)
   private val sun = EchoTool("sole", ToolGroup.SKY)
-  private val registry = ToolRegistry(listOf(now, sun))
+  private val registry = weatherRegistry(listOf(now, sun))
   private val diagnostics = AiDiagnosticsLog()
+  private val orchestrator = WeatherOrchestrator.create(registry, diagnostics)
 
   private fun context() = ToolContext(
     sourcesProvider = { error("i dati dell'app non servono a questo test") },
@@ -117,10 +135,14 @@ class AssistantOrchestratorTest {
     mode = AskMode.TEXT,
     language = "it",
     settings = AiSettings(),
-    providers = providers.map { ReadyProvider(it, "modello-${it.id.id}", "stt", "piccolo") },
+    providers = WeatherOrchestrator.withoutDeepTier(
+      providers.map { ReadyProvider(it, "modello-${it.id.id}", "stt", "piccolo", deepModel = "profondo-${it.id.id}") },
+    ),
     toolContext = context(),
     systemPrompt = "sei un assistente",
     conversation = conversation,
+    actionsEnabled = false,
+    chipFilter = WeatherChip::accepts,
   )
 
   private fun args(x: String) = buildJsonObject { put("x", JsonPrimitive(x)) }
@@ -131,28 +153,31 @@ class AssistantOrchestratorTest {
       ProviderId.GROQ,
       listOf(
         Scripted.Calls(listOf("adesso" to args("a"), "sole" to args("b")), preamble = "Controllo"),
-        Scripted.Text("Piove alle 18. [[radar]]"),
+        Scripted.Text("Piove alle 18. [[radar]] [[luogo:Bologna]] [[boh]]"),
       ),
-      classifier = """{"gruppi":["orario","cielo"]}""",
+      router = """{"gruppi":["orario","cielo"],"profondo":false}""",
     )
     val states = mutableListOf<AssistantState>()
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
     val collector = launch(Dispatchers.Unconfined) { state.collect { states += it } }
-    val orchestrator = AssistantOrchestrator(registry, diagnostics = diagnostics)
     val result = orchestrator.ask(input("piove?", groq), state)
     collector.cancel()
 
     assertEquals("Piove alle 18.", result.answer)
-    assertEquals(1, result.chips.size)
+    // I chip che l'app conosce, tradotti nel suo vocabolario; quello sconosciuto sparisce.
+    assertEquals(listOf(WeatherChip.Open(OpenTarget.RADAR), WeatherChip.Place("Bologna")), WeatherChip.of(result.chips))
     assertEquals(listOf("adesso", "sole"), result.toolsUsed)
     assertEquals(listOf(args("a")), now.calls)
     assertEquals(listOf(args("b")), sun.calls)
     // Lo stadio 1 e' andato sul modello piccolo con lo schema; il giro dei tool aveva i tool dei due gruppi.
     assertEquals("piccolo", groq.requests.single().model)
-    assertTrue(groq.streamed.first().tools.map { it.name }.containsAll(listOf("adesso", "sole", ToolRegistry.MORE_TOOLS)))
+    val firstTools = groq.streamed.first().tools.map { it.name }
+    assertTrue(firstTools.containsAll(listOf("adesso", "sole", ToolRegistry.MORE_TOOLS)))
+    // Il livello profondo resta spento: nessun "modello_avanzato", e risponde sempre la chat.
+    assertTrue(ToolRegistry.DEEP_MODEL !in firstTools)
+    assertTrue(groq.streamed.all { it.model == "modello-groq" })
     // Il secondo giro porta la risposta dei tool nell'ordine delle chiamate.
-    val second = groq.streamed[1].messages
-    val results = second.filterIsInstance<Message.ToolResult>()
+    val results = groq.streamed[1].messages.filterIsInstance<Message.ToolResult>()
     assertEquals(listOf("call_0", "call_1"), results.map { it.callId })
     assertTrue(results[0].content.startsWith("adesso ha ricevuto a"))
     // Il preambolo prima delle tool call non e' mai diventato una risposta.
@@ -169,7 +194,7 @@ class AssistantOrchestratorTest {
     val groq = FakeProvider(ProviderId.GROQ, listOf(Scripted.Fail(AiError.RateLimited(3.0, RateLimitInfo.EMPTY, message = "429"))))
     val gemini = FakeProvider(ProviderId.GEMINI, listOf(Scripted.Text("Da Gemini: sereno.")))
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
-    val result = AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("che tempo fa?", groq, gemini), state)
+    val result = orchestrator.ask(input("che tempo fa?", groq, gemini), state)
     assertEquals("Da Gemini: sereno.", result.answer)
     assertEquals(ProviderId.GEMINI, result.provider)
     assertEquals("modello-gemini", gemini.streamed.single().model)
@@ -186,7 +211,7 @@ class AssistantOrchestratorTest {
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
     val seen = mutableListOf<AssistantState>()
     val collector = launch(Dispatchers.Unconfined) { state.collect { seen += it } }
-    val result = AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("?", groq), state)
+    val result = orchestrator.ask(input("?", groq), state)
     collector.cancel()
     assertEquals("Ora va.", result.answer)
     assertTrue(seen.any { it is AssistantState.WaitingRateLimit && it.secondsLeft == 1 })
@@ -198,15 +223,17 @@ class AssistantOrchestratorTest {
     val loops = (1..5).map { Scripted.Calls(listOf("adesso" to args("$it"))) } + Scripted.Text("Basta cosi'.") + Scripted.Text("mai")
     val groq = FakeProvider(ProviderId.GROQ, loops)
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
-    val result = AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("?", groq), state)
+    val result = orchestrator.ask(input("?", groq), state)
     // 5 giri con tool + il sesto forzato senza tool = 6 stream; il settimo copione non parte.
-    assertEquals(AssistantOrchestrator.MAX_ROUNDS, groq.streamed.size)
+    assertEquals(6, WeatherOrchestrator.config.maxRounds)
+    assertEquals(6, groq.streamed.size)
     val last = groq.streamed.last()
     assertTrue(last.tools.isEmpty())
     assertEquals(ToolChoice.None, last.toolChoice)
     assertTrue(last.messages.last() is Message.System)
     assertEquals("Basta cosi'.", result.answer)
     assertEquals(5, now.calls.size)
+    assertEquals(1_200, last.maxOutputTokens)
   }
 
   @Test
@@ -214,7 +241,7 @@ class AssistantOrchestratorTest {
     val loops = (1..5).map { Scripted.Calls(listOf("adesso" to args("$it"))) } + Scripted.Calls(listOf("adesso" to args("6")), preamble = "Riassumo.")
     val groq = FakeProvider(ProviderId.GROQ, loops)
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
-    val result = AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("?", groq), state)
+    val result = orchestrator.ask(input("?", groq), state)
     assertEquals("Riassumo.", result.answer)
     assertEquals(5, now.calls.size)
   }
@@ -230,7 +257,7 @@ class AssistantOrchestratorTest {
       ),
     )
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
-    val result = AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("quando tramonta?", groq), state)
+    val result = orchestrator.ask(input("quando tramonta?", groq), state)
     assertEquals("Tramonta alle 20.", result.answer)
     assertTrue(groq.streamed[0].tools.none { it.name == "sole" })
     assertTrue(groq.streamed[1].tools.any { it.name == "sole" })
@@ -243,7 +270,7 @@ class AssistantOrchestratorTest {
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
     val conversation = Conversation(1L, 0L)
     val job = launch {
-      runCatching { AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("?", groq, conversation = conversation), state) }
+      runCatching { orchestrator.ask(input("?", groq, conversation = conversation), state) }
     }
     while (state.value !is AssistantState.Answering) delay(2)
     job.cancel(CancellationException("stop"))
@@ -254,18 +281,41 @@ class AssistantOrchestratorTest {
   @Test
   fun `senza provider la domanda fallisce con NO_KEYS`() = runBlocking {
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
-    val error = runCatching { AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("?"), state) }.exceptionOrNull()
-    assertTrue(error is AssistantFailure && (error as AssistantFailure).kind == FailureKind.NO_KEYS)
+    val error = runCatching { orchestrator.ask(input("?"), state) }.exceptionOrNull()
+    assertTrue(error is AssistantFailure && error.kind == FailureKind.NO_KEYS)
   }
 
   @Test
   fun `su OpenRouter lo stadio 1 si salta e il catalogo parte intero`() = runBlocking {
     val openRouter = FakeProvider(ProviderId.OPENROUTER, listOf(Scripted.Text("Tutto sereno.")))
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
-    AssistantOrchestrator(registry, diagnostics = diagnostics).ask(input("?", openRouter), state)
+    orchestrator.ask(input("?", openRouter), state)
     assertTrue(openRouter.requests.isEmpty())
     val tools = openRouter.streamed.single().tools.map { it.name }
     assertTrue(tools.containsAll(listOf("adesso", "sole")))
     assertTrue(tools.none { it == ToolRegistry.MORE_TOOLS })
+  }
+
+  @Test
+  fun `il router ripiega sui tre gruppi di sempre e lascia fuori le azioni spente`() {
+    val router = WeatherOrchestrator.router()
+    assertNull(router.parse("boh", actionsEnabled = false))
+    assertEquals(setOf(ToolGroup.DAILY), router.parse("""{"gruppi":["giornaliero","xyz","app"]}""", actionsEnabled = false)?.groups)
+    assertEquals(setOf(ToolGroup.DAILY, ToolGroup.APP), router.parse("""{"gruppi":["giornaliero","app"]}""", actionsEnabled = true)?.groups)
+    val fallback = router.fallback(setOf(ToolGroup.SKY))
+    assertTrue(fallback.containsAll(setOf(ToolGroup.HOURLY, ToolGroup.NOWCAST, ToolGroup.PRECIP)))
+    assertTrue(ToolGroup.SKY in fallback)
+    assertTrue(!router.prompt("it", actionsEnabled = false).contains("- app:"))
+  }
+
+  @Test
+  fun `i chip del meteo sono le pagine senza valore e i posti con un nome`() {
+    assertEquals(WeatherChip.Open(OpenTarget.MOON), WeatherChip.of(AnswerChip("luna")))
+    assertEquals(WeatherChip.Place("Siena"), WeatherChip.of(AnswerChip("place", "Siena")))
+    assertNull(WeatherChip.of(AnswerChip("luogo")))
+    assertNull(WeatherChip.of(AnswerChip("radar", "x")))
+    assertNull(WeatherChip.of(AnswerChip("sconosciuto")))
+    // Lo stesso posto scritto in due lingue e' un chip solo, come prima.
+    assertEquals(1, WeatherChip.of(listOf(AnswerChip("luogo", "Siena"), AnswerChip("place", "Siena"))).size)
   }
 }

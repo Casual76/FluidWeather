@@ -1,28 +1,41 @@
 package dev.pampa.fluidweather.core.ai.orchestrator
 
 import android.content.res.Resources
+import dev.antigravity.fluidengine.ai.keys.AiSettingsStore
+import dev.antigravity.fluidengine.ai.net.AiError
+import dev.antigravity.fluidengine.ai.orchestrator.AiConfirmationGate
+import dev.antigravity.fluidengine.ai.orchestrator.AiOrchestrator
+import dev.antigravity.fluidengine.ai.orchestrator.AskInput
+import dev.antigravity.fluidengine.ai.orchestrator.AskMode
+import dev.antigravity.fluidengine.ai.orchestrator.AssistantFailure
+import dev.antigravity.fluidengine.ai.orchestrator.AssistantState
+import dev.antigravity.fluidengine.ai.orchestrator.ConfirmationOutcome
+import dev.antigravity.fluidengine.ai.orchestrator.Conversation
+import dev.antigravity.fluidengine.ai.orchestrator.FailureKind
+import dev.antigravity.fluidengine.ai.orchestrator.MicLevel
+import dev.antigravity.fluidengine.ai.provider.ProviderFactory
+import dev.antigravity.fluidengine.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.speech.SpeechCapture
+import dev.antigravity.fluidengine.ai.speech.Transcriber
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 import dev.pampa.fluidweather.core.ai.data.ResolvedPlace
-import dev.pampa.fluidweather.core.ai.keys.AiSettingsStore
-import dev.pampa.fluidweather.core.ai.net.AiError
-import dev.pampa.fluidweather.core.ai.provider.ProviderFactory
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
-import dev.pampa.fluidweather.core.ai.speech.SpeechCapture
-import dev.pampa.fluidweather.core.ai.speech.Transcriber
 import dev.pampa.fluidweather.core.ai.tools.ActionOutcome
 import dev.pampa.fluidweather.core.ai.tools.ActionSink
 import dev.pampa.fluidweather.core.ai.tools.AssistantAction
+import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
+import dev.pampa.fluidweather.core.ai.tools.titleRes
 import dev.pampa.fluidweather.core.model.Place
+import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.UnitFormatter
+import dev.pampa.fluidweather.strings.labelRes
 import java.io.File
 import java.time.ZoneId
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -31,18 +44,21 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /** Un'azione che la UI deve eseguire lei (navigare): l'orchestratore la chiede, la home la fa. */
 sealed interface UiCommand {
-  data class Open(val target: dev.pampa.fluidweather.core.ai.tools.OpenTarget) : UiCommand
+  data class Open(val target: OpenTarget) : UiCommand
 }
 
 /**
  * La sessione dell'assistente, una per processo, nello scope dell'Application: la domanda gira
  * qui, non nel composable, e sopravvive a uno scroll, a un cambio di pagina e a un'uscita
- * dall'app (fino a due minuti). La UI osserva [state], [conversation], [pendingAction] e
- * [commands]; chiama [askText], [askVoice], [stopListening], [cancel], [resolveAction], [reset].
+ * dall'app (fino a un minuto e mezzo). La UI osserva [state], [conversation] e [commands]; chiama
+ * [askText], [askVoice], [stopListening], [cancel], [resolveAction], [reset].
+ *
+ * Gli stati sono quelli di `engine-ai` ([AssistantState]): e' la lingua che parla l'overlay della
+ * 3.0 (`engine-ai-ui`). Una conferma arriva nella card come [AssistantState.AwaitingConfirmation]
+ * con le sue parole gia' scritte ([confirmationTitle]): l'oggetto dell'azione resta qui.
  */
 class AssistantSession(
   private val scope: CoroutineScope,
@@ -50,12 +66,13 @@ class AssistantSession(
   private val resolver: PlaceResolver,
   private val settingsStore: AiSettingsStore,
   private val providers: ProviderFactory,
-  private val orchestrator: AssistantOrchestrator,
+  private val orchestrator: AiOrchestrator<ToolContext>,
   private val transcriber: Transcriber,
   private val speechFactory: () -> SpeechCapture,
   private val cacheDir: File,
   private val resources: () -> Resources,
   private val clock: () -> Long = System::currentTimeMillis,
+  private val gate: AiConfirmationGate = AiConfirmationGate(CONFIRMATION_TIMEOUT_MILLIS),
 ) : ActionSink {
 
   private val stateFlow = MutableStateFlow<AssistantState>(AssistantState.Idle)
@@ -63,9 +80,6 @@ class AssistantSession(
 
   private val conversationFlow = MutableStateFlow(Conversation(0L, clock()))
   val conversation: StateFlow<Conversation> = conversationFlow
-
-  private val pending = MutableStateFlow<PendingAction?>(null)
-  val pendingAction: StateFlow<PendingAction?> = pending
 
   private val commandFlow = MutableSharedFlow<UiCommand>(extraBufferCapacity = 8)
   val commands: SharedFlow<UiCommand> = commandFlow
@@ -87,9 +101,25 @@ class AssistantSession(
   private val micLevelFlow = MutableStateFlow(MicLevel())
   val micLevel: StateFlow<MicLevel> = micLevelFlow
 
-  class PendingAction(val id: Long, val action: AssistantAction, internal val answer: CompletableDeferred<Boolean>)
-
   val isBusy: Boolean get() = stateFlow.value.isBusy
+
+  init {
+    // Il cancello delle conferme diventa lo stato della card: mentre un tool aspetta il si', la card
+    // mostra Conferma/Annulla; quando la risposta arriva (o scade) torna lo stato di prima.
+    scope.launch {
+      var before: AssistantState? = null
+      gate.current.collect { pending ->
+        val current = stateFlow.value
+        if (pending != null) {
+          if (current !is AssistantState.AwaitingConfirmation) before = current
+          stateFlow.value = AssistantState.AwaitingConfirmation(current.questionOrNull().orEmpty(), pending, current.providerOrNull() ?: ProviderId.GROQ)
+        } else if (current is AssistantState.AwaitingConfirmation) {
+          stateFlow.value = before ?: AssistantState.Working(current.question, 0, orchestrator.maxRounds, "thinking", 0, current.provider)
+          before = null
+        }
+      }
+    }
+  }
 
   fun askText(question: String) {
     val text = question.trim()
@@ -118,8 +148,7 @@ class AssistantSession(
     job?.cancel(CancellationException("annullato dall'utente"))
     job = null
     speech = null
-    pending.value?.answer?.complete(false)
-    pending.value = null
+    gate.cancel()
     stateFlow.value = AssistantState.Cancelled(
       question = current.questionOrNull(),
       partial = (current as? AssistantState.Answering)?.partial,
@@ -137,22 +166,27 @@ class AssistantSession(
     stateFlow.value = AssistantState.Idle
   }
 
-  fun resolveAction(id: Long, confirmed: Boolean) {
-    val current = pending.value ?: return
-    if (current.id != id) return
-    current.answer.complete(confirmed)
-  }
+  /** La risposta alla conferma in [AssistantState.AwaitingConfirmation]: [id] e' quello di `confirmation`. */
+  fun resolveAction(id: Long, confirmed: Boolean) = gate.resolve(id, confirmed)
 
   private fun start(block: suspend () -> Unit) {
     job?.cancel()
-    pending.value = null
+    gate.cancel()
     job = scope.launch {
       try {
         block()
       } catch (e: CancellationException) {
         // Lo stato Cancelled lo scrive cancel(); qui non c'e' altro da dire.
       } catch (e: AssistantFailure) {
-        stateFlow.value = AssistantState.Failed(stateFlow.value.questionOrNull(), e.kind, e.error, e.retryAfterSec, (stateFlow.value as? AssistantState.Answering)?.partial)
+        stateFlow.value = AssistantState.Failed(
+          question = stateFlow.value.questionOrNull(),
+          kind = e.kind,
+          error = e.error,
+          retryAfterSec = e.retryAfterSec,
+          partial = (stateFlow.value as? AssistantState.Answering)?.partial,
+          provider = e.provider,
+          reason = e.reason,
+        )
       } catch (e: Throwable) {
         stateFlow.value = AssistantState.Failed(stateFlow.value.questionOrNull(), FailureKind.UNKNOWN, e as? AiError, null, null)
       }
@@ -192,7 +226,7 @@ class AssistantSession(
             val language = language()
             val places = sources.savedLocations.places.first().filter { !it.isGps }.map { it.name }
             val transcription = try {
-              transcriber.transcribe(event.file, language, Transcriber.hint(language, places))
+              transcriber.transcribe(event.file, language, WeatherSpeech.hint(language, places))
             } catch (e: CancellationException) {
               throw e
             } catch (e: AiError.Unauthorized) {
@@ -222,7 +256,7 @@ class AssistantSession(
     }
     conversation.lastActivityMillis = now
     val settings = settingsStore.current()
-    val ordered = providers.ordered(ProviderFactory.Kind.CHAT)
+    val ordered = WeatherOrchestrator.withoutDeepTier(providers.ordered(ProviderFactory.Kind.CHAT))
     if (ordered.isEmpty()) throw AssistantFailure(FailureKind.NO_KEYS, null)
     val language = language()
     val selected = runCatching { resolver.selected() }.getOrNull()
@@ -249,6 +283,8 @@ class AssistantSession(
       toolContext = toolContext,
       systemPrompt = PromptBuilder.build(toolContext, prompt),
       conversation = conversation,
+      actionsEnabled = settings.actionsEnabled,
+      chipFilter = WeatherChip::accepts,
     )
     val result = orchestrator.ask(input, stateFlow)
     // La conversazione e' mutata dentro: la UI la rilegge dallo stesso oggetto.
@@ -262,6 +298,8 @@ class AssistantSession(
       usage = result.usage,
       toolsUsed = result.toolsUsed,
       durationMillis = result.log.durationMillis,
+      tierReached = result.tierReached,
+      switches = result.log.switches,
     )
   }
 
@@ -310,20 +348,29 @@ class AssistantSession(
 
   override suspend fun perform(action: AssistantAction): ActionOutcome {
     if (!action.needsConfirmation) return execute(action)
-    val request = PendingAction(ids.getAndIncrement(), action, CompletableDeferred())
-    val previous = stateFlow.value
-    pending.value = request
-    stateFlow.value = AssistantState.AwaitingConfirmation(previous.questionOrNull().orEmpty(), action, (previous as? AssistantState.Working)?.provider ?: ProviderId.GROQ)
-    val confirmed = try {
-      withTimeoutOrNull(CONFIRMATION_TIMEOUT_MILLIS) { request.answer.await() }
-    } finally {
-      if (pending.value?.id == request.id) pending.value = null
-      if (stateFlow.value is AssistantState.AwaitingConfirmation) stateFlow.value = previous
+    return when (gate.ask(confirmationTitle(action), null)) {
+      ConfirmationOutcome.CONFIRMED -> execute(action)
+      ConfirmationOutcome.REJECTED -> ActionOutcome.REJECTED
+      ConfirmationOutcome.TIMEOUT -> ActionOutcome.TIMEOUT
     }
-    return when (confirmed) {
-      null -> ActionOutcome.TIMEOUT
-      false -> ActionOutcome.REJECTED
-      true -> execute(action)
+  }
+
+  /**
+   * Le parole della conferma, nella lingua del telefono: prima le sceglieva la card guardando
+   * l'azione, ora arrivano scritte nello stato, come le vuole l'overlay dell'engine.
+   */
+  internal fun confirmationTitle(action: AssistantAction): String {
+    val res = resources()
+    return when (action) {
+      AssistantAction.StartBurst -> res.getString(R.string.ai_action_burst)
+      is AssistantAction.RecordObservation -> res.getString(R.string.ai_action_observation, res.getString(action.condition.labelRes()))
+      is AssistantAction.SavePlace -> res.getString(R.string.ai_action_save_place, action.place.name)
+      is AssistantAction.Open -> res.getString(R.string.ai_action_open, res.getString(action.target.titleRes()))
+      is AssistantAction.SelectPlace -> res.getString(R.string.ai_action_select_place, action.place.name)
+      is AssistantAction.SetUnit -> res.getString(R.string.ai_action_set_unit, action.kind)
+      is AssistantAction.RemovePlace -> res.getString(R.string.ai_action_remove_place, action.label)
+      is AssistantAction.DeleteObservation -> res.getString(R.string.ai_action_delete_observation, action.label)
+      AssistantAction.StartCalibration -> res.getString(R.string.ai_action_calibrate)
     }
   }
 
@@ -396,8 +443,31 @@ class AssistantSession(
     else -> null
   }
 
+  private fun AssistantState.providerOrNull(): ProviderId? = when (this) {
+    is AssistantState.Classifying -> provider
+    is AssistantState.Working -> provider
+    is AssistantState.WaitingRateLimit -> provider
+    is AssistantState.SwitchingProvider -> to
+    is AssistantState.Answering -> provider
+    is AssistantState.AwaitingConfirmation -> provider
+    else -> null
+  }
+
   companion object {
     const val CONFIRMATION_TIMEOUT_MILLIS = 60_000L
+  }
+}
+
+/** Il suggerimento di vocabolario per Whisper: il dominio, nella lingua dell'app, e i posti dell'utente. */
+object WeatherSpeech {
+  fun hint(language: String, savedPlaces: List<String>): String {
+    val base = if (language == "it") {
+      "Domande sul meteo: pioggia, neve, radar, previsioni, barometro, pressione, allerte, temperatura, vento, umidita', localita' italiane."
+    } else {
+      "Questions about the weather: rain, snow, radar, forecast, barometer, pressure, alerts, temperature, wind, humidity, place names."
+    }
+    // Dodici posti come prima (l'engine ne prenderebbe venti): il prompt di Whisper ha un tetto.
+    return Transcriber.hint(base, savedPlaces.take(12))
   }
 }
 

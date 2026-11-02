@@ -1,10 +1,11 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.ToolRegistry
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 
 /** Il catalogo completo, nell'ordine in cui il modello lo legge. */
 object AllTools {
-  fun registry(resolver: PlaceResolver): ToolRegistry = ToolRegistry(
+  fun registry(resolver: PlaceResolver): ToolRegistry<ToolContext> = weatherRegistry(
     listOf(
       SearchPlaceTool(resolver),
       SavedPlacesTool(),

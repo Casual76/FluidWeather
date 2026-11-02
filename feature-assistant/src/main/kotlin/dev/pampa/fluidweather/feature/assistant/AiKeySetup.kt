@@ -32,9 +32,9 @@ import dev.antigravity.fluidengine.ui.fluid.FluidTextField
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.core.ai.AiAssistant
-import dev.pampa.fluidweather.core.ai.keys.KeyState
-import dev.pampa.fluidweather.core.ai.keys.VerifyResult
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.keys.KeyState
+import dev.antigravity.fluidengine.ai.keys.VerifyResult
+import dev.antigravity.fluidengine.ai.provider.ProviderId
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.TimeFormats
 import kotlinx.coroutines.launch

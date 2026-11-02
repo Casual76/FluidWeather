@@ -1,9 +1,11 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.int
-import dev.pampa.fluidweather.core.ai.tools.Args.list
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.int
+import dev.antigravity.fluidengine.ai.tools.Args.list
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.ApparentTemperature
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
@@ -39,13 +41,13 @@ internal fun ToolContext.timeLabel(millis: Long): String = TimeFormats.time(mill
 internal fun ToolContext.dayTimeLabel(millis: Long): String = TimeFormats.dayTime(millis, zone, locale)
 
 /** Le condizioni di adesso, tutte insieme: l'equivalente della testata piu' il widget dei dettagli. */
-class NowTool(private val resolver: PlaceResolver) : AiTool {
+class NowTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "adesso"
   override val group = ToolGroup.HOURLY
   override val description = "Le condizioni di adesso: temperatura, percepita, umidita', vento, pressione, nuvole, UV, visibilita', pioggia prevista in quest'ora."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val hour = snapshot.fused.nearestHour(ctx.nowMillis)?.first
@@ -85,7 +87,7 @@ class NowTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Ora per ora: le variabili chieste, sulle prossime ore, con passo che cresce se la finestra e' lunga. */
-class HourlyForecastTool(private val resolver: PlaceResolver) : AiTool {
+class HourlyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "previsione_oraria"
   override val group = ToolGroup.HOURLY
   override val description = "Previsione ora per ora da 'da_ore' a 'a_ore' ore da adesso (max 48): condizione, temperatura, pioggia, vento; altre variabili su richiesta."
@@ -98,7 +100,7 @@ class HourlyForecastTool(private val resolver: PlaceResolver) : AiTool {
     ),
   )
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val from = (args.int("da_ore") ?: 0).coerceIn(0, 240)

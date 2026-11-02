@@ -10,9 +10,9 @@ import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.pampa.fluidweather.core.ai.AiAssistant
-import dev.pampa.fluidweather.core.ai.keys.AiSettings
-import dev.pampa.fluidweather.core.ai.orchestrator.AiRequestLog
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.keys.AiSettings
+import dev.antigravity.fluidengine.ai.orchestrator.AiRequestLog
+import dev.antigravity.fluidengine.ai.provider.ProviderId
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.TimeFormats
 import java.util.Locale

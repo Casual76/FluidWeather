@@ -1,11 +1,13 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 import dev.pampa.fluidweather.core.ai.radar.DbzPalette
 import dev.pampa.fluidweather.core.ai.radar.RadarSample
 import dev.pampa.fluidweather.core.ai.radar.RadarTrend
-import dev.pampa.fluidweather.core.ai.tools.Args.int
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.int
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.cycle.PrecipitationTransitions
 import dev.pampa.fluidweather.core.cycle.TransitionKind
 import dev.pampa.fluidweather.core.model.FusionVariables
@@ -15,13 +17,13 @@ import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonObject
 
 /** Pioggia e neve nelle prossime ore: probabilita', accumuli, inizio e fine, tipo. */
-class UpcomingPrecipitationTool(private val resolver: PlaceResolver) : AiTool {
+class UpcomingPrecipitationTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "pioggia_prossime_ore"
   override val group = ToolGroup.PRECIP
   override val description = "Precipitazioni previste ora per ora nelle prossime N ore (max 48): probabilita', quantita', tipo (pioggia/neve/temporale), inizio e fine previsti."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "ore" to Schema.int("quante ore avanti (1-48)", 1, 48)))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val hours = (args.int("ore") ?: 12).coerceIn(1, 48)
@@ -67,13 +69,13 @@ class UpcomingPrecipitationTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Il radar letto come numeri attorno al posto. */
-class RadarAroundTool(private val resolver: PlaceResolver) : AiTool {
+class RadarAroundTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "radar_intorno"
   override val group = ToolGroup.PRECIP
   override val description = "Il radar RainViewer attorno al posto: intensita' sul punto, eco piu' vicino (distanza e direzione), copertura nei 30 km, tendenza dell'ultima ora, moto delle celle, stima di arrivo o fine. E' una stima da immagini."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val sample = ctx.sources.radarSampler.sample(place.latitude, place.longitude)
     val reading = when (sample) {
@@ -132,13 +134,13 @@ class RadarAroundTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Gli orari dei fotogrammi disponibili: quanto indietro e quanto avanti guarda il radar. */
-class RadarFramesTool : AiTool {
+class RadarFramesTool : WeatherTool() {
   override val name = "radar_fotogrammi"
   override val group = ToolGroup.PRECIP
   override val description = "Gli orari dei fotogrammi radar disponibili (passato e previsione) e quando sono stati generati."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val frames = runCatching { ctx.sources.rainViewer.frames() }.getOrNull() ?: return "radar non raggiungibile"
     return ToolText.build {
       line("generato", ctx.timeLabel(frames.generatedMillis))

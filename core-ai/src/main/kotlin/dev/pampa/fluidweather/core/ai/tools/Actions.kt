@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.ai.tools
 
 import dev.pampa.fluidweather.core.model.ObservedCondition
 import dev.pampa.fluidweather.core.model.Place
+import dev.pampa.fluidweather.strings.R
 
 /** Dove l'assistente puo' portare l'utente: le pagine dell'app e le pagine nere dei widget. */
 enum class OpenTarget(val id: String) {
@@ -23,6 +24,27 @@ enum class OpenTarget(val id: String) {
   companion object {
     fun fromId(id: String?): OpenTarget? = entries.firstOrNull { it.id == id?.trim()?.lowercase() }
   }
+}
+
+/**
+ * Il nome della pagina, per i chip sotto la risposta e per la frase della conferma ("Apro il
+ * radar?"). Stava nella UI; ora serve anche alla sessione, che scrive le parole della conferma.
+ */
+fun OpenTarget.titleRes(): Int = when (this) {
+  OpenTarget.RADAR -> R.string.radar_title
+  OpenTarget.BENCHMARK -> R.string.bench_title
+  OpenTarget.REPORT -> R.string.report_title
+  OpenTarget.SETTINGS -> R.string.settings_title
+  OpenTarget.AI_SETTINGS -> R.string.ai_title
+  OpenTarget.NOWCAST -> R.string.ai_target_nowcast
+  OpenTarget.HOURLY -> R.string.ai_target_hourly
+  OpenTarget.DAILY -> R.string.ai_target_daily
+  OpenTarget.PRECIPITATION -> R.string.ai_target_precipitation
+  OpenTarget.PRESSURE -> R.string.ai_target_pressure
+  OpenTarget.AIR_QUALITY -> R.string.ai_target_air
+  OpenTarget.SUN -> R.string.ai_target_sun
+  OpenTarget.MOON -> R.string.ai_target_moon
+  OpenTarget.DETAILS -> R.string.ai_target_details
 }
 
 /**

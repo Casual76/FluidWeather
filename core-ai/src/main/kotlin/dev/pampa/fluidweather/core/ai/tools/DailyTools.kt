@@ -1,8 +1,10 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.int
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.int
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.DailyAggregate
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.strings.TimeFormats
@@ -13,13 +15,13 @@ import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonObject
 
 /** I prossimi giorni, uno per riga: l'aggregato condiviso con la pagina del giornaliero. */
-class DailyForecastTool(private val resolver: PlaceResolver) : AiTool {
+class DailyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "previsione_giorni"
   override val group = ToolGroup.DAILY
   override val description = "I prossimi giorni (max 10): condizione prevalente, minima, massima, probabilita' e quantita' di pioggia, vento massimo, alba e tramonto."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "giorni" to Schema.int("quanti giorni (1-10)", 1, 10)))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val days = (args.int("giorni") ?: 7).coerceIn(1, 10)
@@ -48,13 +50,13 @@ class DailyForecastTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Un giorno nelle sue quattro fasce, piu' le ore salienti. */
-class DayDetailTool(private val resolver: PlaceResolver) : AiTool {
+class DayDetailTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "giorno_dettaglio"
   override val group = ToolGroup.DAILY
   override val description = "Il dettaglio di un giorno (data AAAA-MM-GG, 'oggi' o 'domani'): notte, mattina, pomeriggio, sera, con temperature, pioggia e vento per fascia."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "data" to Schema.str("AAAA-MM-GG, oppure oggi / domani")), required = listOf("data"))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val today = Instant.ofEpochMilli(ctx.nowMillis).atZone(ctx.zone).toLocalDate()

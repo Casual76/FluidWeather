@@ -1,7 +1,9 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.Moon
 import dev.pampa.fluidweather.core.model.MoonEphemeris
 import dev.pampa.fluidweather.core.model.SolarEphemeris
@@ -17,13 +19,13 @@ import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonObject
 
 /** Qualita' dell'aria e pollini, adesso e nelle prossime ore. */
-class AirQualityTool(private val resolver: PlaceResolver) : AiTool {
+class AirQualityTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "qualita_aria"
   override val group = ToolGroup.AIR
   override val description = "Qualita' dell'aria (indice europeo EAQI): fascia, inquinante dominante, inquinanti con sotto-indice, pollini (Europa), andamento nelle prossime ore."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val air = runCatching { ctx.sources.airQualityClient.now(place.latitude, place.longitude) }.getOrNull()
       ?: return "qualita' dell'aria non disponibile per ${place.label}"
@@ -65,13 +67,13 @@ private fun ToolContext.parseDate(raw: String?): LocalDate? {
 }
 
 /** Il sole di un giorno: alba, tramonto, mezzogiorno, crepuscoli, durata e differenza con ieri. */
-class SunTool(private val resolver: PlaceResolver) : AiTool {
+class SunTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "sole"
   override val group = ToolGroup.SKY
   override val description = "Alba, tramonto, mezzogiorno solare, crepuscoli civile/nautico/astronomico, durata del giorno e differenza con ieri, altezza del sole adesso. Data AAAA-MM-GG, oggi o domani."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "data" to Schema.str("AAAA-MM-GG, oggi, domani")))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val date = ctx.parseDate(args.str("data")) ?: return "errore: data non capita"
     val dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
@@ -107,13 +109,13 @@ class SunTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** La luna: fase, illuminazione, sorgere e tramontare, distanza, prossime piena e nuova. */
-class MoonTool(private val resolver: PlaceResolver) : AiTool {
+class MoonTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "luna"
   override val group = ToolGroup.SKY
   override val description = "Fase lunare, illuminazione, eta', sorgere e tramontare, distanza (perigeo/apogeo), prossima luna piena e nuova. Data AAAA-MM-GG, oggi o domani."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "data" to Schema.str("AAAA-MM-GG, oggi, domani")))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val date = ctx.parseDate(args.str("data")) ?: return "errore: data non capita"
     val dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()

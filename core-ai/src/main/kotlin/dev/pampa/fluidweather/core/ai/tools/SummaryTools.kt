@@ -1,9 +1,11 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.int
-import dev.pampa.fluidweather.core.ai.tools.Args.list
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.int
+import dev.antigravity.fluidengine.ai.tools.Args.list
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.cycle.PrecipitationTransitions
 import dev.pampa.fluidweather.core.model.DailyAggregate
 import dev.pampa.fluidweather.core.model.FusedHour
@@ -19,13 +21,13 @@ import kotlinx.serialization.json.JsonObject
  * Il meteo di un posto in una chiamata sola: adesso, le prossime ore, i prossimi giorni. Nasce
  * dalla domanda piu' frequente — "che tempo fa?" — che prima costava tre strumenti e tre giri.
  */
-class WeatherSummaryTool(private val resolver: PlaceResolver) : AiTool {
+class WeatherSummaryTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "meteo_riepilogo"
   override val group = ToolGroup.HOURLY
   override val description = "Il quadro completo di un posto in una volta sola: condizioni di adesso, le prossime ore (quando piove, quanto sale o scende la temperatura) e i prossimi giorni con minime e massime. Usalo per \"che tempo fa\", \"com'e' il meteo\", \"che tempo farà\"."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "giorni" to Schema.int("quanti giorni includere (1-7, default 3)", 1, 7)))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val u = ctx.units
@@ -80,13 +82,13 @@ class WeatherSummaryTool(private val resolver: PlaceResolver) : AiTool {
  * "Quando posso uscire senza prendere acqua": la finestra asciutta piu' lunga, invece delle ore
  * bagnate una per una. La domanda che l'utente fa davvero non e' "quanto piove", e' "quando smette".
  */
-class DryWindowTool(private val resolver: PlaceResolver) : AiTool {
+class DryWindowTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "finestra_asciutta"
   override val group = ToolGroup.PRECIP
   override val description = "Le finestre senza pioggia nelle prossime ore: quando comincia e quanto dura la piu' lunga. Per \"quando posso uscire\", \"quando smette\", \"c'e' un momento asciutto oggi?\"."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "ore" to Schema.int("quante ore guardare avanti (1-48, default 12)", 1, 48)))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val horizon = (args.int("ore") ?: 12).coerceIn(1, 48)
@@ -135,7 +137,7 @@ class DryWindowTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Due o tre posti a confronto, per decidere dove andare. */
-class ComparePlacesTool(private val resolver: PlaceResolver) : AiTool {
+class ComparePlacesTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "confronta_luoghi"
   override val group = ToolGroup.PLACES
   override val description = "Confronta il tempo di due o tre localita' nello stesso momento (adesso o fra N ore): temperatura, condizione, pioggia, vento. Per \"dove c'e' piu' sole\", \"meglio il mare o la montagna?\"."
@@ -147,7 +149,7 @@ class ComparePlacesTool(private val resolver: PlaceResolver) : AiTool {
     required = listOf("luoghi"),
   )
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val names = args.list("luoghi").filter { it.isNotBlank() }.distinct().take(3)
     if (names.size < 2) return "errore: servono almeno due localita' da confrontare"
     val offset = (args.int("fra_ore") ?: 0).coerceIn(0, 48)

@@ -37,9 +37,9 @@ import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
 import dev.pampa.fluidweather.core.ai.AiAssistant
-import dev.pampa.fluidweather.core.ai.keys.AiSettings
-import dev.pampa.fluidweather.core.ai.keys.KeyState
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.keys.AiSettings
+import dev.antigravity.fluidengine.ai.keys.KeyState
+import dev.antigravity.fluidengine.ai.provider.ProviderId
 import dev.pampa.fluidweather.strings.R
 import kotlinx.coroutines.launch
 

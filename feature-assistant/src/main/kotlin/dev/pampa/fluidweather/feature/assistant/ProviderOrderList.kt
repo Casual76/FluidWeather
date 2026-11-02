@@ -30,7 +30,7 @@ import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.provider.ProviderId
 import dev.pampa.fluidweather.strings.R
 
 /**

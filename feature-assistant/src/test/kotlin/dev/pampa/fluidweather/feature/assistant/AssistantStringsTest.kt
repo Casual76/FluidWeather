@@ -1,7 +1,7 @@
 package dev.pampa.fluidweather.feature.assistant
 
-import dev.pampa.fluidweather.core.ai.keys.ThinkingLevel
-import dev.pampa.fluidweather.core.ai.orchestrator.FailureKind
+import dev.antigravity.fluidengine.ai.keys.ThinkingLevel
+import dev.antigravity.fluidengine.ai.orchestrator.FailureKind
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolGroup
 import dev.pampa.fluidweather.strings.R

@@ -1,11 +1,12 @@
 package dev.pampa.fluidweather.feature.assistant
 
 import androidx.annotation.StringRes
-import dev.pampa.fluidweather.core.ai.orchestrator.AssistantState
-import dev.pampa.fluidweather.core.ai.orchestrator.FailureKind
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.antigravity.fluidengine.ai.orchestrator.AssistantState
+import dev.antigravity.fluidengine.ai.orchestrator.FailureKind
+import dev.antigravity.fluidengine.ai.provider.ProviderId
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolGroup
+import dev.pampa.fluidweather.core.ai.tools.titleRes
 import dev.pampa.fluidweather.strings.R
 
 /**
@@ -42,33 +43,20 @@ object AssistantStrings {
     FailureKind.PROVIDER -> R.string.ai_error_provider
     FailureKind.MICROPHONE -> R.string.ai_error_microphone
     FailureKind.TRANSCRIPTION -> R.string.ai_error_transcription
-    FailureKind.NO_LOCATION -> R.string.ai_error_no_location
     FailureKind.UNKNOWN -> R.string.ai_error_unknown
+    FailureKind.MODEL_UNAVAILABLE -> R.string.ai_error_model_unavailable
+    FailureKind.CONTEXT_TOO_LONG -> R.string.ai_error_context_too_long
   }
 
+  /** Il nome di una pagina: lo stesso che la sessione usa nella frase della conferma. */
   @StringRes
-  fun targetRes(target: OpenTarget): Int = when (target) {
-    OpenTarget.RADAR -> R.string.radar_title
-    OpenTarget.BENCHMARK -> R.string.bench_title
-    OpenTarget.REPORT -> R.string.report_title
-    OpenTarget.SETTINGS -> R.string.settings_title
-    OpenTarget.AI_SETTINGS -> R.string.ai_title
-    OpenTarget.NOWCAST -> R.string.ai_target_nowcast
-    OpenTarget.HOURLY -> R.string.ai_target_hourly
-    OpenTarget.DAILY -> R.string.ai_target_daily
-    OpenTarget.PRECIPITATION -> R.string.ai_target_precipitation
-    OpenTarget.PRESSURE -> R.string.ai_target_pressure
-    OpenTarget.AIR_QUALITY -> R.string.ai_target_air
-    OpenTarget.SUN -> R.string.ai_target_sun
-    OpenTarget.MOON -> R.string.ai_target_moon
-    OpenTarget.DETAILS -> R.string.ai_target_details
-  }
+  fun targetRes(target: OpenTarget): Int = target.titleRes()
 
   @StringRes
-  fun thinkingRes(level: dev.pampa.fluidweather.core.ai.keys.ThinkingLevel): Int = when (level) {
-    dev.pampa.fluidweather.core.ai.keys.ThinkingLevel.LOW -> R.string.ai_thinking_low
-    dev.pampa.fluidweather.core.ai.keys.ThinkingLevel.MEDIUM -> R.string.ai_thinking_medium
-    dev.pampa.fluidweather.core.ai.keys.ThinkingLevel.HIGH -> R.string.ai_thinking_high
+  fun thinkingRes(level: dev.antigravity.fluidengine.ai.keys.ThinkingLevel): Int = when (level) {
+    dev.antigravity.fluidengine.ai.keys.ThinkingLevel.LOW -> R.string.ai_thinking_low
+    dev.antigravity.fluidengine.ai.keys.ThinkingLevel.MEDIUM -> R.string.ai_thinking_medium
+    dev.antigravity.fluidengine.ai.keys.ThinkingLevel.HIGH -> R.string.ai_thinking_high
   }
 
   fun providerLabel(provider: ProviderId): String = provider.label

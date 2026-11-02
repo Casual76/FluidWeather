@@ -10,7 +10,6 @@ import dev.pampa.fluidweather.core.ai.tools.ActionSink
 import dev.pampa.fluidweather.core.ai.tools.AssistantAction
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
-import dev.pampa.fluidweather.core.ai.tools.ToolGroup
 import dev.pampa.fluidweather.core.ui.AppDeepLink
 import dev.pampa.fluidweather.core.ui.AppDestination
 import dev.pampa.fluidweather.core.ui.AppScreen
@@ -53,34 +52,29 @@ private enum class BridgeGroup(
   ;
 
   companion object {
-    fun of(group: ToolGroup): BridgeGroup = entries.first { it.id == group.id }
+    fun of(group: AiToolGroup): BridgeGroup = entries.first { it.id == group.id }
   }
 }
 
 /**
- * Un tool di Fluid Weather visto dall'engine. L'app ha i suoi tipi (il `core-ai` di casa, che
- * precede `engine-ai`): invece di riscrivere ventisette strumenti si traduce la firma — testo
- * dentro, [ToolOutput] fuori — e il resto resta esattamente com'e', compresi i messaggi d'errore
- * che il modello gia' conosce.
+ * Un tool di Fluid Weather visto da Aria. I tool sono gia' nel vocabolario dell'engine
+ * (`WeatherTool`, con i suoi metadati: azione, conferma); qui cambia solo il gruppo, con i
+ * suggerimenti scritti per il router di PampAI, e l'errore riscritto nella forma di
+ * [ToolOutput.error], come prima.
  */
-private class BridgedTool(private val inner: dev.pampa.fluidweather.core.ai.tools.AiTool) : EngineTool<ToolContext> {
+private class BridgedTool(private val inner: EngineTool<ToolContext>) : EngineTool<ToolContext> {
   override val name: String = inner.name
   override val group: AiToolGroup = BridgeGroup.of(inner.group)
   override val description: String = inner.description
   override val parameters: JsonObject = inner.parameters
 
   /** Le azioni dell'app: chi le chiama da fuori deve chiedere prima. */
-  override val isAction: Boolean = inner.group == ToolGroup.APP
-  override val needsConfirmation: Boolean = inner.name in CONFIRMED
+  override val isAction: Boolean = inner.isAction
+  override val needsConfirmation: Boolean = inner.needsConfirmation
 
   override suspend fun run(args: JsonObject, ctx: ToolContext): ToolOutput {
-    val text = inner.run(args, ctx)
+    val text = inner.run(args, ctx).text
     return if (text.startsWith("errore")) ToolOutput.error(text.removePrefix("errore:").trim()) else ToolOutput(text)
-  }
-
-  private companion object {
-    /** Quelle che scrivono qualcosa: la conferma la chiede il chiamante, con le sue parole. */
-    val CONFIRMED = setOf("avvia_raffica", "registra_osservazione", "salva_luogo", "localita_rimuovi", "osservazione_elimina", "calibrazione_stato")
   }
 }
 

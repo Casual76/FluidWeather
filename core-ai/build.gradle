@@ -29,6 +29,10 @@ dependencies {
   api project(':core-weather')
   api project(':core-sensor')
   api project(':core-cycle')
+  // Il trasporto e l'orchestrazione dell'assistente: provider, chiavi, stream, failover, router,
+  // orchestratore, stati, voce. Qui resta solo il dominio del meteo. `api` perche' la UI
+  // (:feature-assistant) e il bridge (:app) parlano gli stessi tipi (AssistantState, ProviderId...).
+  api project(':engine-ai')
   // EngineFlag e EngineRemoteConfig per l'interruttore remoto; EngineHttp.download per le tile del radar.
   implementation project(':engine-foundation')
   implementation project(':engine-config')

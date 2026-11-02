@@ -1,31 +1,37 @@
 package dev.pampa.fluidweather.core.ai
 
 import android.content.Context
+import dev.antigravity.fluidengine.ai.keys.AiKeyStore
+import dev.antigravity.fluidengine.ai.keys.AiKeyVerifier
+import dev.antigravity.fluidengine.ai.keys.AiSettingsStore
+import dev.antigravity.fluidengine.ai.keys.KeystoreCipher
+import dev.antigravity.fluidengine.ai.keys.ModelCatalogStore
+import dev.antigravity.fluidengine.ai.net.AiHttp
+import dev.antigravity.fluidengine.ai.orchestrator.AiDiagnosticsLog
+import dev.antigravity.fluidengine.ai.provider.ProviderFactory
+import dev.antigravity.fluidengine.ai.speech.AndroidPcmSource
+import dev.antigravity.fluidengine.ai.speech.SpeechCapture
+import dev.antigravity.fluidengine.ai.speech.Transcriber
 import dev.antigravity.fluidengine.config.EngineRemoteConfig
 import dev.antigravity.fluidengine.foundation.EngineFlag
 import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.keys.AiKeyStore
-import dev.pampa.fluidweather.core.ai.keys.AiKeyVerifier
-import dev.pampa.fluidweather.core.ai.keys.ModelCatalogStore
-import dev.pampa.fluidweather.core.ai.keys.AiSettingsStore
-import dev.pampa.fluidweather.core.ai.net.AiHttp
-import dev.pampa.fluidweather.core.ai.orchestrator.AiDiagnosticsLog
-import dev.pampa.fluidweather.core.ai.orchestrator.AssistantOrchestrator
+import dev.pampa.fluidweather.core.ai.keys.AiPreferences
+import dev.pampa.fluidweather.core.ai.keys.OpenRouterFreeCounter
+import dev.pampa.fluidweather.core.ai.keys.aiKeysDataStore
+import dev.pampa.fluidweather.core.ai.keys.aiSettingsDataStore
 import dev.pampa.fluidweather.core.ai.orchestrator.AssistantSession
-import dev.pampa.fluidweather.core.ai.provider.ProviderFactory
+import dev.pampa.fluidweather.core.ai.orchestrator.WeatherOrchestrator
 import dev.pampa.fluidweather.core.ai.radar.RadarSampler
 import dev.pampa.fluidweather.core.ai.radar.RadarTileStore
-import dev.pampa.fluidweather.core.ai.speech.AndroidPcmSource
-import dev.pampa.fluidweather.core.ai.speech.SpeechCapture
-import dev.pampa.fluidweather.core.ai.speech.Transcriber
 import dev.pampa.fluidweather.core.ai.tools.AllTools
 import dev.pampa.fluidweather.core.weather.RainViewerClient
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 
 /** I flag remoti dell'assistente: il primo dell'app. Default acceso: senza rete si comporta come alla release. */
 object AiFlags {
@@ -37,6 +43,11 @@ object AiFlags {
  * chiavi, impostazioni, provider, tool, radar numerico, voce, orchestratore e sessione. La UI
  * parla con [session]; le impostazioni con [keys], [settings], [providers]; la diagnostica con
  * [diagnostics].
+ *
+ * Il trasporto e l'orchestrazione sono quelli di `engine-ai` (prima erano una copia in casa, il
+ * vecchio `core-ai`, da cui `engine-ai` era nato): qui resta il dominio, cioe' i tool del meteo, il
+ * prompt, le azioni nell'app, il radar letto come numeri, e le poche cose che l'engine non sa di
+ * FluidWeather (l'alias delle chiavi, i file corrotti, il contatore dei gratuiti di OpenRouter).
  */
 class AiAssistant(
   context: Context,
@@ -58,11 +69,21 @@ class AiAssistant(
   private val appContext = context.applicationContext
 
   val http = AiHttp(userAgent)
-  val keys = AiKeyStore(appContext)
-  val settings = AiSettingsStore(appContext)
-  val providers = ProviderFactory(http, keys, settings, referer, appTitle)
-  val diagnostics = AiDiagnosticsLog()
+
+  /**
+   * Le chiavi, nello stesso file `ai_keys` e sotto lo stesso alias del Keystore di prima
+   * (`fluidweather.ai`): con l'alias dell'engine le chiavi gia' salvate non si decifrerebbero piu'
+   * e l'utente se le vedrebbe chiedere di nuovo.
+   */
+  val keys = AiKeyStore(appContext.aiKeysDataStore, KeystoreCipher(AiPreferences.KEYSTORE_ALIAS))
+  val settings = AiSettingsStore(appContext.aiSettingsDataStore)
+
+  /** Le richieste di oggi ai modelli gratuiti di OpenRouter: lo legge la scheda della chiave. */
+  val openRouterFree = OpenRouterFreeCounter(appContext.aiSettingsDataStore)
+
   val catalogs = ModelCatalogStore(File(appContext.cacheDir, "ai"))
+  val providers = ProviderFactory(http, keys, settings, referer, appTitle, catalogs)
+  val diagnostics = AiDiagnosticsLog()
   val verifier = AiKeyVerifier(keys, settings, providers, catalogs)
 
   val radarTiles = RadarTileStore(File(appContext.cacheDir, "radar-tiles"), engineHttp)
@@ -70,7 +91,7 @@ class AiAssistant(
   val dataSources: AiDataSources = sources(radarSampler)
   val resolver = PlaceResolver(dataSources)
   val registry = AllTools.registry(resolver)
-  val orchestrator = AssistantOrchestrator(registry = registry, diagnostics = diagnostics)
+  val orchestrator = WeatherOrchestrator.create(registry, diagnostics)
   val transcriber = Transcriber { providers.ordered(ProviderFactory.Kind.STT) }
 
   val session = AssistantSession(
@@ -92,5 +113,10 @@ class AiAssistant(
   /** Acceso = impostazione attiva, almeno una chiave verificata, flag remoto acceso. */
   val enabled: Flow<Boolean> = combine(settings.settings, keys.anyVerified, remoteEnabled) { s, anyKey, remote ->
     s.enabled && anyKey && remote
+  }
+
+  init {
+    // Le preferenze scritte dal vecchio core-ai che l'engine legge con un altro nome.
+    scope.launch { runCatching { AiPreferences.migrateLegacy(appContext.aiSettingsDataStore) } }
   }
 }

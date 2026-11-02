@@ -1,8 +1,10 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.int
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.int
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.RainBoardIds
 import dev.pampa.fluidweather.core.weather.Benchmark
@@ -23,13 +25,13 @@ private fun providerLabel(id: String): String = ProviderRegistry.all.firstOrNull
 }
 
 /** Quali servizi coprono il posto, con chiave e orizzonte, e come e' andato l'ultimo giro. */
-class ProvidersAvailableTool(private val resolver: PlaceResolver) : AiTool {
+class ProvidersAvailableTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "provider_disponibili"
   override val group = ToolGroup.PROVIDERS
   override val description = "I servizi meteo che coprono il posto: nome, copertura, se serve una chiave, orizzonte in ore, esito dell'ultimo giro (ore ricevute o errore), override 'usa solo questo'."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val keys = ctx.sources.providerKeys.current()
     val snapshot = resolver.snapshot(place)
@@ -56,7 +58,7 @@ class ProvidersAvailableTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Le opinioni dei singoli servizi su una variabile nelle prossime ore, dai contributi della fusione. */
-class ProviderComparisonTool(private val resolver: PlaceResolver) : AiTool {
+class ProviderComparisonTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "confronto_provider"
   override val group = ToolGroup.PROVIDERS
   override val description = "Confronta i servizi su una variabile (temperatura, pioggia, probabilita_pioggia, vento, nuvole, pressione) nelle prossime N ore: valore per servizio, peso nella fusione, accordo o disaccordo."
@@ -69,7 +71,7 @@ class ProviderComparisonTool(private val resolver: PlaceResolver) : AiTool {
     required = listOf("variabile"),
   )
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
     val variable = VARIABLES[args.str("variabile")?.lowercase()] ?: return "errore: variabile non capita (${VARIABLES.keys.joinToString(", ")})"
@@ -131,13 +133,13 @@ class ProviderComparisonTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** La pagella: chi ci prende di piu' qui, per variabile, e il barometro in gara sulla pioggia. */
-class BenchmarkTool : AiTool {
+class BenchmarkTool : WeatherTool() {
   override val name = "benchmark"
   override val group = ToolGroup.PROVIDERS
   override val description = "La classifica dei servizi sulle verifiche locali (ultimi 14 giorni): quota di peso, numero di verifiche, dove sono i migliori, errore medio per variabile a 0-6 h. E la classifica della pioggia, dove il barometro del telefono gareggia con i provider: punteggio di Brier (0 e' perfetto, piu' basso e' meglio), stessi giri per tutti, giudici fuori classifica."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val since = ctx.nowMillis - Benchmark.DAYS * 86_400_000L
     val verifications = runCatching { ctx.sources.verificationStore.allVerifications(since) }.getOrDefault(emptyList())
     val report = Benchmark.build(verifications, ctx.nowMillis)

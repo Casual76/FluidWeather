@@ -38,11 +38,12 @@ import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.ai.AiAssistant
-import dev.pampa.fluidweather.core.ai.keys.AiSettings
-import dev.pampa.fluidweather.core.ai.keys.KeyState
-import dev.pampa.fluidweather.core.ai.keys.ThinkingLevel
-import dev.pampa.fluidweather.core.ai.provider.ModelCatalogue
-import dev.pampa.fluidweather.core.ai.provider.ProviderId
+import dev.pampa.fluidweather.core.ai.keys.OpenRouterFreeUsage
+import dev.antigravity.fluidengine.ai.keys.AiSettings
+import dev.antigravity.fluidengine.ai.keys.KeyState
+import dev.antigravity.fluidengine.ai.keys.ThinkingLevel
+import dev.antigravity.fluidengine.ai.provider.ModelCatalogue
+import dev.antigravity.fluidengine.ai.provider.ProviderId
 import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.strings.R
@@ -69,6 +70,7 @@ fun AiSettingsScreen(deps: AiSettingsDependencies, onBack: () -> Unit) {
   val remoteOn by assistant.remoteEnabled.collectAsState(initial = true)
   val catalogues by assistant.catalogs.catalogues.collectAsState()
   val keyInfo by assistant.verifier.keyInfo.collectAsState()
+  val freeUsage by assistant.openRouterFree.usage.collectAsState(initial = OpenRouterFreeUsage())
   val verified = keyStates.filterValues { it.verified }.keys
   var permissionEpoch by remember { mutableIntStateOf(0) }
   val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionEpoch++ }
@@ -110,7 +112,7 @@ fun AiSettingsScreen(deps: AiSettingsDependencies, onBack: () -> Unit) {
           if (index > 0) FluidListDivider()
           AiKeySetup(assistant = assistant, provider = provider, state = keyStates[provider] ?: KeyState(false, null))
           if (provider == ProviderId.OPENROUTER && keyStates[provider]?.present == true) {
-            OpenRouterKeyDetails(settings, catalogues[ProviderId.OPENROUTER], keyInfo[ProviderId.OPENROUTER])
+            OpenRouterKeyDetails(settings, catalogues[ProviderId.OPENROUTER], keyInfo[ProviderId.OPENROUTER], freeUsage)
           }
         }
       }
@@ -137,7 +139,7 @@ fun AiSettingsScreen(deps: AiSettingsDependencies, onBack: () -> Unit) {
           FluidListGroup {
             FluidListRow(
               title = "${provider.label} · ${stringResource(R.string.ai_model_chat)}",
-              subtitle = ModelSummary(catalogue?.chatById(settings.chatModel(provider)) ?: settings.chatModel(provider)?.let { id -> dev.pampa.fluidweather.core.ai.provider.ModelInfo(id, id, dev.pampa.fluidweather.core.ai.provider.ModelKind.CHAT) }),
+              subtitle = ModelSummary(catalogue?.chatById(settings.chatModel(provider)) ?: settings.chatModel(provider)?.let { id -> dev.antigravity.fluidengine.ai.provider.ModelInfo(id, id, dev.antigravity.fluidengine.ai.provider.ModelKind.CHAT) }),
               onClick = { if (provider == ProviderId.OPENROUTER) openRouterSheet = true else pickerFor = provider to false },
             )
             FluidListDivider()
@@ -254,7 +256,8 @@ fun AiSettingsScreen(deps: AiSettingsDependencies, onBack: () -> Unit) {
 private fun OpenRouterKeyDetails(
   settings: AiSettings,
   catalogue: ModelCatalogue?,
-  info: dev.pampa.fluidweather.core.ai.provider.OpenRouterKeyInfo?,
+  info: dev.antigravity.fluidengine.ai.provider.OpenRouterKeyInfo?,
+  freeUsage: OpenRouterFreeUsage,
 ) {
   val chosen = settings.chatModel(ProviderId.OPENROUTER)
   val model = catalogue?.chatById(chosen)
@@ -275,7 +278,7 @@ private fun OpenRouterKeyDetails(
     }
     if (model?.free == true) {
       val today = java.time.LocalDate.now().toEpochDay()
-      val count = if (settings.openRouterFreeEpochDay == today) settings.openRouterFreeCount else 0
+      val count = freeUsage.countOn(today)
       val cap = if (info?.isFreeTier == false) 1000 else 50
       Text(stringResource(R.string.ai_openrouter_free_today, count, cap), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

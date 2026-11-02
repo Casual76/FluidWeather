@@ -1,8 +1,10 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.int
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.int
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.PressureTrend
 import dev.pampa.fluidweather.core.weather.NowcastSnapshot
 import dev.pampa.fluidweather.strings.featureLabelRes
@@ -35,13 +37,13 @@ internal suspend fun ToolContext.nowcastFor(place: dev.pampa.fluidweather.core.a
 internal const val NOWCAST_ELSEWHERE = "il barometro e' quello del telefono: vale solo per la posizione attuale, non per altri posti"
 
 /** Il verdetto delle prossime sei ore con bande, fattori, analoghi e prontezza. */
-class NowcastVerdictTool(private val resolver: PlaceResolver) : AiTool {
+class NowcastVerdictTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "nowcast_verdetto"
   override val group = ToolGroup.NOWCAST
   override val description = "Il verdetto del barometro del telefono: probabilita' di pioggia a 0-1, 1-3 e 3-6 ore con banda d'incertezza, livello, fattori principali, prontezza."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = ctx.selected
     if (place != null && !place.isGps) return NOWCAST_ELSEWHERE
     val nowcast = ctx.nowcastFor(place, resolver) ?: return "nessun verdetto: posizione del telefono sconosciuta"
@@ -87,13 +89,13 @@ class NowcastVerdictTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Lo stato del sensore: grezzo, livello del mare, tendenze, marea, taratura, scarti. */
-class BarometerStateTool(private val resolver: PlaceResolver) : AiTool {
+class BarometerStateTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "barometro_stato"
   override val group = ToolGroup.NOWCAST
   override val description = "Lo stato del barometro: pressione grezza e al livello del mare, tendenza a 1/3/6/12 ore, incertezza, marea atmosferica, taratura, campioni scartati e perche', modalita' di campionamento."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = ctx.selected
     if (place != null && !place.isGps) return NOWCAST_ELSEWHERE
     val nowcast = ctx.nowcastFor(place, resolver) ?: return "barometro non disponibile: posizione sconosciuta"
@@ -141,13 +143,13 @@ class BarometerStateTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** La serie oraria del livello del mare pulito, per chi vuole la forma della curva. */
-class PressureSeriesTool(private val resolver: PlaceResolver) : AiTool {
+class PressureSeriesTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "barometro_serie"
   override val group = ToolGroup.NOWCAST
   override val description = "La pressione al livello del mare del telefono, media per ora, nelle ultime N ore (max 24)."
   override val parameters = Schema.obj(mapOf("ore" to Schema.int("quante ore indietro (1-24)", 1, 24)))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (ctx.selected?.isGps == false) return NOWCAST_ELSEWHERE
     val nowcast = ctx.nowcastFor(ctx.selected, resolver) ?: return "barometro non disponibile"
     val hours = (args.int("ore") ?: 12).coerceIn(1, 24)
@@ -168,13 +170,13 @@ class PressureSeriesTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** I verdetti registrati nelle ultime ore: come e' cambiata l'opinione del barometro. */
-class NowcastHistoryTool : AiTool {
+class NowcastHistoryTool : WeatherTool() {
   override val name = "nowcast_storico"
   override val group = ToolGroup.NOWCAST
   override val description = "I verdetti passati del barometro nelle ultime N ore (max 48): ora, probabilita' 0-1/1-3/3-6 h, livello."
   override val parameters = Schema.obj(mapOf("ore" to Schema.int("quante ore indietro (1-48)", 1, 48)))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val hours = (args.int("ore") ?: 12).coerceIn(1, 48)
     val records = ctx.sources.nowcastHistory.since(ctx.nowMillis - hours * 3_600_000L).sortedBy { it.timestampMillis }
     if (records.isEmpty()) return "nessun verdetto registrato nelle ultime $hours ore"

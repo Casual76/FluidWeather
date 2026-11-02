@@ -1,7 +1,9 @@
 package dev.pampa.fluidweather.core.ai.tools
 
+import dev.antigravity.fluidengine.ai.tools.Schema
+import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.tools.Args.str
+import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.ObservedCondition
 import dev.pampa.fluidweather.core.model.Place
 import dev.pampa.fluidweather.strings.labelRes
@@ -18,13 +20,13 @@ private fun outcomeText(outcome: ActionOutcome, done: String): String = when (ou
 }
 
 /** Cambia la localita' mostrata in home (subito, senza conferma). */
-class SelectPlaceTool(private val resolver: PlaceResolver) : AiTool {
+class SelectPlaceTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "seleziona_localita"
   override val group = ToolGroup.APP
   override val description = "Mostra in home un'altra localita' (salvata o nuova): la seleziona subito."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.str("nome della localita', oppure 'qui' per la posizione attuale")), required = listOf("luogo"))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF
     val resolved = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val place = when {
@@ -38,13 +40,13 @@ class SelectPlaceTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Apre una pagina o la pagina nera di un widget (subito). */
-class OpenPageTool : AiTool {
+class OpenPageTool : WeatherTool() {
   override val name = "apri"
   override val group = ToolGroup.APP
   override val description = "Apre una pagina dell'app: radar, benchmark, segnalazione, impostazioni, impostazioni-ia, oppure la pagina di un widget (nowcast, orario, giornaliero, precipitazioni, pressione, aria, sole, luna, dettagli)."
   override val parameters = Schema.obj(mapOf("pagina" to Schema.str("cosa aprire", OpenTarget.entries.map { it.id })), required = listOf("pagina"))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF
     val target = OpenTarget.fromId(args.str("pagina")) ?: return "errore: pagina sconosciuta"
     val outcome = ctx.actions.perform(AssistantAction.Open(target))
@@ -53,13 +55,13 @@ class OpenPageTool : AiTool {
 }
 
 /** Avvia la raffica manuale del barometro (con conferma). */
-class StartBurstTool : AiTool {
+class StartBurstTool : WeatherTool() {
   override val name = "avvia_raffica"
   override val group = ToolGroup.APP
   override val description = "Avvia la raffica manuale del barometro (5 minuti di letture a 1 Hz) per un verdetto piu' preciso. Chiede conferma all'utente."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF
     if (ctx.sources.manualBurst.progress.value != null) return "una raffica e' gia' in corso"
     if (ctx.sources.calibrationController.progress.value != null) return "la taratura iniziale e' in corso: la raffica non serve adesso"
@@ -69,7 +71,7 @@ class StartBurstTool : AiTool {
 }
 
 /** Registra un'osservazione del momento (con conferma): la verita' che tara il barometro. */
-class RecordObservationTool : AiTool {
+class RecordObservationTool : WeatherTool() {
   override val name = "registra_osservazione"
   override val group = ToolGroup.APP
   override val description = "Registra cosa l'utente vede adesso dal vivo (sereno, nuvoloso, pioggia, neve...): alimenta la taratura del barometro. Chiede conferma."
@@ -78,7 +80,7 @@ class RecordObservationTool : AiTool {
     required = listOf("condizione"),
   )
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF
     val raw = args.str("condizione")?.uppercase() ?: return "errore: manca la condizione"
     val condition = ObservedCondition.entries.firstOrNull { it.name == raw } ?: return "errore: condizione sconosciuta"
@@ -88,13 +90,13 @@ class RecordObservationTool : AiTool {
 }
 
 /** Salva una localita' nuova (con conferma). */
-class SavePlaceTool(private val resolver: PlaceResolver) : AiTool {
+class SavePlaceTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "salva_luogo"
   override val group = ToolGroup.APP
   override val description = "Salva una localita' fra quelle dell'utente, cercandola per nome. Chiede conferma."
   override val parameters = Schema.obj(mapOf("nome" to Schema.str("nome del posto")), required = listOf("nome"))
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF
     val query = args.str("nome") ?: return "errore: manca il nome"
     val found = resolver.search(query, limit = 1).firstOrNull() ?: return "nessun risultato per \"$query\""
@@ -106,13 +108,13 @@ class SavePlaceTool(private val resolver: PlaceResolver) : AiTool {
 }
 
 /** Le ultime osservazioni registrate dall'utente (lettura, sempre disponibile). */
-class RecentObservationsTool : AiTool {
+class RecentObservationsTool : WeatherTool() {
   override val name = "osservazioni_recenti"
   override val group = ToolGroup.APP
   override val description = "Le ultime osservazioni dal vivo registrate dall'utente (cosa ha visto e quando)."
   override val parameters = Schema.obj(emptyMap())
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): String {
+  override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val recent = ctx.sources.observations.recent(10).first()
     if (recent.isEmpty()) return "nessuna osservazione registrata"
     return ToolText.build {
