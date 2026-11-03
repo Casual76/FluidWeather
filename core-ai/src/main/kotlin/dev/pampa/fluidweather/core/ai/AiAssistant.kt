@@ -7,6 +7,7 @@ import dev.antigravity.fluidengine.ai.keys.AiSettingsStore
 import dev.antigravity.fluidengine.ai.keys.KeystoreCipher
 import dev.antigravity.fluidengine.ai.keys.ModelCatalogStore
 import dev.antigravity.fluidengine.ai.net.AiHttp
+import dev.antigravity.fluidengine.ai.orchestrator.AiConfirmationGate
 import dev.antigravity.fluidengine.ai.orchestrator.AiDiagnosticsLog
 import dev.antigravity.fluidengine.ai.provider.ProviderFactory
 import dev.antigravity.fluidengine.ai.speech.AndroidPcmSource
@@ -18,9 +19,6 @@ import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 import dev.pampa.fluidweather.core.ai.keys.AiPreferences
-import dev.pampa.fluidweather.core.ai.keys.OpenRouterFreeCounter
-import dev.pampa.fluidweather.core.ai.keys.aiKeysDataStore
-import dev.pampa.fluidweather.core.ai.keys.aiSettingsDataStore
 import dev.pampa.fluidweather.core.ai.orchestrator.AssistantSession
 import dev.pampa.fluidweather.core.ai.orchestrator.WeatherOrchestrator
 import dev.pampa.fluidweather.core.ai.radar.RadarSampler
@@ -47,7 +45,7 @@ object AiFlags {
  * Il trasporto e l'orchestrazione sono quelli di `engine-ai` (prima erano una copia in casa, il
  * vecchio `core-ai`, da cui `engine-ai` era nato): qui resta il dominio, cioe' i tool del meteo, il
  * prompt, le azioni nell'app, il radar letto come numeri, e le poche cose che l'engine non sa di
- * FluidWeather (l'alias delle chiavi, i file corrotti, il contatore dei gratuiti di OpenRouter).
+ * FluidWeather (l'alias delle chiavi, la chiave scritta dal vecchio core-ai).
  */
 class AiAssistant(
   context: Context,
@@ -73,13 +71,13 @@ class AiAssistant(
   /**
    * Le chiavi, nello stesso file `ai_keys` e sotto lo stesso alias del Keystore di prima
    * (`fluidweather.ai`): con l'alias dell'engine le chiavi gia' salvate non si decifrerebbero piu'
-   * e l'utente se le vedrebbe chiedere di nuovo.
+   * e l'utente se le vedrebbe chiedere di nuovo. Un file corrotto riparte da vuoto, e' dell'engine.
    */
-  val keys = AiKeyStore(appContext.aiKeysDataStore, KeystoreCipher(AiPreferences.KEYSTORE_ALIAS))
-  val settings = AiSettingsStore(appContext.aiSettingsDataStore)
+  val keys = AiKeyStore(appContext, KeystoreCipher(AiPreferences.KEYSTORE_ALIAS))
 
-  /** Le richieste di oggi ai modelli gratuiti di OpenRouter: lo legge la scheda della chiave. */
-  val openRouterFree = OpenRouterFreeCounter(appContext.aiSettingsDataStore)
+  /** Il file `ai` come handle, perche' la migrazione di una chiave di prima lo legge dallo stesso. */
+  private val settingsData = AiPreferences.openSettings(appContext)
+  val settings = AiSettingsStore(settingsData)
 
   val catalogs = ModelCatalogStore(File(appContext.cacheDir, "ai"))
   val providers = ProviderFactory(http, keys, settings, referer, appTitle, catalogs)
@@ -91,7 +89,8 @@ class AiAssistant(
   val dataSources: AiDataSources = sources(radarSampler)
   val resolver = PlaceResolver(dataSources)
   val registry = AllTools.registry(resolver)
-  val orchestrator = WeatherOrchestrator.create(registry, diagnostics)
+  val gate = AiConfirmationGate(WeatherOrchestrator.config)
+  val orchestrator = WeatherOrchestrator.create(registry, diagnostics, gate)
   val transcriber = Transcriber { providers.ordered(ProviderFactory.Kind.STT) }
 
   val session = AssistantSession(
@@ -105,6 +104,7 @@ class AiAssistant(
     speechFactory = { SpeechCapture(AndroidPcmSource(appContext)) },
     cacheDir = appContext.cacheDir,
     resources = { appContext.resources },
+    gate = gate,
   )
 
   /** Il flag remoto: spento dal manifest, l'assistente sparisce dalla barra. */
@@ -117,6 +117,6 @@ class AiAssistant(
 
   init {
     // Le preferenze scritte dal vecchio core-ai che l'engine legge con un altro nome.
-    scope.launch { runCatching { AiPreferences.migrateLegacy(appContext.aiSettingsDataStore) } }
+    scope.launch { runCatching { AiPreferences.migrateLegacy(settingsData) } }
   }
 }

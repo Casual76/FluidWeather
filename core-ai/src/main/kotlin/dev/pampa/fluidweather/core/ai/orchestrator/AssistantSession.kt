@@ -72,7 +72,7 @@ class AssistantSession(
   private val cacheDir: File,
   private val resources: () -> Resources,
   private val clock: () -> Long = System::currentTimeMillis,
-  private val gate: AiConfirmationGate = AiConfirmationGate(CONFIRMATION_TIMEOUT_MILLIS),
+  private val gate: AiConfirmationGate = AiConfirmationGate(WeatherOrchestrator.config),
 ) : ActionSink {
 
   private val stateFlow = MutableStateFlow<AssistantState>(AssistantState.Idle)
@@ -104,21 +104,9 @@ class AssistantSession(
   val isBusy: Boolean get() = stateFlow.value.isBusy
 
   init {
-    // Il cancello delle conferme diventa lo stato della card: mentre un tool aspetta il si', la card
-    // mostra Conferma/Annulla; quando la risposta arriva (o scade) torna lo stato di prima.
-    scope.launch {
-      var before: AssistantState? = null
-      gate.current.collect { pending ->
-        val current = stateFlow.value
-        if (pending != null) {
-          if (current !is AssistantState.AwaitingConfirmation) before = current
-          stateFlow.value = AssistantState.AwaitingConfirmation(current.questionOrNull().orEmpty(), pending, current.providerOrNull() ?: ProviderId.GROQ)
-        } else if (current is AssistantState.AwaitingConfirmation) {
-          stateFlow.value = before ?: AssistantState.Working(current.question, 0, orchestrator.maxRounds, "thinking", 0, current.provider)
-          before = null
-        }
-      }
-    }
+    // Il cancello delle conferme scrive da se' lo stato della card: mentre un tool aspetta il si', la
+    // card mostra Conferma/Annulla; quando la risposta arriva (o scade) torna lo stato di prima.
+    gate.bindState(stateFlow, ProviderId.GROQ)
   }
 
   fun askText(question: String) {
@@ -188,7 +176,8 @@ class AssistantSession(
           reason = e.reason,
         )
       } catch (e: Throwable) {
-        stateFlow.value = AssistantState.Failed(stateFlow.value.questionOrNull(), FailureKind.UNKNOWN, e as? AiError, null, null)
+        val failure = AssistantFailure.of(e)
+        stateFlow.value = AssistantState.Failed(stateFlow.value.questionOrNull(), failure.kind, failure.error, failure.retryAfterSec, null)
       }
     }
   }
@@ -229,10 +218,8 @@ class AssistantSession(
               transcriber.transcribe(event.file, language, WeatherSpeech.hint(language, places))
             } catch (e: CancellationException) {
               throw e
-            } catch (e: AiError.Unauthorized) {
-              throw AssistantFailure(FailureKind.UNAUTHORIZED, e)
             } catch (e: Throwable) {
-              throw AssistantFailure(FailureKind.TRANSCRIPTION, e as? AiError)
+              throw AssistantFailure.of(e, other = FailureKind.TRANSCRIPTION)
             }
             result = transcription.text.takeIf { it.isNotBlank() }
             if (result == null) stateFlow.value = AssistantState.HeardNothing
@@ -256,7 +243,7 @@ class AssistantSession(
     }
     conversation.lastActivityMillis = now
     val settings = settingsStore.current()
-    val ordered = WeatherOrchestrator.withoutDeepTier(providers.ordered(ProviderFactory.Kind.CHAT))
+    val ordered = providers.ordered(ProviderFactory.Kind.CHAT)
     if (ordered.isEmpty()) throw AssistantFailure(FailureKind.NO_KEYS, null)
     val language = language()
     val selected = runCatching { resolver.selected() }.getOrNull()
@@ -443,19 +430,6 @@ class AssistantSession(
     else -> null
   }
 
-  private fun AssistantState.providerOrNull(): ProviderId? = when (this) {
-    is AssistantState.Classifying -> provider
-    is AssistantState.Working -> provider
-    is AssistantState.WaitingRateLimit -> provider
-    is AssistantState.SwitchingProvider -> to
-    is AssistantState.Answering -> provider
-    is AssistantState.AwaitingConfirmation -> provider
-    else -> null
-  }
-
-  companion object {
-    const val CONFIRMATION_TIMEOUT_MILLIS = 60_000L
-  }
 }
 
 /** Il suggerimento di vocabolario per Whisper: il dominio, nella lingua dell'app, e i posti dell'utente. */
@@ -467,7 +441,7 @@ object WeatherSpeech {
       "Questions about the weather: rain, snow, radar, forecast, barometer, pressure, alerts, temperature, wind, humidity, place names."
     }
     // Dodici posti come prima (l'engine ne prenderebbe venti): il prompt di Whisper ha un tetto.
-    return Transcriber.hint(base, savedPlaces.take(12))
+    return Transcriber.hint(base, savedPlaces, maxWords = 12)
   }
 }
 

@@ -5,7 +5,6 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.antigravity.fluidengine.ai.keys.AiKeyStore
@@ -33,8 +32,9 @@ private class PlainCipher : SecretCipher {
 
 /**
  * I file DataStore dell'assistente sono quelli scritti dal vecchio core-ai: questi test dicono che,
- * letti dall'engine, danno le stesse scelte, e che le poche cose che l'engine chiama in un altro
- * modo (la politica dei dati di OpenRouter, il contatore dei gratuiti) arrivano lo stesso.
+ * letti dall'engine, danno le stesse scelte, e che la sola cosa che l'engine chiama in un altro
+ * modo (la politica dei dati di OpenRouter) arriva lo stesso. Il contatore dei gratuiti di
+ * OpenRouter non c'e' piu': non lo chiamava nessuno, e la scheda della chiave mostrava sempre 0.
  */
 class AiPreferencesTest {
 
@@ -91,20 +91,6 @@ class AiPreferencesTest {
     AiSettingsStore(chosen).setOpenRouterDataPolicy(OpenRouterDataPolicy.ACCOUNT)
     AiPreferences.migrateLegacy(chosen)
     assertEquals(OpenRouterDataPolicy.ACCOUNT, AiSettingsStore(chosen).current().openRouterDataPolicy)
-  }
-
-  @Test
-  fun `il contatore dei gratuiti legge le chiavi di prima e riparte col giorno nuovo`() = runBlocking {
-    val data = dataStore("ai")
-    data.edit {
-      it[intPreferencesKey("openrouter_free_count")] = 7
-      it[longPreferencesKey("openrouter_free_day")] = 100L
-    }
-    val counter = OpenRouterFreeCounter(data)
-    assertEquals(7, counter.usage.first().countOn(100L))
-    assertEquals(0, counter.usage.first().countOn(101L))
-    assertEquals(8, counter.count(100L))
-    assertEquals(1, counter.count(101L))
   }
 
   @Test

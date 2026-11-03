@@ -135,9 +135,8 @@ class WeatherOrchestratorTest {
     mode = AskMode.TEXT,
     language = "it",
     settings = AiSettings(),
-    providers = WeatherOrchestrator.withoutDeepTier(
-      providers.map { ReadyProvider(it, "modello-${it.id.id}", "stt", "piccolo", deepModel = "profondo-${it.id.id}") },
-    ),
+    // Con un modello profondo scritto: e' `deepTierEnabled = false` a tenerlo spento, non l'app che lo toglie.
+    providers = providers.map { ReadyProvider(it, "modello-${it.id.id}", "stt", "piccolo", deepModel = "profondo-${it.id.id}") },
     toolContext = context(),
     systemPrompt = "sei un assistente",
     conversation = conversation,

@@ -1,11 +1,11 @@
 package dev.pampa.fluidweather.core.ai.orchestrator
 
+import dev.antigravity.fluidengine.ai.orchestrator.AiConfirmationGate
 import dev.antigravity.fluidengine.ai.orchestrator.AiDiagnosticsLog
 import dev.antigravity.fluidengine.ai.orchestrator.AiOrchestrator
 import dev.antigravity.fluidengine.ai.orchestrator.AiOrchestratorConfig
 import dev.antigravity.fluidengine.ai.orchestrator.AiRouter
 import dev.antigravity.fluidengine.ai.orchestrator.AnswerChip
-import dev.antigravity.fluidengine.ai.provider.ReadyProvider
 import dev.antigravity.fluidengine.ai.tools.ToolRegistry
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
@@ -18,8 +18,12 @@ import dev.pampa.fluidweather.core.ai.tools.ToolGroup
  *
  * Il livello profondo dell'engine (un terzo modello per i documenti e i testi lunghi) qui resta
  * spento: FluidWeather non ha allegati, e un modello diverso che risponde alle domande lunghe
- * sarebbe un cambio di comportamento che nessuno ha deciso. Lo spegne [withoutDeepTier]: con il
- * profondo uguale alla chat l'engine non offre `modello_avanzato` e non sale di livello.
+ * sarebbe un cambio di comportamento che nessuno ha deciso. Lo spegne `deepTierEnabled = false`:
+ * l'engine non offre `modello_avanzato`, non sale di livello e risponde sempre la chat.
+ *
+ * I tempi: venti secondi di lavoro per tool ([ToolGroup.APP] dichiara che aspetta una conferma, e
+ * l'orchestratore ci somma la finestra del cancello, un minuto per conferma). Prima il tetto era
+ * uno solo e una conferma che l'utente impiegava piu' di venti secondi a dare scadeva comunque.
  */
 object WeatherOrchestrator {
 
@@ -37,6 +41,8 @@ object WeatherOrchestrator {
     publishMinChars = 24,
     publishMinMillis = 150L,
     temperature = 0.3,
+    confirmationTimeoutMillis = 60_000L,
+    deepTierEnabled = false,
   )
 
   /** Su cosa ripiega lo stadio 1 quando non capisce: le tre cose che si chiedono di piu'. */
@@ -50,11 +56,13 @@ object WeatherOrchestrator {
     defaultGroups = fallbackGroups,
   )
 
-  fun create(registry: ToolRegistry<ToolContext>, diagnostics: AiDiagnosticsLog): AiOrchestrator<ToolContext> =
-    AiOrchestrator(registry = registry, router = router(), diagnostics = diagnostics, config = config)
-
-  /** I provider come li vuole questa app: senza un modello profondo diverso dalla chat. */
-  fun withoutDeepTier(providers: List<ReadyProvider>): List<ReadyProvider> = providers.map { it.copy(deepModel = null) }
+  /** Il cancello va dato anche qui: l'orchestratore ne legge la finestra per il tetto dei tool che aspettano. */
+  fun create(
+    registry: ToolRegistry<ToolContext>,
+    diagnostics: AiDiagnosticsLog,
+    gate: AiConfirmationGate? = null,
+  ): AiOrchestrator<ToolContext> =
+    AiOrchestrator(registry = registry, router = router(), diagnostics = diagnostics, config = config, gate = gate)
 }
 
 /**

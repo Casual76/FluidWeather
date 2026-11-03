@@ -18,7 +18,13 @@ import kotlinx.serialization.json.JsonObject
  * quei gruppi. Gli id sono le parole che il modello legge nello schema, quindi in italiano come
  * il resto dei tool; il testo di stato ("Leggo il nowcast") lo aggiunge la UI dalla chiave.
  */
-enum class ToolGroup(override val id: String, override val statusKey: String, override val hint: String) : AiToolGroup {
+enum class ToolGroup(
+  override val id: String,
+  override val statusKey: String,
+  override val hint: String,
+  /** Vero per il gruppo che scrive: un suo tool puo' restare sospeso sul si' dell'utente (60 s per conferma). */
+  override val awaitsConfirmation: Boolean = false,
+) : AiToolGroup {
   PLACES("luogo", "places", "cercare o elencare localita', salvate o nuove"),
   NOWCAST("nowcast", "nowcast", "il barometro del telefono: probabilita' di pioggia nelle prossime 6 ore, pressione, tendenza, fattori"),
   HOURLY("orario", "hourly", "il tempo di adesso e ora per ora (temperatura, vento, umidita', UV, nuvole)"),
@@ -28,7 +34,12 @@ enum class ToolGroup(override val id: String, override val statusKey: String, ov
   SKY("cielo", "sky", "sole (alba, tramonto, crepuscoli, durata del giorno) e luna (fase, sorgere, distanza)"),
   PROVIDERS("provider", "providers", "i servizi meteo usati, il confronto fra le loro previsioni, la classifica di chi ci prende di piu' qui"),
   ALERTS("allerte", "alerts", "allerte ufficiali della protezione civile e stato delle notifiche dell'app"),
-  APP("app", "app", "azioni nell'app: cambiare localita', aprire pagine, avviare una raffica del barometro, registrare un'osservazione, salvare un posto");
+  APP(
+    "app",
+    "app",
+    "azioni nell'app: cambiare localita', aprire pagine, avviare una raffica del barometro, registrare un'osservazione, salvare un posto",
+    awaitsConfirmation = true,
+  );
 
   companion object {
     fun fromId(id: String?): ToolGroup? = entries.firstOrNull { it.id == id?.trim()?.lowercase() }
