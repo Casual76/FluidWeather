@@ -1,6 +1,6 @@
 {
   "app": {
-    "id": "fluidweather",
+    "id": "dev-pampa-fluidweather",
     "name": "FluidWeather",
     "description": "Il meteo che parte dal tuo telefono. Il barometro del dispositivo diventa un motore di previsione a breve termine, tarato su anni di dati reali, e si aggiunge a una costellazione di servizi meteo fusi con pesi che imparano dove sei: nowcast 0-6 ore, orario e giornaliero, precipitazioni, pressione, qualita' dell'aria, sole e luna, radar, benchmark dei provider, notifiche, segnalazioni. Italiano e inglese, unita' a scelta.",
     "packageName": "dev.pampa.fluidweather",
@@ -15,6 +15,14 @@
       "ref": "main"
     },
     "history": [
+      {
+        "version": "2.0.0",
+        "releaseDate": "2026-11-03",
+        "changelog": "FluidWeather 2.0: mappa del radar libera (MapLibre e OpenFreeMap), posizione senza servizi Google, assistente sui componenti dell'engine, Fluid Engine 3. Il gesto indietro parte dal bordo dello schermo. Licenza GPL-3.0.",
+        "releaseTag": "stable-fluidweather-v2.0.0",
+        "apkAsset": "fluidweather-2.0.0.apk",
+        "sizeBytes": 24832431
+      },
       {
         "version": "1.5.1",
         "releaseDate": "2026-10-13",
@@ -153,20 +161,20 @@
       }
     ],
     "beta": {
-      "version": "2.0.0",
+      "version": "2.0.1",
       "releaseDate": "2026-11-03",
-      "changelog": "FluidWeather 2.0: mappa del radar libera (MapLibre e OpenFreeMap), posizione senza servizi Google, assistente sui componenti dell'engine, Fluid Engine 3. Il gesto indietro parte dal bordo dello schermo. Licenza GPL-3.0.",
-      "releaseTag": "stable-fluidweather-v2.0.0",
-      "apkAsset": "fluidweather-2.0.0.apk",
-      "sizeBytes": 24832431
+      "changelog": "Engine 3.0.4: gli interruttori si trascinano, i menu si aprono veloci come si chiudono, il gesto indietro non scatta più col dito fermo; piccole correzioni di accessibilità.",
+      "releaseTag": "stable-dev-pampa-fluidweather-v2.0.1",
+      "apkAsset": "dev-pampa-fluidweather-2.0.1.apk",
+      "sizeBytes": 24833081
     },
     "stable": {
-      "version": "2.0.0",
+      "version": "2.0.1",
       "releaseDate": "2026-11-03",
-      "changelog": "FluidWeather 2.0: mappa del radar libera (MapLibre e OpenFreeMap), posizione senza servizi Google, assistente sui componenti dell'engine, Fluid Engine 3. Il gesto indietro parte dal bordo dello schermo. Licenza GPL-3.0.",
-      "releaseTag": "stable-fluidweather-v2.0.0",
-      "apkAsset": "fluidweather-2.0.0.apk",
-      "sizeBytes": 24832431
+      "changelog": "Engine 3.0.4: gli interruttori si trascinano, i menu si aprono veloci come si chiudono, il gesto indietro non scatta più col dito fermo; piccole correzioni di accessibilità.",
+      "releaseTag": "stable-dev-pampa-fluidweather-v2.0.1",
+      "apkAsset": "dev-pampa-fluidweather-2.0.1.apk",
+      "sizeBytes": 24833081
     }
   },
   "engine": {
