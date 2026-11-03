@@ -27,9 +27,20 @@ data class RadarFrames(
 
   val nowIndex: Int get() = (past.size - 1).coerceAtLeast(0)
 
+  companion object {
+    /**
+     * L'ultimo livello di zoom che RainViewer disegna davvero. La mappa lo passa come `maxzoom` della
+     * sorgente (MapLibre ingrandisce da se' il tile del livello massimo), e il radar letto come numeri
+     * ([dev.pampa.fluidweather.core.weather.RadarFrames] per `RadarSampler`) non ne chiede mai di piu'.
+     */
+    const val MAX_ZOOM: Int = 7
+  }
+
   /**
-   * L'URL di un tile: `{host}{path}/{size}/{z}/{x}/{y}/{color}/{smooth}_{snow}.png`. Il servizio
-   * serve qualunque zoom (oltre il nativo riscalando lui): verificato dal vivo il 2026-09-02.
+   * L'URL di un tile: `{host}{path}/{size}/{z}/{x}/{y}/{color}/{smooth}_{snow}.png`. **Lo zoom non
+   * supera [MAX_ZOOM]**: oltre il servizio risponde 200 con un'immagine grigia "Zoom Level Not
+   * Supported" (verificato dal vivo il 2026-11-02; il 2026-09-02 serviva qualunque zoom), che un
+   * lettore di pixel prende per radar e una mappa incolla sopra il paese.
    */
   fun tileUrl(
     frame: RadarFrame,

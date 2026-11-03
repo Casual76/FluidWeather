@@ -64,7 +64,7 @@ internal object RadarMapCatalog {
    * livello massimo di una sorgente (`maxzoom`): e' quello che faceva a mano
    * l'OverzoomTileProvider, senza scaricare niente di piu'.
    */
-  const val RAINVIEWER_MAX_ZOOM = 7f
+  const val RAINVIEWER_MAX_ZOOM = dev.pampa.fluidweather.core.weather.RadarFrames.MAX_ZOOM.toFloat()
 
   /** Le mappe meteo di OWM sono a griglia larga: oltre il 10 non c'e' piu' niente da vedere. */
   const val OWM_MAX_ZOOM = 10f

@@ -20,7 +20,7 @@ class RadarSamplerTest {
 
   private val lat = 43.77
   private val lon = 11.25
-  private val zoom = 8
+  private val zoom = RadarSampler.ZOOM
   private val frameStep = 10 * 60_000L
   private val t0 = 1_700_000_000_000L
 
@@ -70,7 +70,8 @@ class RadarSamplerTest {
     val motion = reading.motion
     assertNotNull("moto atteso", motion)
     assertEquals(90.0, motion!!.towardDeg, 15.0)
-    assertTrue("velocita' ${motion.speedKmh}", motion.speedKmh in 5.0..25.0)
+    // Cinque pixel per fotogramma: ~13 km/h a zoom 8, ~26 a zoom 7 dove un pixel e' il doppio.
+    assertTrue("velocita' ${motion.speedKmh}", motion.speedKmh in 10.0..45.0)
     val eta = reading.eta
     assertNotNull("eta attesa", eta)
     // A frame 6 la cella sta 30 px a ovest e avanza di 5 px ogni 10 minuti: un'ora all'arrivo.
@@ -80,6 +81,20 @@ class RadarSamplerTest {
     assertTrue("confidenza ${reading.confidence}", reading.confidence >= 0.4)
     assertEquals(3, reading.nowcastAtPoint.size)
     assertTrue(reading.requestsAreBounded(world.requests.size, frames))
+  }
+
+  @Test
+  fun `non chiede mai un livello che RainViewer non disegna`() = runBlocking {
+    val world = World()
+    val frames = frames(pastCount = 7, nowcastCount = 3)
+    RadarSampler(frames = { frames }, tiles = world, clock = { t0 + 6 * frameStep + 3 * 60_000L }).sample(lat, lon)
+
+    assertTrue("nessuna richiesta?", world.requests.isNotEmpty())
+    val zooms = world.requests.map { Regex("/256/(\\d+)/").find(it)!!.groupValues[1].toInt() }
+    // Oltre il 7 il servizio risponde con un'immagine grigia "Zoom Level Not Supported" (200, non 404).
+    assertTrue("zoom chiesti: ${zooms.toSet()}", zooms.all { it <= RadarFrames.MAX_ZOOM })
+    assertEquals(7, RadarFrames.MAX_ZOOM)
+    assertEquals(RadarFrames.MAX_ZOOM, RadarSampler.ZOOM)
   }
 
   private fun RadarReading.requestsAreBounded(requests: Int, frames: RadarFrames): Boolean =

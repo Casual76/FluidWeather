@@ -43,9 +43,16 @@ sealed interface RadarSample {
 }
 
 /**
- * Il radar letto come numeri (fase 19): una finestra di 128 px a zoom 8 attorno al punto, per gli
+ * Il radar letto come numeri (fase 19): una finestra di 128 px a zoom 7 attorno al punto, per gli
  * ultimi fotogrammi e per quelli di previsione; da li' intensita' sul posto, eco piu' vicino,
  * tendenza, moto e ETA. E' una stima da immagini, e la confidenza lo dice.
+ *
+ * **Zoom 7, non 8**: oltre il 7 RainViewer risponde 200 con un'immagine grigia "Zoom Level Not
+ * Supported", e al livello 8 il campionatore leggeva quel grigio come "colori fuori palette" in
+ * tutta la finestra (nessun eco, confidenza a pezzi) senza accorgersi che il servizio non
+ * rispondeva piu' al suo posto. A zoom 7 un pixel e' il doppio di prima (~880 m a 44 gradi, una
+ * tile 224 km, la finestra di 128 px ~113 km): il riquadro da trenta chilometri scende sotto il
+ * minimo di 48 px e si allarga a ~42 km, e il moto si stima con la metà della risoluzione.
  */
 class RadarSampler(
   private val frames: suspend () -> RadarFrames?,
@@ -160,8 +167,8 @@ class RadarSampler(
   }
 
   companion object {
-    /** Zoom 8: ~440 m/px a 44 gradi, una tile = 112 km; la finestra di 128 px copre ~56 km. */
-    const val ZOOM = 8
+    /** L'ultimo zoom che il servizio disegna: ~880 m/px a 44 gradi, una tile = 224 km, la finestra di 128 px ~113 km. */
+    const val ZOOM = RadarFrames.MAX_ZOOM
     const val WINDOW = 128
 
     /** Il riquadro di campionamento: trenta chilometri, quanti ne coprono le celle di un'ora. */
