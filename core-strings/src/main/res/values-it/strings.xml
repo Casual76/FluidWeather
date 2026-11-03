@@ -821,6 +821,7 @@
   <string name="radar_offset_h_min">%1$s%2$s h %3$s min</string>
   <string name="radar_offset_min">%1$s%2$s min</string>
   <string name="radar_pause">Pausa</string>
+  <string name="radar_timeline_a11y">Tempo del radar</string>
   <string name="radar_play">Play</string>
   <string name="radar_precipitation">Precipitazioni</string>
   <string name="radar_title">Radar</string>

@@ -1,11 +1,8 @@
 package dev.pampa.fluidweather.feature.radar
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,13 +24,13 @@ import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,10 +57,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
@@ -78,8 +72,10 @@ import dev.antigravity.fluidengine.storage.EngineSettingsStore
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidContextAction
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassIconButton
+import dev.antigravity.fluidengine.ui.fluid.FluidGlassSize
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
+import dev.antigravity.fluidengine.ui.fluid.FluidScrubber
 import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
 import dev.antigravity.fluidengine.ui.fluid.GlassDefaults
 import dev.antigravity.fluidengine.ui.fluid.GlassRole
@@ -90,8 +86,7 @@ import dev.antigravity.fluidengine.ui.fluidphysics.FluidMorphMenuHost
 import dev.antigravity.fluidengine.ui.fluidphysics.rememberFluidMorphMenuState
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
-import dev.antigravity.fluidengine.ui.theme.FluidListGroup
-import dev.antigravity.fluidengine.ui.theme.FluidListRow
+import dev.antigravity.fluidengine.ui.theme.FluidEmptyState
 import dev.antigravity.fluidengine.ui.theme.FluidTheme
 import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
 import dev.pampa.fluidweather.core.data.ProviderKeysStore
@@ -195,12 +190,13 @@ fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
 private fun RadarUnavailable(onBack: () -> Unit) {
   FluidScreen(title = stringResource(R.string.radar_title), onBack = onBack) {
     item {
-      FluidListGroup {
-        FluidListRow(
-          title = stringResource(R.string.radar_map_failed),
-          subtitle = stringResource(R.string.radar_map_failed_desc),
-        )
-      }
+      FluidEmptyState(
+        title = stringResource(R.string.radar_map_failed),
+        detail = stringResource(R.string.radar_map_failed_desc),
+        illustration = {
+          Icon(Icons.Rounded.Map, contentDescription = null, modifier = Modifier.size(56.dp))
+        },
+      )
     }
   }
 }
@@ -420,6 +416,7 @@ private fun RadarShell(
       playing = playing,
       backdrop = chromeBackdrop,
       onTogglePlay = { playing = !playing },
+      onScrubStart = { playing = false },
       onScrub = { chosen ->
         playing = false
         frameIndex = chosen
@@ -548,12 +545,12 @@ private fun RadarTimelineBar(
   index: Int,
   playing: Boolean,
   onTogglePlay: () -> Unit,
+  onScrubStart: () -> Unit,
   onScrub: (Int) -> Unit,
   onAttribution: () -> Unit,
   backdrop: GlassBackdropState,
   modifier: Modifier = Modifier,
 ) {
-  val haptics = rememberFluidHaptics()
   Column(modifier.fillMaxWidth()) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
@@ -562,11 +559,10 @@ private fun RadarTimelineBar(
         .radarChrome(backdrop)
         .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-      IconButton(
-        onClick = {
-          haptics.play(FluidHapticEvent.Tap)
-          onTogglePlay()
-        },
+      FluidGlassIconButton(
+        onClick = onTogglePlay,
+        size = FluidGlassSize.Compact,
+        backdrop = backdrop,
         enabled = frames != null,
       ) {
         Icon(
@@ -577,74 +573,33 @@ private fun RadarTimelineBar(
       }
       val count = frames?.all?.size ?: 0
       val nowIndex = frames?.nowIndex ?: 0
-      // Dentro il Canvas non si e' piu' in composizione: i colori del tema si leggono qui.
-      val trackColour = Faint
-      val pastColour = Accent
-      val markColour = White
-      val nowcastCount = frames?.nowcast?.size ?: 0
-      Canvas(
-        Modifier
-          .weight(1f)
-          .height(36.dp)
-          .pointerInput(count, haptics) {
-            detectTapGestures { offset ->
-              haptics.play(FluidHapticEvent.Tap)
-              onScrub(RadarTimeline.indexForFraction(offset.x / size.width, count))
-            }
-          }
-          .pointerInput(count, haptics) {
-            // Un fotogramma per tacca: trascinando in fretta ne passano tanti, e la tacca
-            // fitta e' quella leggera (il motore le dirada comunque a 40 ms l'una).
-            var last = -1
-            detectHorizontalDragGestures(
-              onDragStart = { offset ->
-                val chosen = RadarTimeline.indexForFraction(offset.x / size.width, count)
-                last = chosen
-                haptics.play(FluidHapticEvent.Tick)
-                onScrub(chosen)
-              },
-            ) { change, _ ->
-              change.consume()
-              val chosen = RadarTimeline.indexForFraction(change.position.x / size.width, count)
-              if (chosen != last) {
-                last = chosen
-                haptics.play(FluidHapticEvent.FrequentTick)
-              }
-              onScrub(chosen)
-            }
-          },
-      ) {
-        val y = size.height / 2f
-        val inset = 8f
-        val trackEnd = size.width - inset
-        drawLine(trackColour.copy(alpha = 0.3f), Offset(inset, y), Offset(trackEnd, y), strokeWidth = 4f, cap = StrokeCap.Round)
-        if (count > 1) {
-          val nowX = inset + RadarTimeline.fractionForIndex(nowIndex, count) * (trackEnd - inset)
-          // Il passato in pieno, il nowcast tratteggiato dopo "adesso". Il tratto c'e' solo se il
-          // servizio manda fotogrammi futuri: il JSON pubblico di RainViewer oggi ne manda zero
-          // (`nowcast: []`, verificato il 2026-09-10 — la previsione e' passata al piano a
-          // pagamento), quindi di solito il radar finisce al presente, e la barra non finge.
-          drawLine(pastColour.copy(alpha = 0.55f), Offset(inset, y), Offset(nowX, y), strokeWidth = 4f, cap = StrokeCap.Round)
-          if (nowcastCount > 0) {
-            drawLine(
-              pastColour.copy(alpha = 0.55f),
-              Offset(nowX, y),
-              Offset(trackEnd, y),
-              strokeWidth = 4f,
-              cap = StrokeCap.Round,
-              pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f)),
-            )
-            // Una tacca per fotogramma futuro: sono pochi, e ognuno e' dieci minuti.
-            for (step in 1..nowcastCount) {
-              val tickX = inset + RadarTimeline.fractionForIndex(nowIndex + step, count) * (trackEnd - inset)
-              drawLine(trackColour.copy(alpha = 0.6f), Offset(tickX, y - 4f), Offset(tickX, y + 4f), strokeWidth = 2f)
-            }
-          }
-          drawLine(markColour, Offset(nowX, y - 9f), Offset(nowX, y + 9f), strokeWidth = 2f)
-          val thumbX = inset + RadarTimeline.fractionForIndex(index, count) * (trackEnd - inset)
-          drawCircle(markColour, radius = 8f, center = Offset(thumbX, y))
-        }
+      // Le parole di ogni fotogramma ("adesso", "-1 h 40 min", "+20 min") si scrivono qui, in
+      // composizione: lo scrubber le chiede da una lambda che non lo e'.
+      val labels = (0 until count).map { frame ->
+        timelineLabel(RadarTimeline.offset(frames!!.all[frame].timeMillis, frames.past.last().timeMillis))
       }
+      val loadingLabel = stringResource(R.string.radar_loading)
+      FluidScrubber(
+        // La posizione e' dell'animazione del radar (un fotogramma ogni mezzo secondo), non del
+        // dito: e' il caso per cui lo scrubber esiste.
+        position = { index.toFloat() },
+        onSeek = { value -> onScrub(value.roundToInt()) },
+        modifier = Modifier.weight(1f),
+        valueRange = 0f..(count - 1).coerceAtLeast(0).toFloat(),
+        enabled = count > 1,
+        // Un fotogramma per tacca: trascinando in fretta ne passano tanti, e la tacca e' quella dell'engine.
+        step = 1f,
+        // "Adesso" sulla pista. Il tratteggio del nowcast non c'e' piu': il servizio pubblico non manda
+        // fotogrammi futuri (`nowcast: []`), quindi di solito la barra finisce al presente.
+        marks = if (count > 1) listOf(nowIndex.toFloat()) else emptyList(),
+        // Il fotogramma segue il dito mentre trascina, e l'animazione si ferma appena lo si prende.
+        onScrubStart = onScrubStart,
+        onScrub = { value -> onScrub(value.roundToInt()) },
+        contentDescription = stringResource(R.string.radar_timeline_a11y),
+        valueDescription = { value, _ -> labels.getOrNull(value.roundToInt()) ?: loadingLabel },
+        keyStep = 1f,
+        backdrop = backdrop,
+      )
       val label = if (frames == null || count == 0) {
         stringResource(R.string.radar_loading)
       } else {
