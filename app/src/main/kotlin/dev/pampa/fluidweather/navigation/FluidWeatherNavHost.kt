@@ -1,18 +1,15 @@
 package dev.pampa.fluidweather.navigation
 
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import dev.antigravity.fluidengine.ui.fluid.FluidMotion
+import dev.antigravity.fluidengine.ui.navigation.FluidNavHost
+import dev.antigravity.fluidengine.ui.navigation.composable
+import dev.antigravity.fluidengine.ui.page.FluidBackSwipe
 import dev.pampa.fluidweather.AppGraph
 import dev.pampa.fluidweather.BuildConfig
 import dev.pampa.fluidweather.core.cycle.CycleTrigger
@@ -90,15 +87,13 @@ private object Routes {
 }
 
 /**
- * Quanto la pagina coperta si sposta mentre quella nuova la copre: abbastanza da leggersi come
- * profondita', non abbastanza da scoprire il bordo. La pagina in arrivo viaggia a tutta larghezza.
- */
-private const val CoveredParallax = 0.25f
-
-/**
- * Le transizioni di rotta sono opache e laterali — la regola del design system: una pagina in
- * arrivo non sfuma mai (ogni schermata dipinge il proprio sfondo), e la direzione dice la
- * gerarchia. I tempi sono i budget di [FluidMotion], cosi' "aprire qualcosa" dura uguale ovunque.
+ * Le pagine sono quelle dell'engine (`FluidNavHost`): opache e da destra, la pagina sotto che
+ * arretra di un terzo, e il back che segue la posizione vera del dito invece di correre davanti.
+ * Le quattro transizioni a mano che stavano qui (e la parallasse del 25%) non servono piu'.
+ *
+ * Le pagine piene di gesti propri (la mappa del radar, il pager dell'onboarding, il laboratorio
+ * dell'aptica) prendono `FluidBackSwipe.EdgeOnly`: il back parte dal bordo e il resto della
+ * pagina resta suo.
  */
 @Composable
 fun FluidWeatherNavHost(
@@ -146,35 +141,11 @@ private fun FluidWeatherRoutes(
       }
     }
   }
-  NavHost(
+  FluidNavHost(
     navController = navController,
     startDestination = if (startAtOnboarding) Routes.Onboarding else Routes.Home,
-    enterTransition = {
-      slideInHorizontally(
-        animationSpec = tween(FluidMotion.DurationExpand, easing = FluidMotion.EaseEmphasized),
-        initialOffsetX = { it },
-      )
-    },
-    exitTransition = {
-      slideOutHorizontally(
-        animationSpec = tween(FluidMotion.DurationExpand, easing = FluidMotion.EaseEmphasized),
-        targetOffsetX = { -(it * CoveredParallax).toInt() },
-      )
-    },
-    popEnterTransition = {
-      slideInHorizontally(
-        animationSpec = tween(FluidMotion.DurationCollapse, easing = FluidMotion.EaseEmphasized),
-        initialOffsetX = { -(it * CoveredParallax).toInt() },
-      )
-    },
-    popExitTransition = {
-      slideOutHorizontally(
-        animationSpec = tween(FluidMotion.DurationCollapse, easing = FluidMotion.EaseEmphasized),
-        targetOffsetX = { it },
-      )
-    },
   ) {
-    composable(Routes.Onboarding) {
+    composable(Routes.Onboarding, backSwipe = FluidBackSwipe.EdgeOnly) {
       val deps = remember(graph) {
         OnboardingDependencies(
           appearanceStore = graph.appearanceSettingsStore,
@@ -197,6 +168,9 @@ private fun FluidWeatherRoutes(
       )
     }
     composable(Routes.Home) {
+      // Con le pagine dell'engine la home resta composta sotto le altre: il cielo e le due
+      // registrazioni di vetro a schermo intero devono fermarsi finche' c'e' una pagina sopra.
+      val coveredByPage = isCovered
       val homeDeps = remember(graph) {
         HomeDependencies(
           snapshotRefresher = graph.snapshotRefresher,
@@ -290,6 +264,7 @@ private fun FluidWeatherRoutes(
         ),
         requestedWidget = requestedWidget,
         onWidgetConsumed = { requestedWidget = null; onRequestConsumed() },
+        coveredByPage = coveredByPage,
         overlay = { chrome ->
           if (assistantEnabled || overlayState.mode != OverlayMode.HIDDEN) {
             AssistantOverlay(assistant = assistant, overlay = overlayState, backdrop = chrome, navigator = navigator)
@@ -314,7 +289,7 @@ private fun FluidWeatherRoutes(
       }
       ReportSheet(open = reportOpen, deps = reportDeps, onDismiss = { reportOpen = false })
     }
-    composable(Routes.Radar) {
+    composable(Routes.Radar, backSwipe = FluidBackSwipe.EdgeOnly) {
       val deps = remember(graph) {
         RadarDependencies(
           engineSettings = graph.engineSettingsStore,
@@ -423,7 +398,7 @@ private fun FluidWeatherRoutes(
       )
     }
 
-    composable(Routes.Haptics) {
+    composable(Routes.Haptics, backSwipe = FluidBackSwipe.EdgeOnly) {
       val deps = remember(graph) { HapticsLabDependencies(engineSettings = graph.engineSettingsStore) }
       HapticsLabScreen(deps = deps, onBack = { navController.popBackStack() })
     }

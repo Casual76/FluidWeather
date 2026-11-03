@@ -42,14 +42,16 @@
       </intent-filter>
     </activity>
     <!--
-        Gli strumenti del meteo per PampAI/Aria: permesso `signature`, quindi li chiama solo un'app
-        firmata con la stessa chiave. L'authority segue l'applicationId (la debug ha la sua).
+        Gli strumenti del meteo per PampAI/Aria. Senza `android:permission` (dalla 3.0 del ponte
+        non c'e' piu' un permesso `AI_TOOLS`, che impediva di installare due app con firme
+        diverse): a ogni chiamata il provider controlla la firma di chi chiama e lascia entrare
+        solo un'app firmata con la stessa chiave. L'authority segue l'applicationId (la debug ha
+        la sua).
     -->
     <provider
         android:name=".pampai.WeatherToolHostProvider"
         android:authorities="${applicationId}.ai.tools"
-        android:exported="true"
-        android:permission="dev.antigravity.fluidengine.permission.AI_TOOLS">
+        android:exported="true">
       <meta-data
           android:name="dev.antigravity.fluidengine.ai.TOOL_HOST"
           android:value="1" />

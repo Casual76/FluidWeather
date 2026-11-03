@@ -145,6 +145,11 @@ fun HomeScreen(
   /** Una pagina nera di widget chiesta da fuori (l'assistente, un chip): si apre e si consuma. */
   requestedWidget: HomeWidget? = null,
   onWidgetConsumed: () -> Unit = {},
+  /**
+   * Una pagina di navigazione (il radar, le impostazioni) copre la home: sotto non c'e' niente da
+   * guardare, e il cielo con le registrazioni di vetro a schermo intero devono fermarsi.
+   */
+  coveredByPage: Boolean = false,
   /** Cio' che sta sopra tutto (l'overlay dell'assistente), col backdrop della chrome per il vetro. */
   overlay: @Composable BoxScope.(GlassBackdropState) -> Unit = {},
 ) {
@@ -194,6 +199,7 @@ fun HomeScreen(
       onRefresh = home.refresh,
       requestedWidget = requestedWidget,
       onWidgetConsumed = onWidgetConsumed,
+      coveredByPage = coveredByPage,
       overlay = overlay,
     )
   }
@@ -214,6 +220,7 @@ private fun HomeShell(
   onRefresh: () -> Unit,
   requestedWidget: HomeWidget?,
   onWidgetConsumed: () -> Unit,
+  coveredByPage: Boolean,
   overlay: @Composable BoxScope.(GlassBackdropState) -> Unit,
 ) {
   val haptics = rememberFluidHaptics()
@@ -289,11 +296,13 @@ private fun HomeShell(
   // Quando un foglio nero o il pannello dei posti copre la home, sotto non c'e' niente da
    // guardare: la scena si ferma, e con lei le registrazioni del vetro che ne dipendono. E'
    // esattamente il fotogramma in cui la pagina di un widget sta componendo migliaia di nodi.
-  val covered = selectedWidget != null || locationOpen
+  val covered = selectedWidget != null || locationOpen || coveredByPage
   // Durante lo scorrimento le sorgenti si congelano: il riflesso nella barra non insegue piu' il
   // contenuto per la durata del fling, e in cambio non si ri-registra due volte per fotogramma
-  // tutto quello che c'e' sullo schermo.
-  val scrolling = remember(gridState) { { gridState.isScrollInProgress } }
+  // tutto quello che c'e' sullo schermo. Coperta da una pagina di navigazione, la home resta
+  // composta ma non disegnata: le sorgenti si congelano come in uno scorrimento.
+  val pageCovered by rememberUpdatedState(coveredByPage)
+  val scrolling = remember(gridState) { { gridState.isScrollInProgress || pageCovered } }
 
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
