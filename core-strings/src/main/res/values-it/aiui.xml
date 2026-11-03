@@ -16,6 +16,8 @@
   <string name="aiui_examples">Per esempio</string>
   <string name="aiui_fail_rate_limited_all">Sono al limite %1$s: riprova fra %2$s.</string>
   <string name="aiui_fail_rate_limited_in">%1$s è al limite: riprova fra %2$d s (o accendi la riserva automatica nelle impostazioni).</string>
+  <string name="aiui_fail_rate_limited_in_no_switch">%1$s è al limite: riprova fra %2$d s.</string>
+  <string name="aiui_fail_rate_limited_no_switch">%1$s è al limite di richieste: riprova fra poco.</string>
   <string name="aiui_fail_title_blocked">Bloccata dai filtri</string>
   <string name="aiui_fail_title_context_too_long">Conversazione troppo lunga</string>
   <string name="aiui_fail_title_microphone">Microfono occupato</string>
@@ -86,6 +88,7 @@
   <string name="aiui_or_policy_title">Addestramento sui tuoi messaggi</string>
   <string name="aiui_or_unlimited">illimitati</string>
   <string name="aiui_order_backup">Riserva, se il precedente è al limite o non risponde</string>
+  <string name="aiui_order_detail_no_failover">Il primo risponde; gli altri fanno da riserva se è al limite o non risponde.</string>
   <string name="aiui_order_drag">Tieni premuto e trascina per riordinare</string>
   <string name="aiui_order_first">Primo a rispondere</string>
   <string name="aiui_picker_no_match">Nessun modello corrisponde.</string>

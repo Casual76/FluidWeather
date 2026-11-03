@@ -16,6 +16,8 @@
   <string name="aiui_examples">For example</string>
   <string name="aiui_fail_rate_limited_all">%1$s are at their limit: try again in %2$s.</string>
   <string name="aiui_fail_rate_limited_in">%1$s is at its limit: try again in %2$d s (or turn on automatic fallback in settings).</string>
+  <string name="aiui_fail_rate_limited_in_no_switch">%1$s is at its limit: try again in %2$d s.</string>
+  <string name="aiui_fail_rate_limited_no_switch">%1$s is at its request limit: try again shortly.</string>
   <string name="aiui_fail_title_blocked">Blocked by filters</string>
   <string name="aiui_fail_title_context_too_long">Conversation too long</string>
   <string name="aiui_fail_title_microphone">Microphone busy</string>
@@ -86,6 +88,7 @@
   <string name="aiui_or_policy_title">Training on your messages</string>
   <string name="aiui_or_unlimited">unlimited</string>
   <string name="aiui_order_backup">Fallback, if the previous one is at its limit or not answering</string>
+  <string name="aiui_order_detail_no_failover">The first one answers; the others are the fallback if it is at its limit or not answering.</string>
   <string name="aiui_order_drag">Press and hold, then drag to reorder</string>
   <string name="aiui_order_first">First to answer</string>
   <string name="aiui_picker_no_match">No model matches.</string>
