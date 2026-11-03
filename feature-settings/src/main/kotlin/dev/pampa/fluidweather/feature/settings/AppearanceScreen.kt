@@ -29,9 +29,11 @@ import dev.antigravity.fluidengine.foundation.ThemeMode
 import dev.antigravity.fluidengine.storage.EngineSettingsStore
 import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
 import dev.antigravity.fluidengine.ui.fluid.FluidChip
+import dev.antigravity.fluidengine.ui.fluid.FluidChoiceRow
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
+import dev.antigravity.fluidengine.ui.fluid.FluidToggleRow
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
@@ -137,15 +139,11 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
           )
         }
         FluidListDivider()
-        FluidListRow(
+        FluidToggleRow(
           title = stringResource(R.string.appear_pure_black),
           subtitle = stringResource(R.string.appear_pure_black_desc),
-          badge = {
-            FluidSwitch(
-              checked = engine.amoledEnabled,
-              onCheckedChange = { scope.launch { deps.engineSettings.setAmoledEnabled(it) } },
-            )
-          },
+          checked = engine.amoledEnabled,
+          onCheckedChange = { scope.launch { deps.engineSettings.setAmoledEnabled(it) } },
         )
       }
     }
@@ -161,39 +159,29 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
     item { FluidSectionHeader(title = stringResource(R.string.appear_glass)) }
     item {
       FluidListGroup {
-        FluidListRow(
+        FluidToggleRow(
           title = stringResource(R.string.appear_glass_auto),
           subtitle = stringResource(R.string.appear_glass_auto_desc),
-          badge = {
-            FluidSwitch(
-              checked = appearance.autoGlass,
-              onCheckedChange = { scope.launch { deps.appearanceStore.setAutoGlass(it) } },
-            )
-          },
+          checked = appearance.autoGlass,
+          onCheckedChange = { scope.launch { deps.appearanceStore.setAutoGlass(it) } },
         )
         GlassLevel.entries.forEach { level ->
           FluidListDivider()
-          FluidListRow(
+          FluidChoiceRow(
             title = level.label(),
             subtitle = level.description(),
-            badge = if (!appearance.autoGlass && appearance.manualLevel == level) {
-              { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = MaterialTheme.colorScheme.primary) }
-            } else {
-              null
-            },
-            onClick = if (appearance.autoGlass) null else ({ scope.launch { deps.appearanceStore.setManualLevel(level) } }),
+            selected = !appearance.autoGlass && appearance.manualLevel == level,
+            // Col vetro automatico la scelta a mano non vale: la riga sfuma e non risponde.
+            enabled = !appearance.autoGlass,
+            onSelect = { scope.launch { deps.appearanceStore.setManualLevel(level) } },
           )
         }
         FluidListDivider()
-        FluidListRow(
+        FluidToggleRow(
           title = stringResource(R.string.appear_glass_power_save),
           subtitle = stringResource(R.string.appear_glass_power_save_desc),
-          badge = {
-            FluidSwitch(
-              checked = appearance.reduceOnPowerSave,
-              onCheckedChange = { scope.launch { deps.appearanceStore.setReduceOnPowerSave(it) } },
-            )
-          },
+          checked = appearance.reduceOnPowerSave,
+          onCheckedChange = { scope.launch { deps.appearanceStore.setReduceOnPowerSave(it) } },
         )
       }
     }
@@ -201,29 +189,21 @@ fun AppearanceScreen(deps: AppearanceDependencies, onBack: () -> Unit) {
     item { FluidSectionHeader(title = stringResource(R.string.appear_touch)) }
     item {
       FluidListGroup {
-        FluidListRow(
+        FluidToggleRow(
           title = stringResource(R.string.appear_haptics),
           subtitle = stringResource(R.string.appear_haptics_desc),
-          badge = {
-            FluidSwitch(
-              checked = engine.hapticsEnabled,
-              onCheckedChange = { on -> scope.launch { deps.engineSettings.setHapticsEnabled(on) } },
-            )
-          },
+          checked = engine.hapticsEnabled,
+          onCheckedChange = { on -> scope.launch { deps.engineSettings.setHapticsEnabled(on) } },
         )
         val tutorials = LocalTutorialController.current
         if (tutorials != null) {
           val tutorialsOff by tutorials.disabled.collectAsState()
           FluidListDivider()
-          FluidListRow(
+          FluidToggleRow(
             title = stringResource(R.string.appear_tutorials),
             subtitle = stringResource(R.string.appear_tutorials_desc),
-            badge = {
-              FluidSwitch(
-                checked = !tutorialsOff,
-                onCheckedChange = { on -> tutorials.setDisabled(!on) },
-              )
-            },
+            checked = !tutorialsOff,
+            onCheckedChange = { on -> tutorials.setDisabled(!on) },
           )
         }
       }
@@ -247,16 +227,8 @@ private fun HapticsPreviewEffect(enabled: Boolean) {
   }
 }
 
+/** Una scelta singola: la spunta a destra e' dell'engine (`FluidChoiceRow`), come in ogni app Pampa. */
 @Composable
 private fun AccentRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
-  FluidListRow(
-    title = title,
-    subtitle = subtitle,
-    badge = if (selected) {
-      { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = MaterialTheme.colorScheme.primary) }
-    } else {
-      null
-    },
-    onClick = onClick,
-  )
+  FluidChoiceRow(title = title, subtitle = subtitle, selected = selected, onSelect = onClick)
 }

@@ -28,6 +28,7 @@ import dev.antigravity.fluidengine.ui.fluid.FluidProgressBar
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
+import dev.antigravity.fluidengine.ui.fluid.FluidToggleRow
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
@@ -362,15 +363,11 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
     item { FluidSectionHeader(title = stringResource(R.string.engine_while_open)) }
     item {
       FluidListGroup {
-        FluidListRow(
+        FluidToggleRow(
           title = stringResource(R.string.engine_continuous),
           subtitle = stringResource(R.string.engine_continuous_desc),
-          badge = {
-            FluidSwitch(
-              checked = settings.continuousWhileOpen,
-              onCheckedChange = { enabled -> scope.launch { deps.samplingSettings.setContinuousWhileOpen(enabled) } },
-            )
-          },
+          checked = settings.continuousWhileOpen,
+          onCheckedChange = { enabled -> scope.launch { deps.samplingSettings.setContinuousWhileOpen(enabled) } },
         )
       }
     }

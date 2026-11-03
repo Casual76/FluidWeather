@@ -1,5 +1,7 @@
 package dev.pampa.fluidweather.feature.settings
 
+import dev.antigravity.fluidengine.ui.fluid.FluidChoiceRow
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
@@ -125,28 +127,21 @@ private fun <T : Enum<T>> UnitGroup(
   symbol: @Composable (T) -> String,
   onSelect: (T?) -> Unit,
 ) {
-  FluidListGroup {
-    FluidListRow(
+  // Una scelta singola con la spunta a destra: `FluidChoiceRow`, un gruppo selezionabile per TalkBack.
+  FluidListGroup(modifier = Modifier.selectableGroup()) {
+    FluidChoiceRow(
       title = stringResource(R.string.units_default_name),
       subtitle = stringResource(R.string.units_auto, symbol(default)),
-      badge = if (selected == null) {
-        { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = MaterialTheme.colorScheme.primary) }
-      } else {
-        null
-      },
-      onClick = { onSelect(null) },
+      selected = selected == null,
+      onSelect = { onSelect(null) },
     )
     options.forEach { option ->
       FluidListDivider()
-      FluidListRow(
+      FluidChoiceRow(
         title = name(option),
         subtitle = symbol(option),
-        badge = if (selected == option) {
-          { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = MaterialTheme.colorScheme.primary) }
-        } else {
-          null
-        },
-        onClick = { onSelect(option) },
+        selected = selected == option,
+        onSelect = { onSelect(option) },
       )
     }
   }

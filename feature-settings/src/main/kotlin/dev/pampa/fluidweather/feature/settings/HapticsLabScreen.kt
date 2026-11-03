@@ -22,6 +22,7 @@ import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
+import dev.antigravity.fluidengine.ui.fluid.FluidToggleRow
 import dev.antigravity.fluidengine.ui.fluid.fluidPressable
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEngine
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
@@ -193,12 +194,8 @@ fun HapticsLabScreen(deps: HapticsLabDependencies, onBack: () -> Unit) {
         FluidListRow(
           title = stringResource(R.string.appear_haptics),
           subtitle = stringResource(R.string.appear_haptics_desc),
-          badge = {
-            FluidSwitch(
-              checked = settings.hapticsEnabled,
-              onCheckedChange = { on -> scope.launch { deps.engineSettings.setHapticsEnabled(on) } },
-            )
-          },
+          checked = settings.hapticsEnabled,
+          onCheckedChange = { on -> scope.launch { deps.engineSettings.setHapticsEnabled(on) } },
         )
         FluidListDivider()
         FluidListRow(title = stringResource(R.string.hapt_engine), subtitle = engineDesc, meta = engineLabel)
@@ -209,7 +206,7 @@ fun HapticsLabScreen(deps: HapticsLabDependencies, onBack: () -> Unit) {
           meta = supported.size.toString(),
         )
         FluidListDivider()
-        FluidListRow(
+        FluidToggleRow(
           title = stringResource(R.string.hapt_system),
           subtitle = stringResource(R.string.hapt_system_desc),
           meta = stringResource(if (info?.systemHapticsEnabled != false) R.string.hapt_on else R.string.hapt_off),

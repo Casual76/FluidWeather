@@ -139,7 +139,8 @@ private fun KeyRow(label: String, why: String, saved: Boolean, onSave: (String) 
         value = input,
         onValueChange = { input = it.trim() },
         placeholder = if (saved) stringResource(R.string.prov_key_saved) else stringResource(R.string.prov_paste_key),
-        visualTransformation = PasswordVisualTransformation(),
+        // I puntini e l'occhio sono dell'engine: parte nascosto a ogni apertura e non ricorda di essere stato mostrato.
+        secret = true,
         modifier = Modifier.weight(1f),
       )
       Spacer(Modifier.width(8.dp))

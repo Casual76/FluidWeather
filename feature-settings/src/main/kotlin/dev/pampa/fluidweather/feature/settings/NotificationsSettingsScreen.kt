@@ -22,6 +22,7 @@ import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
+import dev.antigravity.fluidengine.ui.fluid.FluidToggleRow
 import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
@@ -109,15 +110,11 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
       FluidListGroup {
         NotificationChannelKind.entries.forEachIndexed { index, kind ->
           if (index > 0) FluidListDivider()
-          FluidListRow(
+          FluidToggleRow(
             title = stringResource(kind.labelRes()),
             subtitle = stringResource(kind.descriptionRes()),
-            badge = {
-              FluidSwitch(
-                checked = settings.enabled(kind),
-                onCheckedChange = { setEnabled(kind, it) },
-              )
-            },
+            checked = settings.enabled(kind),
+            onCheckedChange = { setEnabled(kind, it) },
           )
           if (kind == NotificationChannelKind.DAILY_SUMMARY) {
             FluidListDivider()
