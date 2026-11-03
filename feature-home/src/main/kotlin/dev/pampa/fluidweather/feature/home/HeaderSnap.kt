@@ -1,7 +1,6 @@
 package dev.pampa.fluidweather.feature.home
 
 import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -63,11 +62,7 @@ internal class HeaderSnapFlingBehavior(
     animate(
       initialValue = 0f,
       targetValue = delta,
-      animationSpec = spring(
-        dampingRatio = FluidMotion.DampingChrome,
-        stiffness = FluidMotion.ResponseSnappy,
-        visibilityThreshold = 0.5f,
-      ),
+      animationSpec = FluidMotion.pixels(FluidMotion.DampingChrome, FluidMotion.ResponseSnappy),
     ) { value, _ ->
       applied += scrollBy(value - applied)
     }

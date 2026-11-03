@@ -3,7 +3,6 @@ package dev.pampa.fluidweather.feature.report
 import android.content.Context
 import android.location.Geocoder
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -259,7 +258,7 @@ private fun ConditionTile(
 ) {
   val presence = remember { Animatable(0f) }
   LaunchedEffect(visible) {
-    if (visible) presence.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = FluidMotion.ResponseSnappy))
+    if (visible) presence.animateTo(1f, FluidMotion.tuned(dampingRatio = 0.7f, stiffness = FluidMotion.ResponseSnappy))
   }
   val background = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f) else White.copy(alpha = 0.07f)
   val border = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent

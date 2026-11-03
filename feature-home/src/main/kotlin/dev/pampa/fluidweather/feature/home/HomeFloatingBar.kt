@@ -3,12 +3,8 @@ package dev.pampa.fluidweather.feature.home
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -56,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
 import dev.antigravity.fluidengine.ui.fluid.FluidContextAction
+import dev.antigravity.fluidengine.ui.fluid.FluidGlassIconButton
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.GlassBackdropState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
@@ -198,8 +195,9 @@ internal fun HomeFloatingBar(
 }
 
 /**
- * Un tasto tondo di vetro da 54 dp: la stessa ricetta di `FluidGlassIconButton` dell'engine, che
- * pero' ha misure interne fisse (48/44 dp) e non si presta alla barra piu' grande.
+ * Un tasto tondo di vetro da 54 dp: e' `FluidGlassIconButton(size = ...)` dell'engine, con la sua
+ * pressione (cresce sotto il dito col tetto dei tondi: da 54 a 78 dp, dodici per lato), la sua lente
+ * e la sua aptica. Prima era una copia della stessa ricetta, perche' l'engine non aveva misure libere.
  */
 @Composable
 private fun BarIconButton(
@@ -209,16 +207,17 @@ private fun BarIconButton(
   onClick: () -> Unit,
   onLongClick: (() -> Unit)? = null,
   modifier: Modifier = Modifier,
-  /** Cosa si sente al rilascio; null per un tasto la cui azione parla gia' da sola. */
+  /** Cosa si sente al click; null per un tasto la cui azione parla gia' da sola. */
   haptic: FluidHapticEvent? = FluidHapticEvent.Tap,
   content: (@Composable () -> Unit)? = null,
 ) {
-  Box(
-    modifier = modifier
-      .size(HomeBarHeight)
-      .glassControlSurface(backdrop = backdrop, shape = FluidCapsuleShape)
-      .fluidPressable(onClick = onClick, onLongClick = onLongClick, pressedScale = 1f, role = Role.Button, haptic = haptic),
-    contentAlignment = Alignment.Center,
+  FluidGlassIconButton(
+    onClick = onClick,
+    size = HomeBarHeight,
+    modifier = modifier,
+    backdrop = backdrop,
+    onLongClick = onLongClick,
+    haptic = haptic,
   ) {
     if (content != null) {
       content()
@@ -247,7 +246,8 @@ private fun AssistantButton(
   val scale by pulse.animateFloat(
     initialValue = 1f,
     targetValue = 1.18f,
-    animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+    // Il respiro dell'engine: lo stesso periodo e la stessa fase di ogni pallino che respira.
+    animationSpec = FluidMotion.pulse(),
     label = "assistantScale",
   )
   val description = stringResource(R.string.a11y_assistant_button)
@@ -342,7 +342,7 @@ private fun LocationPill(
             scope.launch {
               drag.animateTo(
                 0f,
-                spring(dampingRatio = FluidMotion.DampingChrome, stiffness = FluidMotion.ResponseSnappy),
+                FluidMotion.snappy(),
               )
             }
           },
