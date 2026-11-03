@@ -37,8 +37,8 @@ android {
     applicationId 'dev.pampa.fluidweather'
     minSdk engine.minSdk
     targetSdk engine.compileSdk
-    versionCode 17
-    versionName '1.5.1'
+    versionCode 18
+    versionName '2.0.0'
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
     // La 1.1.0 promuove l'app a stable (decisione 2026-09-03): chi la installa segue stable
     // finche' non sceglie altro in Informazioni. Il canale e' compilato dentro l'APK, quindi
