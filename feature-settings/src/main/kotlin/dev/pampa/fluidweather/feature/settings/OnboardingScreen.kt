@@ -52,6 +52,7 @@ import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.fluid.FluidCapsuleShape
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
+import dev.antigravity.fluidengine.ui.fluid.FluidPagerDots
 import dev.antigravity.fluidengine.ui.fluid.FluidSwitch
 import dev.antigravity.fluidengine.ui.theme.FluidTheme
 import dev.pampa.fluidweather.core.ai.AiAssistant
@@ -319,17 +320,15 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
         .fillMaxWidth()
         .padding(bottom = 18.dp),
     ) {
-      repeat(pages.size) { index ->
-        Box(
-          Modifier
-            .padding(horizontal = 4.dp)
-            .size(if (index == pagerState.currentPage) 10.dp else 7.dp)
-            .background(
-              Color.White.copy(alpha = if (index == pagerState.currentPage) 0.95f else 0.35f),
-              FluidCapsuleShape,
-            ),
-        )
-      }
+      // I punti seguono il dito: a meta' scorrimento due punti sono mezzo correnti (`FluidPagerDots`).
+      val pageLabelTemplate = stringResource(R.string.onb_page_label)
+      FluidPagerDots(
+        state = pagerState,
+        color = Color.White.copy(alpha = 0.35f),
+        activeColor = Color.White.copy(alpha = 0.95f),
+        maxVisible = pages.size,
+        pageLabel = { page, count -> String.format(pageLabelTemplate, page, count) },
+      )
     }
   }
 }

@@ -1259,4 +1259,5 @@
   <string name="onb_ai_yes">Sì, lo configuro</string>
   <string name="onb_ai_yes_desc">Basta una chiave gratuita</string>
   <string name="onb_step_ai">Assistente</string>
+  <string name="onb_page_label">Pagina %1$d di %2$d</string>
 </resources>

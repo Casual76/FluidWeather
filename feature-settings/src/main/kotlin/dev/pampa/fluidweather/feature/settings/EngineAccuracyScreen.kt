@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.feature.settings
 
+import androidx.compose.foundation.selection.selectableGroup
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -24,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
+import dev.antigravity.fluidengine.ui.fluid.FluidChoiceRow
 import dev.antigravity.fluidengine.ui.fluid.FluidProgressBar
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
@@ -317,18 +319,15 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
 
     item { FluidSectionHeader(title = stringResource(R.string.engine_sampling)) }
     item {
-      FluidListGroup {
+      FluidListGroup(modifier = Modifier.selectableGroup()) {
         SamplingMode.entries.forEachIndexed { index, mode ->
           if (index > 0) FluidListDivider()
-          FluidListRow(
+          // Una scelta singola con la spunta a destra: `FluidChoiceRow` dell'engine.
+          FluidChoiceRow(
             title = mode.label(),
             subtitle = mode.description(),
-            badge = if (settings.mode == mode) {
-              { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_selected), tint = MaterialTheme.colorScheme.primary) }
-            } else {
-              null
-            },
-            onClick = {
+            selected = settings.mode == mode,
+            onSelect = {
               scope.launch {
                 deps.samplingSettings.setMode(mode)
                 deps.scheduler.apply(mode)

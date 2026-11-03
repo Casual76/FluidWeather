@@ -1259,4 +1259,5 @@
   <string name="onb_ai_yes">Yes, set it up</string>
   <string name="onb_ai_yes_desc">One free key is enough</string>
   <string name="onb_step_ai">Assistant</string>
+  <string name="onb_page_label">Page %1$d of %2$d</string>
 </resources>

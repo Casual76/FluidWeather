@@ -20,6 +20,7 @@ import dev.antigravity.fluidengine.foundation.AppUpdater
 import dev.antigravity.fluidengine.foundation.AvailableAppUpdate
 import dev.antigravity.fluidengine.foundation.UpdateChannel
 import dev.antigravity.fluidengine.ui.fluid.FluidButton
+import dev.antigravity.fluidengine.ui.fluid.FluidChoiceRow
 import dev.antigravity.fluidengine.ui.fluid.FluidButtonStyle
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
@@ -79,15 +80,12 @@ fun AppUpdateRows(deps: UpdateDependencies) {
   val downloadingTemplate = stringResource(R.string.update_downloading)
 
   UpdateChannel.entries.forEach { candidate ->
-    FluidListRow(
+    // Le due righe del canale sono una scelta singola: `FluidChoiceRow`, con la spunta a destra.
+    FluidChoiceRow(
       title = stringResource(if (candidate == UpdateChannel.STABLE) R.string.channel_stable else R.string.channel_beta),
       subtitle = stringResource(if (candidate == UpdateChannel.STABLE) R.string.channel_stable_desc else R.string.channel_beta_desc),
-      badge = if (channel == candidate) {
-        { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.common_chosen), tint = MaterialTheme.colorScheme.primary) }
-      } else {
-        null
-      },
-      onClick = {
+      selected = channel == candidate,
+      onSelect = {
         scope.launch {
           deps.releaseSettings.setChannel(candidate)
           status = UpdateStatus.Idle
