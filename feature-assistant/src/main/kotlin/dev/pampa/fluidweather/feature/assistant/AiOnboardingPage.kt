@@ -40,6 +40,7 @@ import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.antigravity.fluidengine.ai.keys.AiSettings
 import dev.antigravity.fluidengine.ai.keys.KeyState
 import dev.antigravity.fluidengine.ai.provider.ProviderId
+import dev.antigravity.fluidengine.aiui.settings.FluidAiKeySetup
 import dev.pampa.fluidweather.strings.R
 import kotlinx.coroutines.launch
 
@@ -59,6 +60,7 @@ fun AiOnboardingPage(assistant: AiAssistant, onNext: () -> Unit) {
   val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionEpoch++ }
   val micGranted = remember(permissionEpoch) { context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED }
   val anyVerified = keyStates.values.any { it.verified }
+  val strings = rememberAiSettingsStrings()
   val white = Color.White
   val dim = Color.White.copy(alpha = 0.75f)
 
@@ -93,14 +95,20 @@ fun AiOnboardingPage(assistant: AiAssistant, onNext: () -> Unit) {
         .background(Color.White.copy(alpha = 0.10f), ContinuousCornerShape(FluidRadius.Card)),
     ) {
       ProviderId.entries.forEach { provider ->
-        AiKeySetup(
-          assistant = assistant,
+        FluidAiKeySetup(
           provider = provider,
           state = keyStates[provider] ?: KeyState(false, null),
-          onSurface = white,
-          onSurfaceVariant = dim,
+          saveAndVerify = { target, key ->
+            if (key != null) assistant.keys.set(target, key)
+            assistant.verifier.verify(target)
+          },
+          onRemove = { target -> scope.launch { assistant.keys.set(target, null) } },
           initiallyExpanded = provider == ProviderId.GROQ,
           onVerified = { scope.launch { assistant.settings.setEnabled(true) } },
+          strings = strings,
+          // Nell'onboarding si sta sopra il cielo: il testo non e' il colore di una superficie.
+          onSurface = white,
+          onSurfaceVariant = dim,
         )
       }
     }

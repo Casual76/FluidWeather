@@ -1158,7 +1158,6 @@
   <string name="ai_openrouter_data_collection_desc">Spento: solo percorsi che non conservano le richieste. Qualche modello può non essere disponibile.</string>
   <string name="ai_openrouter_default_chosen">Predefinito scelto: %1$s</string>
   <string name="ai_openrouter_free_tier">Piano gratuito</string>
-  <string name="ai_openrouter_free_today">Oggi: %1$d/%2$d richieste gratuite</string>
   <string name="ai_openrouter_no_free">Nessun modello gratuito con tool al momento: uso %1$s (a pagamento)</string>
   <string name="ai_openrouter_paid_tier">Crediti comprati</string>
   <string name="ai_order_chat">Chat</string>

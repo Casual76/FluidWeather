@@ -30,6 +30,8 @@ android {
 
 dependencies {
   implementation project(':engine-ui')
+  // L'interfaccia dell'assistente: overlay, card, impostazioni, chiavi. Sta sopra engine-ui ed engine-ai.
+  api project(':engine-ai-ui')
   implementation project(':core-ui')
   api project(':core-ai')
   implementation project(':engine-storage')

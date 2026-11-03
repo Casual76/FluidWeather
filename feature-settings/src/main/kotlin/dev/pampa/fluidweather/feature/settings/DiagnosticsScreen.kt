@@ -43,6 +43,8 @@ import dev.pampa.fluidweather.core.ui.rememberBackgroundAccess
 import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
 import dev.pampa.fluidweather.feature.assistant.aiDiagnosticsSection
+import dev.pampa.fluidweather.feature.assistant.rememberAiDiagnostics
+import dev.pampa.fluidweather.feature.assistant.rememberAiSettingsStrings
 import dev.pampa.fluidweather.core.data.SamplingSettings
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.model.ManualBurst
@@ -109,6 +111,8 @@ class DiagnosticsDependencies(
  */
 @Composable
 fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenHaptics: () -> Unit) {
+  val aiDiagnostics = rememberAiDiagnostics(deps.assistant)
+  val aiStrings = rememberAiSettingsStrings()
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
 
@@ -536,7 +540,7 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
       }
     }
 
-    aiDiagnosticsSection(deps.assistant)
+    aiDiagnosticsSection(aiDiagnostics, aiStrings)
   }
 }
 

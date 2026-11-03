@@ -13,15 +13,17 @@ import org.junit.Test
  */
 class StringsTest {
 
-  private val english = parse("src/main/res/values/strings.xml")
-  private val italian = parse("src/main/res/values-it/strings.xml")
+  // Tutti i file di una lingua, non solo `strings.xml`: `aiui.xml` ha le parole di engine-ai-ui.
+  private val english = parse("src/main/res/values")
+  private val italian = parse("src/main/res/values-it")
 
-  private fun parse(path: String): Map<String, String> {
-    val text = File(path).readText()
-    return Regex("""<string name="([^"]+)"[^>]*>(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
-      .findAll(text)
-      .associate { match -> match.groupValues[1] to match.groupValues[2] }
-  }
+  private fun parse(directory: String): Map<String, String> =
+    File(directory).listFiles { file -> file.extension == "xml" }.orEmpty().sortedBy { it.name }.flatMap { file ->
+      Regex("""<string name="([^"]+)"[^>]*>(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
+        .findAll(file.readText())
+        .map { match -> match.groupValues[1] to match.groupValues[2] }
+        .toList()
+    }.toMap()
 
   @Test
   fun `le due lingue hanno le stesse chiavi`() {

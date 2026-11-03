@@ -1158,7 +1158,6 @@
   <string name="ai_openrouter_data_collection_desc">Off: only routes that do not store your requests. Some models may be unavailable.</string>
   <string name="ai_openrouter_default_chosen">Default chosen: %1$s</string>
   <string name="ai_openrouter_free_tier">Free plan</string>
-  <string name="ai_openrouter_free_today">Today: %1$d/%2$d free requests</string>
   <string name="ai_openrouter_no_free">No free model with tools right now: using %1$s (paid)</string>
   <string name="ai_openrouter_paid_tier">Credits bought</string>
   <string name="ai_order_chat">Chat</string>

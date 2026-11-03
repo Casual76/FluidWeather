@@ -2,99 +2,50 @@ package dev.pampa.fluidweather.feature.assistant
 
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.res.stringResource
-import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
-import dev.antigravity.fluidengine.ui.theme.FluidListDivider
-import dev.antigravity.fluidengine.ui.theme.FluidListGroup
-import dev.antigravity.fluidengine.ui.theme.FluidListRow
-import dev.pampa.fluidweather.core.ai.AiAssistant
 import dev.antigravity.fluidengine.ai.keys.AiSettings
+import dev.antigravity.fluidengine.ai.keys.KeyState
+import dev.antigravity.fluidengine.ai.net.RateLimitInfo
 import dev.antigravity.fluidengine.ai.orchestrator.AiRequestLog
 import dev.antigravity.fluidengine.ai.provider.ProviderId
-import dev.pampa.fluidweather.strings.R
-import dev.pampa.fluidweather.strings.TimeFormats
-import java.util.Locale
+import dev.antigravity.fluidengine.aiui.settings.fluidAiDiagnosticsSection
+import dev.antigravity.fluidengine.aiui.strings.FluidAiSettingsStrings
+import dev.pampa.fluidweather.core.ai.AiAssistant
 
-/**
- * La sezione "Assistente IA" della Diagnostica: stato, le ultime dieci richieste (provider e
- * cambi, gruppi, tool con tempi, token, costo, attese) e le quote residue lette dagli header.
- * Le domande stesse restano in memoria e spariscono con l'app.
- */
-fun LazyListScope.aiDiagnosticsSection(assistant: AiAssistant) {
-  item { FluidSectionHeader(title = stringResource(R.string.diag_ai_section)) }
-  item { AiDiagnosticsState(assistant) }
-  item { AiDiagnosticsRequests(assistant) }
-}
+/** Quello che la sezione della Diagnostica legge, come dati: i flussi si raccolgono nella pagina, non nella lista. */
+@Immutable
+class AiDiagnosticsData(
+  val settings: AiSettings,
+  val keys: Map<ProviderId, KeyState>,
+  val enabled: Boolean,
+  val rateLimits: Map<ProviderId, RateLimitInfo>,
+  val requests: List<AiRequestLog>,
+)
 
 @Composable
-private fun AiDiagnosticsState(assistant: AiAssistant) {
+fun rememberAiDiagnostics(assistant: AiAssistant): AiDiagnosticsData {
   val settings by assistant.settings.settings.collectAsState(initial = AiSettings())
   val enabled by assistant.enabled.collectAsState(initial = false)
   val limits by assistant.diagnostics.rateLimits.collectAsState()
   val keys by assistant.keys.states.collectAsState(initial = emptyMap())
-  val verified = keys.filterValues { it.verified }.keys
-  FluidListGroup {
-    FluidListRow(
-      title = stringResource(R.string.diag_ai_state),
-      subtitle = if (enabled) {
-        stringResource(R.string.diag_ai_on, settings.chatOrder.filter { it in verified }.joinToString(" → ") { "${it.label} (${settings.chatModel(it) ?: "—"})" })
-      } else {
-        stringResource(R.string.diag_ai_off)
-      },
-    )
-    limits.forEach { (provider, info) ->
-      val parts = buildList {
-        info.remainingTokens?.let { add(stringResource(R.string.diag_ai_quota_tokens, it)) }
-        info.remainingRequests?.let { add(stringResource(R.string.diag_ai_quota_requests, it)) }
-      }
-      if (parts.isNotEmpty()) {
-        FluidListDivider()
-        FluidListRow(title = stringResource(R.string.diag_ai_quota, provider.label, parts.joinToString(" · ")), subtitle = "")
-      }
-    }
-  }
-}
-
-@Composable
-private fun AiDiagnosticsRequests(assistant: AiAssistant) {
   val entries by assistant.diagnostics.entries.collectAsState()
-  FluidListGroup {
-    if (entries.isEmpty()) {
-      FluidListRow(title = stringResource(R.string.diag_ai_requests), subtitle = stringResource(R.string.diag_ai_none))
-      return@FluidListGroup
-    }
-    entries.forEachIndexed { index, log ->
-      if (index > 0) FluidListDivider()
-      RequestRow(log)
-    }
-  }
+  return AiDiagnosticsData(settings, keys, enabled, limits, entries)
 }
 
-@Composable
-private fun RequestRow(log: AiRequestLog) {
-  val provider = buildString {
-    append(log.provider.label)
-    if (log.switchedTo.isNotEmpty()) append(" ").append(stringResource(R.string.diag_ai_switched, log.switchedTo.joinToString(", ") { it.label }))
-    append(" · ").append(log.model)
-  }
-  val details = buildList {
-    add(stringResource(R.string.diag_ai_request_meta, provider, log.steps, log.durationMillis))
-    if (log.groups.isNotEmpty()) add(stringResource(R.string.diag_ai_groups, log.groups.joinToString(", ")))
-    if (log.tools.isNotEmpty()) add(stringResource(R.string.diag_ai_tools, log.tools.joinToString(", ") { "${it.name} ${it.millis} ms${if (it.ok) "" else " ✕"}" }))
-    log.usage?.let { usage ->
-      add(stringResource(R.string.diag_ai_tokens, usage.promptTokens, usage.completionTokens))
-      usage.costUsd?.let { add(stringResource(R.string.diag_ai_cost, String.format(Locale.getDefault(), "%.4f $", it))) }
-    }
-    if (log.waitedSeconds > 0) add(stringResource(R.string.diag_ai_waited, log.waitedSeconds))
-    log.error?.let { add(it) }
-  }.joinToString("\n")
-  FluidListRow(
-    title = log.question.take(80),
-    subtitle = details,
-    meta = TimeFormats.time(log.startedAtMillis),
+/**
+ * La sezione "Assistente IA" della Diagnostica: stato, la catena dei servizi, le quote residue
+ * lette dagli header e le ultime richieste (provider e cambi, gruppi, strumenti con tempi, token,
+ * costo, attese). E' di `engine-ai-ui`; le domande restano in memoria e spariscono con l'app.
+ */
+fun LazyListScope.aiDiagnosticsSection(data: AiDiagnosticsData, strings: FluidAiSettingsStrings) {
+  fluidAiDiagnosticsSection(
+    settings = data.settings,
+    keys = data.keys,
+    enabled = data.enabled,
+    rateLimits = data.rateLimits,
+    requests = data.requests,
+    strings = strings,
   )
 }
-
-internal fun ProviderId.short(): String = label
