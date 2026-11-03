@@ -34,6 +34,10 @@
   <string name="about_replay_tutorials_desc">Back to the first day, one tip per feature</string>
   <string name="about_source">Source</string>
   <string name="about_sources">Data sources</string>
+  <string name="about_license">License</string>
+  <string name="about_license_desc">GNU GPL-3.0: the source code is public, and free to share under the same license</string>
+  <string name="licenses_title">Licenses and credits</string>
+  <string name="licenses_footnote">Fluid Engine %1$s includes these third-party works, among them GPL-3.0 code (LibrePods): this app is distributed under the same license, and the source code is available to anyone who receives it. The full licenses are in the engine repository, under LICENSES/.</string>
   <string name="about_title">About</string>
   <string name="about_update">In-app update</string>
   <string name="about_update_desc">Stable and beta channels via Pampa Store: coming with the release.</string>

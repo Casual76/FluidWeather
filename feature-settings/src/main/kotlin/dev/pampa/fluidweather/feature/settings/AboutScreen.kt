@@ -10,6 +10,8 @@ import androidx.compose.ui.res.stringResource
 import dev.antigravity.fluidengine.foundation.EngineBuild
 import dev.antigravity.fluidengine.foundation.EngineCompatibility
 import dev.antigravity.fluidengine.foundation.EngineConfig
+import dev.antigravity.fluidengine.ui.fluid.FluidEngineLicenses
+import dev.antigravity.fluidengine.ui.fluid.FluidLicense
 import dev.antigravity.fluidengine.ui.fluid.FluidScreen
 import dev.antigravity.fluidengine.ui.fluid.FluidSectionHeader
 import dev.antigravity.fluidengine.ui.fluid.fluidLicensesSection
@@ -30,6 +32,57 @@ class AboutDependencies(
 )
 
 /**
+ * Le opere di terze parti che l'APK porta oltre a quelle dell'engine: la mappa del radar. Il testo
+ * delle licenze e' quello che chiedono i loro autori (BSD-2-Clause: l'avviso del copyright resta
+ * visibile a chi riceve il programma); i dati della mappa hanno le loro attribuzioni nella riga
+ * "OpenFreeMap" delle fonti.
+ */
+private val MapLicenses = listOf(
+  FluidLicense(
+    name = "MapLibre Native Android",
+    author = "MapLibre contributors",
+    licence = "BSD-2-Clause",
+    url = "https://github.com/maplibre/maplibre-native",
+    role = "The radar base map.",
+  ),
+  FluidLicense(
+    name = "MapLibre Android Gestures",
+    author = "MapLibre contributors",
+    licence = "BSD-2-Clause",
+    url = "https://github.com/maplibre/maplibre-gestures-android",
+    role = "Pan, zoom and rotate on the radar map.",
+  ),
+  FluidLicense(
+    name = "OkHttp, Okio",
+    author = "Square, Inc.",
+    licence = "Apache License 2.0",
+    url = "https://square.github.io/okhttp/",
+    role = "Network traffic of the map.",
+  ),
+  FluidLicense(
+    name = "Gson",
+    author = "Google Inc.",
+    licence = "Apache License 2.0",
+    url = "https://github.com/google/gson",
+    role = "Reads the map style and the GeoJSON of the map.",
+  ),
+  FluidLicense(
+    name = "geojson, turf",
+    author = "MapLibre contributors",
+    licence = "Apache License 2.0",
+    url = "https://github.com/maplibre/maplibre-java",
+    role = "Geometry of the map.",
+  ),
+  FluidLicense(
+    name = "OpenFreeMap",
+    author = "Zsolt Ero",
+    licence = "MIT",
+    url = "https://openfreemap.org",
+    role = "The free map tiles (data © OpenMapTiles, © OpenStreetMap contributors, ODbL).",
+  ),
+)
+
+/**
  * Informazioni e aggiornamento (fasi 15 e 18): la versione dell'app e dell'engine, il canale e
  * l'aggiornamento in-app dal manifest del Pampa Store, l'avviso remoto se ce n'e' uno, le fonti
  * dei dati con la loro attribuzione (e' parte del contratto, non una nota a pie' di pagina), le
@@ -39,6 +92,9 @@ class AboutDependencies(
 fun AboutScreen(deps: AboutDependencies, onBack: () -> Unit) {
   val context = LocalContext.current
   val remote by deps.updates.remoteConfig.config.collectAsState(initial = EngineConfig.Fallback)
+  // La pagina dei crediti nella lingua dell'app: i default dell'engine sono italiani.
+  val licensesTitle = stringResource(R.string.licenses_title)
+  val licensesFootnote = stringResource(R.string.licenses_footnote, EngineBuild.VERSION)
 
   FluidScreen(title = stringResource(R.string.about_title), onBack = onBack) {
     item { FluidSectionHeader(title = "FluidWeather") }
@@ -88,6 +144,17 @@ fun AboutScreen(deps: AboutDependencies, onBack: () -> Unit) {
             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(deps.repositoryUrl))) }
           },
         )
+        FluidListDivider()
+        FluidListRow(
+          title = stringResource(R.string.about_license),
+          subtitle = stringResource(R.string.about_license_desc),
+          meta = "GPL-3.0",
+          onClick = {
+            runCatching {
+              context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(deps.repositoryUrl.trimEnd('/') + "/blob/main/LICENSE")))
+            }
+          },
+        )
       }
     }
 
@@ -113,6 +180,10 @@ fun AboutScreen(deps: AboutDependencies, onBack: () -> Unit) {
       }
     }
 
-    fluidLicensesSection()
+    fluidLicensesSection(
+      title = licensesTitle,
+      footnote = licensesFootnote,
+      licences = FluidEngineLicenses + MapLicenses,
+    )
   }
 }

@@ -34,6 +34,10 @@
   <string name="about_replay_tutorials_desc">Si torna al primo giorno, un suggerimento per funzione</string>
   <string name="about_source">Sorgente</string>
   <string name="about_sources">Fonti dei dati</string>
+  <string name="about_license">Licenza</string>
+  <string name="about_license_desc">GNU GPL-3.0: il codice sorgente è pubblico, e si condivide con la stessa licenza</string>
+  <string name="licenses_title">Licenze e crediti</string>
+  <string name="licenses_footnote">Il Fluid Engine %1$s include queste opere di terze parti, fra cui codice GPL-3.0 (LibrePods): quest\'app si distribuisce con la stessa licenza, e i sorgenti sono a disposizione di chi la riceve. Le licenze complete sono nel repository dell\'engine, in LICENSES/.</string>
   <string name="about_title">Informazioni</string>
   <string name="about_update">Aggiornamento in-app</string>
   <string name="about_update_desc">Canali stable e beta via Pampa Store: arriva con il rilascio.</string>
