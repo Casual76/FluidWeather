@@ -478,6 +478,12 @@
   <string name="hapt_ev_listen_start_desc">L\'assistente apre il microfono</string>
   <string name="hapt_ev_open">Apertura</string>
   <string name="hapt_ev_open_desc">Un menu, un pannello di vetro, un foglio nero, la pagina di un widget</string>
+  <string name="hapt_ev_press_down">Pressione: contatto</string>
+  <string name="hapt_ev_press_down_desc">Il dito si posa su un tasto che cresce: si gonfia subito, senza attesa</string>
+  <string name="hapt_ev_press_release">Pressione: rilascio</string>
+  <string name="hapt_ev_press_release_desc">Il dito si solleva da un tasto che cresce</string>
+  <string name="hapt_ev_press_click">Pressione: click</string>
+  <string name="hapt_ev_press_click_desc">Il click del tasto, un attimo dopo il rilascio: un tocco fa tre colpi, di proposito</string>
   <string name="hapt_ev_reject">Rifiuto</string>
   <string name="hapt_ev_reject_desc">Un posto rimosso, un\'azione rifiutata</string>
   <string name="hapt_ev_reply">Risposta pronta</string>
@@ -511,6 +517,7 @@
   <string name="hapt_group_controls">Controlli</string>
   <string name="hapt_group_gestures">Gesti</string>
   <string name="hapt_group_outcomes">Esiti</string>
+  <string name="hapt_group_presses">Tasti</string>
   <string name="hapt_off">spento</string>
   <string name="hapt_on">attivo</string>
   <string name="hapt_play">Prova</string>

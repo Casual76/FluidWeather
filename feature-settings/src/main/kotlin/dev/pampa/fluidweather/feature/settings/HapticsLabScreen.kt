@@ -59,6 +59,16 @@ private enum class HapticGroup(val titleRes: Int, val events: List<FluidHapticEv
       FluidHapticEvent.Close,
     ),
   ),
+  // Dalla 3.0 un tasto che cresce non suona piu' `Tap`: contatto, rilascio e click, tre colpi in poco
+  // piu' di un centinaio di millisecondi. E' voluto, ed e' l'unica eccezione a "una vibrazione per momento".
+  PRESSES(
+    R.string.hapt_group_presses,
+    listOf(
+      FluidHapticEvent.PressDown,
+      FluidHapticEvent.PressRelease,
+      FluidHapticEvent.PressClick,
+    ),
+  ),
   GESTURES(
     R.string.hapt_group_gestures,
     listOf(
@@ -108,6 +118,9 @@ internal fun FluidHapticEvent.labelRes(): Int = when (this) {
   FluidHapticEvent.GestureEnd -> R.string.hapt_ev_gesture_end
   FluidHapticEvent.Open -> R.string.hapt_ev_open
   FluidHapticEvent.Close -> R.string.hapt_ev_close
+  FluidHapticEvent.PressDown -> R.string.hapt_ev_press_down
+  FluidHapticEvent.PressRelease -> R.string.hapt_ev_press_release
+  FluidHapticEvent.PressClick -> R.string.hapt_ev_press_click
   FluidHapticEvent.Success -> R.string.hapt_ev_success
   FluidHapticEvent.Warning -> R.string.hapt_ev_warning
   FluidHapticEvent.Error -> R.string.hapt_ev_error
@@ -139,6 +152,9 @@ internal fun FluidHapticEvent.descriptionRes(): Int = when (this) {
   FluidHapticEvent.GestureEnd -> R.string.hapt_ev_gesture_end_desc
   FluidHapticEvent.Open -> R.string.hapt_ev_open_desc
   FluidHapticEvent.Close -> R.string.hapt_ev_close_desc
+  FluidHapticEvent.PressDown -> R.string.hapt_ev_press_down_desc
+  FluidHapticEvent.PressRelease -> R.string.hapt_ev_press_release_desc
+  FluidHapticEvent.PressClick -> R.string.hapt_ev_press_click_desc
   FluidHapticEvent.Success -> R.string.hapt_ev_success_desc
   FluidHapticEvent.Warning -> R.string.hapt_ev_warning_desc
   FluidHapticEvent.Error -> R.string.hapt_ev_error_desc
@@ -191,7 +207,7 @@ fun HapticsLabScreen(deps: HapticsLabDependencies, onBack: () -> Unit) {
     item { FluidSectionHeader(title = stringResource(R.string.hapt_device)) }
     item {
       FluidListGroup {
-        FluidListRow(
+        FluidToggleRow(
           title = stringResource(R.string.appear_haptics),
           subtitle = stringResource(R.string.appear_haptics_desc),
           checked = settings.hapticsEnabled,
@@ -206,7 +222,7 @@ fun HapticsLabScreen(deps: HapticsLabDependencies, onBack: () -> Unit) {
           meta = supported.size.toString(),
         )
         FluidListDivider()
-        FluidToggleRow(
+        FluidListRow(
           title = stringResource(R.string.hapt_system),
           subtitle = stringResource(R.string.hapt_system_desc),
           meta = stringResource(if (info?.systemHapticsEnabled != false) R.string.hapt_on else R.string.hapt_off),

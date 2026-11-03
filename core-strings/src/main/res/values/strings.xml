@@ -478,6 +478,12 @@
   <string name="hapt_ev_listen_start_desc">The assistant opens the microphone</string>
   <string name="hapt_ev_open">Opening</string>
   <string name="hapt_ev_open_desc">A menu, a glass panel, a black sheet, the page of a widget</string>
+  <string name="hapt_ev_press_down">Press: contact</string>
+  <string name="hapt_ev_press_down_desc">The finger lands on a button that grows: it swells at once, with no delay</string>
+  <string name="hapt_ev_press_release">Press: release</string>
+  <string name="hapt_ev_press_release_desc">The finger lifts from a button that grows</string>
+  <string name="hapt_ev_press_click">Press: click</string>
+  <string name="hapt_ev_press_click_desc">The click of a button, a hair after the release: a tap is three beats, by design</string>
   <string name="hapt_ev_reject">Reject</string>
   <string name="hapt_ev_reject_desc">A place removed, an action turned down</string>
   <string name="hapt_ev_reply">Reply ready</string>
@@ -511,6 +517,7 @@
   <string name="hapt_group_controls">Controls</string>
   <string name="hapt_group_gestures">Gestures</string>
   <string name="hapt_group_outcomes">Outcomes</string>
+  <string name="hapt_group_presses">Buttons</string>
   <string name="hapt_off">off</string>
   <string name="hapt_on">on</string>
   <string name="hapt_play">Play</string>
