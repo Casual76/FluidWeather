@@ -145,7 +145,6 @@ fun DiagnosticsScreen(deps: DiagnosticsDependencies, onBack: () -> Unit, onOpenH
     ActivityResultContracts.RequestMultiplePermissions(),
   ) {
     permissionEpoch++
-    deps.activityRecognizer.start()
   }
   val missingPermissions = remember(permissionEpoch) {
     buildList {

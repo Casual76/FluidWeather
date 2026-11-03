@@ -142,7 +142,6 @@ private fun OnboardingPages(deps: OnboardingDependencies, onFinished: () -> Unit
   var permissionEpoch by remember { mutableIntStateOf(0) }
   val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
     permissionEpoch++
-    deps.activityRecognizer.start()
   }
   fun granted(permission: String): Boolean =
     context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED

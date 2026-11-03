@@ -33,10 +33,9 @@ dependencies {
 
   implementation "androidx.core:core-ktx:${engine.coreKtx}"
   implementation "androidx.work:work-runtime-ktx:${appVersions.work}"
-  implementation "com.google.android.gms:play-services-location:${appVersions.playServicesLocation}"
+  // La posizione e' il LocationManager di Android, e il movimento sono i sensori del telefono:
+  // niente Google Play Services (libreria proprietaria, fuori da un'app GPL-3.0).
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
-  // L'await() sui Task di Play Services.
-  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:${engine.coroutines}"
 
   testImplementation "junit:junit:${engine.junit}"
   testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"

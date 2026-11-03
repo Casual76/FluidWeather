@@ -42,10 +42,6 @@
     </service>
 
     <receiver
-        android:name=".ActivityUpdateReceiver"
-        android:exported="false" />
-
-    <receiver
         android:name=".MaximaAlarmReceiver"
         android:exported="false" />
 

@@ -280,10 +280,13 @@ class AppGraph(context: Context) {
     wipeGuard = wipeGuard,
   )
 
+  val activityRecognizer = ActivityRecognizer(context, latestActivityStore)
+
   val samplingEngine = SamplingEngine(
     barometer = barometer,
     locationProvider = locationProvider,
     activityStore = latestActivityStore,
+    activityRecognizer = activityRecognizer,
     repository = pressureRepository,
     settingsStore = samplingSettingsStore,
     surveillance = surveillanceController,
@@ -312,7 +315,6 @@ class AppGraph(context: Context) {
   )
   val manualBurstController = ManualBurstController(samplingEngine, applicationScope)
   val continuousMonitor = ContinuousMonitor(samplingEngine, samplingSettingsStore)
-  val activityRecognizer = ActivityRecognizer(context)
 
   // Fondamenta UI (fase 8): aspetto, layout della griglia, accento derivato dal meteo.
   val appearanceSettingsStore = AppearanceSettingsStore(context)

@@ -59,7 +59,6 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
     graph.crashLog.install(BuildConfig.VERSION_NAME)
     // I canali esistono prima della prima notifica: Android li vuole registrati, sempre.
     NotificationChannels.ensure(this)
-    graph.activityRecognizer.start()
     graph.applicationScope.launch {
       // Ognuno nel suo `runCatching`: senza, bastava che `applyCurrentMode` lanciasse (un file di
       // preferenze corrotto, e prima non c'era un gestore della corruzione) perche' il

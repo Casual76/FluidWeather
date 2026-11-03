@@ -66,7 +66,7 @@ class LocationFallbackTest {
   @Test
   fun `un'eccezione del fix nuovo vale non arrivato`() = runTest {
     val fix = LocationFallback.firstFix(
-      current = { error("Play Services ha cambiato idea") },
+      current = { error("il provider ha cambiato idea") },
       lastKnown = { "ultimo" },
       totalTimeoutMillis = 5_000L,
     )

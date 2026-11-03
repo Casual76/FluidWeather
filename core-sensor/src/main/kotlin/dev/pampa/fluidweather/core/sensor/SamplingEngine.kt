@@ -24,6 +24,11 @@ class SamplingEngine(
   private val barometer: Barometer,
   private val locationProvider: LocationProvider,
   private val activityStore: LatestActivityStore,
+  /**
+   * Chi misura il movimento (senza Google Play Services): a ogni raffica, mentre il fix arriva, si
+   * guarda se il telefono si muove. Null nei test che non hanno sensori: resta l'ultima attivita'.
+   */
+  private val activityRecognizer: ActivityRecognizer? = null,
   private val repository: PressureRepository,
   private val settingsStore: SamplingSettingsStore,
   private val surveillance: SurveillanceController,
@@ -89,11 +94,15 @@ class SamplingEngine(
   ): Int = coroutineScope {
     if (!barometer.isAvailable) return@coroutineScope 0
     val locationDeferred = async { locationProvider.snapshot() }
+    // Il movimento si misura mentre il fix arriva: i due tempi si sovrappongono, e poi la velocita'
+    // che il fix porta con se' (o la media dal fix precedente) entra nel giudizio.
+    val motionDeferred = async { measureMotion() }
     var context = BurstContext(location = null, activity = freshActivity())
     var stored = 0
     if (durationSeconds <= 0) {
       val reading = barometer.single() ?: return@coroutineScope 0
       val location = locationDeferred.await()
+      context = context.copy(activity = judgedActivity(motionDeferred.await(), location))
       repository.record(listOf(reading.toSample(source, burstId = null, location, context.activity)))
       stored = 1
     } else {
@@ -105,15 +114,15 @@ class SamplingEngine(
       // cammina, o guida, in quei minuti cambia quota e paese, e ogni campione finirebbe in
       // archivio alla quota di partenza. Non un dato impreciso — un dato *falso*, e nessuna
       // matematica a valle puo' rimediare a un contesto che non e' mai stato registrato.
-      context = context.copy(location = locationDeferred.await())
+      val firstFix = locationDeferred.await()
+      context = context.copy(location = firstFix, activity = judgedActivity(motionDeferred.await(), firstFix))
       val refresher = contextRefreshSeconds?.takeIf { it > 0 }?.let { seconds ->
         launch {
           while (true) {
             delay(seconds * 1_000L)
-            context = BurstContext(
-              location = runCatching { locationProvider.snapshot() }.getOrNull() ?: context.location,
-              activity = freshActivity(),
-            )
+            val motion = async { measureMotion() }
+            val fix = runCatching { locationProvider.snapshot() }.getOrNull() ?: context.location
+            context = BurstContext(location = fix, activity = judgedActivity(motion.await(), fix))
           }
         }
       }
@@ -148,6 +157,34 @@ class SamplingEngine(
     cleanTrend?.let { return runCatching { it() }.getOrNull() }
     val samples = repository.samplesSince(System.currentTimeMillis() - TREND_WINDOW_MILLIS)
     return cleaningPipeline.process(samples).latest?.trendHpaPerHour
+  }
+
+  /** Una misura del movimento; un errore dei sensori non ferma il campionamento. */
+  private suspend fun measureMotion(): MotionFeatures? {
+    val recognizer = activityRecognizer ?: return null
+    return try {
+      recognizer.measure()
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
+      // Un sensore che tace non e' un campione perso: l'attivita' resta l'ultima nota (o sconosciuta).
+      null
+    }
+  }
+
+  /** Giudica la misura con la velocita' del fix, la scrive, e rilegge l'attivita' fresca com'e' in archivio. */
+  private suspend fun judgedActivity(motion: MotionFeatures?, location: LocationSnapshot?): Pair<ActivityKind, Int?> {
+    val recognizer = activityRecognizer
+    if (recognizer != null && motion != null) {
+      try {
+        recognizer.record(motion, location?.speedMetersPerSecond)
+      } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        // L'archivio dell'attivita' non risponde: vale l'ultima nota.
+      }
+    }
+    return freshActivity()
   }
 
   private suspend fun freshActivity(): Pair<ActivityKind, Int?> {

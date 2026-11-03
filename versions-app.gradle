@@ -3,7 +3,6 @@
 ext.appVersions = [
   room                : '2.8.4',
   work                : '2.11.2',
-  playServicesLocation: '21.4.0',
   // Radar: la mappa e' MapLibre Native Android (BSD-2-Clause) con i tile di OpenFreeMap, al posto
   // di Google Maps SDK + maps-compose (proprietari: fuori da un'app GPL-3.0, engine 3.0).
   // L'artefatto `android-sdk-opengl` (OpenGL ES): dalla serie 12 `android-sdk` e' il motore Vulkan,
