@@ -25,4 +25,3 @@ internal fun assertGlanceTextPaintedFits(layout: TextLayoutResult) {
     assertTrue("Text must paint visible glyphs", found)
     assertFalse("Text may not be truncated", layout.multiParagraph.didExceedMaxLines)
   }
-

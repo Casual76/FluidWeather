@@ -82,7 +82,7 @@ fun WeatherWidgetContent(
         compactFallback -> (density.padding - 3).dp
         density.compact -> density.padding.dp
         LocalSize.current.height.value < 200 -> 4.dp
-        LocalSize.current.height.value >= 330 -> 10.dp
+        LocalSize.current.height.value >= 330 -> 8.dp
         else -> density.padding.dp
       })
       .clickable(actionStartActivity(target)),
@@ -112,7 +112,7 @@ fun WeatherWidgetContent(
         }
         Column(GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.End) {
           WeatherIcon(model.iconRes, if (enlarged) 18 else 22)
-          if (LocalSize.current.width.value >= 220 || validTime != null)
+          if ((LocalSize.current.width.value >= 220 && LocalSize.current.height.value >= 180) || validTime != null || short)
           Label(validTime ?: if (short && stale) ageText else condition, ink, if (enlarged) 10 else 12,
             modifier = GlanceModifier.clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))), maxLines = 2)
           if (validTime != null && short && stale) Label(ageText, secondary, detailSize)
@@ -120,9 +120,9 @@ fun WeatherWidgetContent(
         }
       }
       if (density.hourCount > 0 && model.hours.isNotEmpty()) {
-        Spacer(GlanceModifier.height(4.dp))
+        Spacer(GlanceModifier.height(if (LocalSize.current.height.value < 200) 2.dp else 4.dp))
         Separator()
-        Spacer(GlanceModifier.height(4.dp))
+        Spacer(GlanceModifier.height(if (LocalSize.current.height.value < 200) 2.dp else 4.dp))
         HourStrip(model, units, ink, secondary, target, density.hourCount, enlarged)
       }
       if (density.dayCount > 0 && model.days.isNotEmpty()) {
@@ -194,9 +194,9 @@ private fun HourStrip(
     model.hours.take(count).forEach { hour ->
       Column(GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
         Label(TimeFormats.hour(hour.timestampMillis, model.zone, locale), secondary, if (enlarged) 10 else 11)
-        Spacer(GlanceModifier.height(4.dp))
+        Spacer(GlanceModifier.height(if (LocalSize.current.height.value < 200) 2.dp else 4.dp))
         WeatherIcon(hour.iconRes, if (enlarged) 18 else 20)
-        Spacer(GlanceModifier.height(4.dp))
+        Spacer(GlanceModifier.height(if (LocalSize.current.height.value < 200) 2.dp else 4.dp))
         Label(hour.temperatureC?.takeIf { it.isFinite() }?.let { units.degrees(it) } ?: "\u2014", ink, if (enlarged) 11 else 13, FontWeight.Medium)
       }
     }
