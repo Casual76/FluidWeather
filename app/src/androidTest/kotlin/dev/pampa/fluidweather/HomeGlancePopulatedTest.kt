@@ -109,7 +109,7 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
     compose.onAllNodes(hasText("School") or hasText("33%") or hasText("13°–15°")).fetchSemanticsNodes().forEach { node ->
       val layouts = mutableListOf<TextLayoutResult>()
       node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(layouts)
-      layouts.forEach { checkedLayouts++; assertPaintedGlyphsFit(it) }
+      layouts.forEach { checkedLayouts++; assertGlanceTextPaintedFits(it) }
     }
     assertTrue("Inspect actual text layout results", checkedLayouts > 0)
     val card = compose.onNodeWithTag("moment_school").fetchSemanticsNode().boundsInRoot
@@ -122,28 +122,6 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
       hasAnyAncestor(hasTestTag("moment_school")), useUnmergedTree = true).assertExists()
   }
 
-
-  // Intrinsic text advances are fractional while Compose bounds round to Int pixels. A one-
-  // fraction advance overflow is not clipped ink. Inspect the actual painted glyphs instead.
-  private fun assertPaintedGlyphsFit(layout: TextLayoutResult) {
-    val margin = 64
-    val bitmap = androidx.compose.ui.graphics.ImageBitmap(layout.size.width + margin * 2, layout.size.height + margin * 2)
-    val canvas = androidx.compose.ui.graphics.Canvas(bitmap)
-    canvas.translate(margin.toFloat(), margin.toFloat())
-    layout.multiParagraph.paint(canvas, color = androidx.compose.ui.graphics.Color.White)
-    val pixels = bitmap.asAndroidBitmap()
-    var found = false
-    for (y in 0 until pixels.height) for (x in 0 until pixels.width) {
-      if ((pixels.getPixel(x, y) ushr 24) != 0) {
-        found = true
-        assertTrue("Clipped glyph ${layout.layoutInput.text.text} at $x,$y in ${layout.size}",
-          x >= margin && x < margin + layout.size.width && y >= margin && y < margin + layout.size.height)
-      }
-    }
-    pixels.recycle()
-    assertTrue("Text must paint visible glyphs", found)
-    assertFalse("Text may not be truncated", layout.multiParagraph.didExceedMaxLines)
-  }
 
   private fun capture(kind: String) {
     if (language != "it" || width != 360 || state != PrecipitationState.UNCERTAIN) return

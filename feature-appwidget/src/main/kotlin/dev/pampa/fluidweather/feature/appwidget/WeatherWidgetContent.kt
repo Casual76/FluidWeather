@@ -81,7 +81,7 @@ fun WeatherWidgetContent(
       .padding(horizontal = density.padding.dp, vertical = when {
         compactFallback -> (density.padding - 3).dp
         density.compact -> density.padding.dp
-        LocalSize.current.height.value < 200 -> 6.dp
+        LocalSize.current.height.value < 200 -> 4.dp
         LocalSize.current.height.value >= 330 -> 10.dp
         else -> density.padding.dp
       })

@@ -110,8 +110,7 @@ class HomeSummarySheetTest {
     val layouts = mutableListOf<TextLayoutResult>()
     compose.onNodeWithTag("weather_summary_text").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
     assertTrue(layouts.isNotEmpty())
-    assertFalse(layouts.single().didOverflowWidth)
-    assertFalse(layouts.single().didOverflowHeight)
+    assertGlanceTextPaintedFits(layouts.single())
     compose.onNodeWithTag("weather_summary_settings").performScrollTo().assertIsDisplayed().assertTextEquals("Apri impostazioni IA")
     compose.runOnIdle { assertEquals(0, calls) }
   }
