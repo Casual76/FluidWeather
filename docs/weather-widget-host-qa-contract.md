@@ -21,7 +21,7 @@ This is the former private `FluidWeatherAppWidget.Body`, moved with its content 
 
 Debug-only `WeatherWidgetHostRenderer.render(context, case, model)` uses the installed Glance 1.1.1 `@ExperimentalGlanceRemoteViewsApi GlanceRemoteViews().compose(context = context, size = case.size) { WeatherWidgetContent(...) }.remoteViews`. API signatures were inspected from local cached bytecode, not verified by compilation. No reflection, fallback replica, Glance testing tree or API skip is used. `RemoteViews.apply(context, frame)` creates the framework views shown in the Activity. Existing `:engine-widget` is exposed to the app's debug compile classpath; no library version changes.
 
-The renderer invokes `AppWidgetModelBuilder.of` with synthetic `WeatherSnapshot`, fused hourly and multi-day samples and typed current evidence. It loads both `moon_nearside` and `cloud_atlas_v1` through real Resources and invokes production `SkyScene.of`. There is no repository, GPS, provider or preference access in the fixture/renderer. Expanded uses the production LARGE sky canvas, as the launcher does.
+The renderer invokes `AppWidgetModelBuilder.of` with synthetic `WeatherSnapshot`, fused hourly and multi-day samples and typed current evidence. It loads `moon_nearside` through real Resources and invokes production `SkyScene.of` with the shared atmospheric traits. The rejected cloud atlas has been removed by root integration. There is no repository, GPS, provider or preference access in the fixture/renderer. Expanded uses the production LARGE sky canvas, as the launcher does.
 
 ## Debug screenshot host
 
@@ -70,7 +70,7 @@ Assertions check exact frame pixels at target density, configured locale/font sc
 
 **Builds, test runners, devices, screenshots and network/provider calls were not run.** Only source inspection, local cached API inspection and git diff checks were performed. Compilation and device behavior remain unverified. There is no passing-layout claim and no measured density fix.
 
-This host exercises one real RemoteViews composition per exact size, not launcher negotiation, responsive multi-size binder budgets, launcher insets, refresh scheduling, click routing or real cache IO. No clicks are simulated. Bitmap appearance/atlas fidelity and icon contrast still need physical screenshot inspection. Glyph bounds use framework Layout painting, not OCR; raster effects applied by external launcher hosts are outside this test. A display must fit 250x340dp plus the small status label for a full on-screen screenshot.
+This host exercises one real RemoteViews composition per exact size, not launcher negotiation, responsive multi-size binder budgets, launcher insets, refresh scheduling, click routing or real cache IO. No clicks are simulated. Bitmap appearance/cloud fidelity and icon contrast still need physical screenshot inspection. Glyph bounds use framework Layout painting, not OCR; raster effects applied by external launcher hosts are outside this test. A display must fit 250x340dp plus the small status label for a full on-screen screenshot.
 
 Production `HourStrip` currently calls `TimeFormats.time` without an explicit locale, so hour formatting still follows the process default locale. EN/IT resource strings, day labels and fixture unit formatting follow the case Context. The tests use the unchanged production time formatter; they do not claim isolated locale coverage for this existing default-locale call.
 

@@ -17,8 +17,8 @@ internal data class WidgetDensity(
 ) {
   companion object {
     fun of(widthDp: Float, heightDp: Float): WidgetDensity = when {
-      widthDp < 180 -> WidgetDensity(true, 10, 0, 0, false)
-      heightDp < 190 -> WidgetDensity(false, 12, 0, 0, heightDp >= 110)
+      widthDp < 180 -> WidgetDensity(true, 8, 0, 0, false)
+      heightDp < 190 -> WidgetDensity(false, 12, 0, 0, false)
       heightDp < 330 -> WidgetDensity(false, 14, 4, 0, true)
       else -> WidgetDensity(false, 14, 4, 3, true)
     }

@@ -65,7 +65,8 @@ object WeatherWidgetHostRenderer {
       WeatherInterval(WidgetHostCase.NOW - 600_000L, WidgetHostCase.NOW + 600_000L), fetched, sourceTimestampMillis = fetched)
     val brief = if (case.variant in listOf("empty", "missing")) null else WeatherBrief(
       LocalPrecipitationAssessment(PrecipitationState.UNAVAILABLE, WidgetHostCase.NOW),
-      CurrentWeatherSummary(WeatherKind.CLOUDY, 21.0, listOf(evidence)))
+      CurrentWeatherSummary(if (case.variant == "current") WeatherKind.PARTLY_CLOUDY else WeatherKind.CLOUDY,
+        21.0, listOf(evidence)))
     return AppWidgetModelBuilder.of(snapshot,
       "San Casciano in Val di Pesa — Montefiridolfi / Sant'Andrea in Percussina",
       null, WidgetHostCase.NOW, tierFor(case.size), WidgetHostCase.zone, brief, false)
@@ -74,11 +75,10 @@ object WeatherWidgetHostRenderer {
   @OptIn(ExperimentalGlanceRemoteViewsApi::class)
   suspend fun render(context: Context, case: WidgetHostCase, model: AppWidgetModel): android.widget.RemoteViews {
     val moon = ImageBitmap.imageResource(context.resources, dev.pampa.fluidweather.core.ui.R.drawable.moon_nearside)
-    val atlas = ImageBitmap.imageResource(context.resources, dev.pampa.fluidweather.core.ui.R.drawable.cloud_atlas_v1)
     val bitmap = SkyScene.of(tierFor(case.size), model.skyKind, model.cloudCover,
-      model.latitude, model.longitude, WidgetHostCase.NOW, WidgetHostCase.zone, moon, atlas)
+      model.latitude, model.longitude, WidgetHostCase.NOW, WidgetHostCase.zone, moon, model.atmosphere)
     return GlanceRemoteViews().compose(context = context, size = case.size) {
-      WeatherWidgetContent(model, UnitFormatter(context.resources, UnitPreferences(),
+      WeatherWidgetContent(model, UnitFormatter(context.resources, UnitPreferences.METRIC,
         Locale.forLanguageTag(case.language)), WidgetHostCase.NOW,
         Intent(context, MainActivity::class.java), bitmap)
     }.remoteViews

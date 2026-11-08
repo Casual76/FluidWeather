@@ -9,7 +9,7 @@
   <string name="rain_quality_now_and_forecast">Rain now unverified</string>
   <string name="rain_quality_model_recent">Recent model estimate · not a local measurement</string>
   <string name="rain_quality_radar_recent">Radar estimate · ground conditions may differ</string>
-  <string name="rain_quality_forecast_title">Next hour · forecast</string>
+  <string name="rain_quality_forecast_title">Next hour</string>
   <string name="rain_quality_partial">Partial forecast</string>
   <string name="rain_quality_resolution">Model resolution: %1$s</string>
   <string name="rain_quality_resolution_unknown">Source resolution unspecified</string>

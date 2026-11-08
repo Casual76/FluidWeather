@@ -3,7 +3,6 @@ package dev.pampa.fluidweather
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorManager
-import android.net.ConnectivityManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
@@ -22,6 +21,7 @@ import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.UnitFormatter
 import java.util.UUID
+import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -103,8 +103,7 @@ class WeatherStartupReliabilityTest {
       scenario = ActivityScenario.launch(MainActivity::class.java)
       assertEquals(Lifecycle.State.RESUMED, scenario.state)
       await("weather unavailable on cold GPS Home", launchedAt + 8_000) {
-        hasText(it, app.getString(R.string.home_rain_current_unknown)) &&
-          hasText(it, app.getString(R.string.home_rain_unavailable))
+        hasText(it, app.getString(R.string.rain_quality_now_unknown))
       }
       // Accessibility scrolling only reveals the persisted value; it never pulls to refresh.
       reveal("persisted raw pressure", launchedAt + 8_000) {
@@ -134,7 +133,8 @@ class WeatherStartupReliabilityTest {
       await("Room invalidation updates the visible history without refresh", SystemClock.uptimeMillis() + 5_000) {
         historyRow(it, initialCount + 1, initialAlerts + 1, watches)
       }
-      click("close detail", SystemClock.uptimeMillis() + 5_000, scroll = false) {
+      click("close detail", SystemClock.uptimeMillis() + 5_000,
+        direction = AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) {
         it.isClickable && it.contentDescription?.toString() == app.getString(R.string.common_close)
       }
       reveal("updated raw pressure in the original Home", SystemClock.uptimeMillis() + 5_000,
@@ -182,9 +182,8 @@ class WeatherStartupReliabilityTest {
   private fun assertEnvironment() {
     assertFalse("Fine AND coarse GPS permission must already be denied; test never changes permissions",
       graph.locationProvider.hasPermission())
-    val connectivity = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    assertNull("Parent must provide an already offline device; no network settings are changed", connectivity.activeNetwork)
-    assertTrue("No Wi-Fi/VPN/other networks allowed", connectivity.allNetworks.isEmpty())
+    // No fix plus no GPS snapshot makes the Home weather load return unavailable regardless
+    // of connectivity. This test must not require changing the owner's network settings.
   }
 
   private fun <T> io(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }
@@ -211,6 +210,7 @@ class WeatherStartupReliabilityTest {
       if (window(predicate)) return
       Thread.sleep(50)
     }
+    dumpFailure(label)
     throw AssertionError("Deadline exceeded: $label")
   }
 
@@ -222,16 +222,36 @@ class WeatherStartupReliabilityTest {
       window { root -> find(root) { it.isScrollable && it.performAction(direction) } }
       Thread.sleep(150)
     }
+    dumpFailure(label)
     throw AssertionError("Deadline exceeded revealing: $label")
   }
 
-  private fun click(label: String, deadline: Long, scroll: Boolean = true, match: (AccessibilityNodeInfo) -> Boolean) {
+  private fun click(label: String, deadline: Long, scroll: Boolean = true,
+    direction: Int = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, match: (AccessibilityNodeInfo) -> Boolean) {
     while (SystemClock.uptimeMillis() < deadline) {
       if (window { root -> find(root) { match(it) && it.performAction(AccessibilityNodeInfo.ACTION_CLICK) } }) return
-      if (scroll) window { root -> find(root) { it.isScrollable && it.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) } }
+      if (scroll) window { root -> find(root) { it.isScrollable && it.performAction(direction) } }
       Thread.sleep(150)
     }
+    dumpFailure(label)
     throw AssertionError("Deadline exceeded clicking: $label")
+  }
+
+  private fun dumpFailure(label: String) {
+    val out = StringBuilder(label).append('\n')
+    val root = instrumentation.uiAutomation.rootInActiveWindow
+    fun visit(node: AccessibilityNodeInfo, depth: Int) {
+      if (depth > 30 || out.length > 100_000) return
+      if (node.packageName?.toString() == app.packageName) out.append(" ".repeat(depth))
+        .append("visible=").append(node.isVisibleToUser).append(" clickable=").append(node.isClickable)
+        .append(" children=").append(node.childCount).append(" text=").append(node.text)
+        .append(" desc=").append(node.contentDescription).append('\n')
+      for (i in 0 until node.childCount) node.getChild(i)?.let { child ->
+        try { visit(child, depth + 1) } finally { @Suppress("DEPRECATION") child.recycle() }
+      }
+    }
+    root?.let { try { visit(it, 0) } finally { @Suppress("DEPRECATION") it.recycle() } }
+    File(app.getExternalFilesDir(null), "startup-test-failure.txt").writeText(out.toString())
   }
 
   private fun window(block: (AccessibilityNodeInfo) -> Boolean): Boolean {

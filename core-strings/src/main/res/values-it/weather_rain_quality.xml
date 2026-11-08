@@ -9,7 +9,7 @@
   <string name="rain_quality_now_and_forecast">Pioggia ora non verificata</string>
   <string name="rain_quality_model_recent">Stima recente del modello · non è una misura locale</string>
   <string name="rain_quality_radar_recent">Stima radar · al suolo può essere diverso</string>
-  <string name="rain_quality_forecast_title">Prossima ora · previsione</string>
+  <string name="rain_quality_forecast_title">Prossima ora</string>
   <string name="rain_quality_partial">Previsione parziale</string>
   <string name="rain_quality_resolution">Risoluzione del modello: %1$s</string>
   <string name="rain_quality_resolution_unknown">Risoluzione della fonte non indicata</string>

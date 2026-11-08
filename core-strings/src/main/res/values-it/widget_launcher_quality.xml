@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="widget_quality_empty">Meteo non disponibile</string>
+  <string name="widget_quality_empty">Nessun dato</string>
   <string name="widget_quality_days">PROSSIMI GIORNI</string>
   <string name="widget_quality_age_unknown">Et&#224; sconosciuta</string>
   <string name="widget_quality_age_minutes">%1$d min fa</string>

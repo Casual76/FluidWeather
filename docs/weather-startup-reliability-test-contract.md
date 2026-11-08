@@ -9,17 +9,17 @@ Base: local unpublished `11659c9aae623646db98f6f11afff2f14da58c31` (HomeLocalHyd
 This is one instrumentation method using `FluidWeatherApp.graph`, its real persisted pressure/history stores, `ActivityScenario<MainActivity>`, production Home, and native UiAutomation accessibility nodes. It installs no alternate graph, fake Home, helper-only consumer, provider source, or Compose test content.
 
 1. Seed two explicitly SYNTHETIC history records and a raw pressure reading before launching the Activity. Check persistence through graph stores.
-2. Require unknown current weather and unavailable rain on cold Home. Reveal the raw pressure tile, with its formatted fixture value and raw station-pressure caption, within eight seconds measured from before Activity launch. Accessibility scrolling can reveal tiles below the fold; there is no pull/manual refresh.
+2. Require the current production unavailable-rain heading on cold Home. Reveal the raw pressure tile, with its formatted fixture value and raw station-pressure caption, within eight seconds measured from before Activity launch. Accessibility scrolling can reveal tiles below the fold; there is no pull/manual refresh.
 3. Open the production Nowcast detail and its signal/history disclosure. Check the real history StatRow count and alert/watch breakdown, including the persisted fixtures, in the same Home composition. History is not printed on the compact Home tile; this is its actual production presentation.
 4. Insert another history fixture while that detail remains visible, then write a new pressure sample through the graph repository. Require the history count and breakdown to update within five seconds, below the hydration timer's sixty seconds. Close the detail and require the new raw pressure on the same Home within five seconds. No recreation, place change, resume cycle, manual refresh or provider result drives this update.
-5. Recheck GPS denial, offline state and absence of GPS weather.
+5. Recheck GPS denial and absence of GPS weather.
 
 Without independent local hydration, denied GPS plus no cached GPS weather returns from the initial Home weather load before reading these local values. This test should fail there. That regression expectation is source-derived; it has **not** been executed on either base or fix.
 
 ## Required parent-controlled setup (failed assertion, never a passing skip)
 
 - Run only this method against `dev.pampa.fluidweather.debug`. Parent owns installation, instrumentation runner and physical Samsung phone UI. Do not run the destructive `WeatherLifecycleIntegrationTest` as part of this selection.
-- Device already offline: no active network and no networks including VPN/Wi-Fi. The test changes no airplane, network or location settings. No public service is required. App startup may attempt its ordinary background requests, which must be unavailable in this environment.
+- Root integration removes the unnecessary device-offline precondition: denied GPS plus no GPS cache already forces this Home weather load to remain unavailable, even on the owner's connected phone. No public service or network setting change is required. Ordinary Application background requests are not disabled. A separate hard-offline/process-death test remains unverified.
 - Both fine and coarse location permissions already denied. The production provider checks this before requesting GPS; the test neither grants nor revokes permission and never answers a permission dialog.
 - Supported real pressure sensor and matching graph capability required. Sensorless tablets fail this contract; there is no tablet substitute or successful assumption/skip.
 - GPS weather snapshot already absent; cached release gate absent; calibration inactive; continuous sampling already off; no future pressure samples or verdict records about to age out during the method. These are checked, not obtained through archive deletion or global changes. Existing unrelated history is supported and included in the expected totals.

@@ -4,6 +4,12 @@ This is visual calibration, not validated outdoor accuracy. Rendering, device co
 review remain root gates. No provider requests, keys, engine/dependency/version changes, builds,
 test runners or device work were performed by this implementer.
 
+## Root integration update (2026-11-08)
+
+The adapter is now shared as `SkyAtmosphereEvidence.derive` in core-ui; home and widget both call it with original context, assessment and coordinates. Stale/missing/mismatched/duplicate context returns null to retain the existing condition renderer rather than imposing a neutral cloud deck. Valid radar WET can produce faint precipitation without a model bundle. An already overcast future front can deepen clouds without raising their coverage or starting precipitation. Original clocks, source matching and hard rain gates remain.
+
+The user rejected the atlas experiment and requested the previous procedural cloud language, upper-sky composition and more convincing volume. The resource is removed. The old shape renderer was restored as the intermediate revision while the focused volume implementation is prepared. A new root regression preserves CLEAR's existing 5% fallback rather than injecting 65% cover. This revision also gives Home's plain actions the glass foreground ink and gives the add-routine action a real Fluid glass button. Actual visual acceptance is pending; old prototype fixture images do not approve the new sky.
+
 ## Integration API
 
 Package `dev.pampa.fluidweather.core.ui`: `SkyAtmosphere(cloudDepth: Float = 0f,

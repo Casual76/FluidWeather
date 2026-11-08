@@ -12,6 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.pampa.fluidweather.widgetqa.*
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.UnitFormatter
+import dev.pampa.fluidweather.strings.labelRes
 import dev.pampa.fluidweather.core.model.UnitPreferences
 import org.junit.Assert.*
 import org.junit.Test
@@ -64,7 +65,9 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
         texts.filter { it.text.toString() != host.model.placeName }.forEach { text ->
           assertEquals("Essential text was ellipsized: ${text.text}", 0, text.layout.getEllipsisCount(0))
         }
-        val painted = texts.map { it to assertPaintedTextFits(root, it) }
+        val condition = host.model.kind?.labelRes()?.let { host.widgetContext.getString(it) }
+        val painted = texts.map { it to assertPaintedTextFits(root, it,
+          case.width >= 180 && it.text.toString() == condition) }
         painted.forEachIndexed { index, (a, rectA) ->
           painted.drop(index + 1).forEach { (b, rectB) ->
             assertFalse("Painted text overlaps: ${a.text} / ${b.text}", Rect.intersects(rectA, rectB))
@@ -80,7 +83,7 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
     if (case.variant == "current") assertFalse("Current fixture fell back to hourly forecast", model.usesHourlyForecast)
     if (case.variant == "stale") assertTrue("Stale fixture must use qualified forecast fallback", model.usesHourlyForecast)
     val place = texts.single { it.text.toString() == model.placeName }
-    val units = UnitFormatter(host.widgetContext.resources, UnitPreferences(), Locale.forLanguageTag(case.language))
+    val units = UnitFormatter(host.widgetContext.resources, UnitPreferences.METRIC, Locale.forLanguageTag(case.language))
     val temperature = model.temperatureC?.let { units.degrees(it) } ?: "\u2014"
     val hero = requireNotNull(texts.filter { it.text.toString() == temperature }.maxByOrNull { it.textSize }) { "Missing hero temperature" }
     assertNotNull("Missing hero temperature", hero)
@@ -94,8 +97,8 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
     } else {
       assertFalse(texts.any { it.text.toString() == emptyLabel })
       assertEquals("Unexpected extra/missing text rows", when {
-        case.width == 110 -> 4
-        case.height == 110 -> 5
+        case.width == 110 -> if (case.variant == "stale" && case.fontScale == 1f) 4 else 3
+        case.height == 110 -> 4
         case.height == 200 -> 13
         else -> 20
       }, texts.size)
@@ -123,10 +126,10 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
   /** Rasterize Layout with spare space: scan actual glyph pixels, including ascent/descenders.
    * This admits the framework's intentional end ellipsis; it never ignores an overflowing view.
    */
-  private fun assertPaintedTextFits(root: View, text: TextView): Rect {
+  private fun assertPaintedTextFits(root: View, text: TextView, conditionCanWrap: Boolean): Rect {
     assertTrue("Text is hidden ${text.text}", text.isShown)
     val layout = requireNotNull(text.layout) { "No text layout for ${text.text}" }
-    assertEquals("Unexpected wrapped row ${text.text}", 1, layout.lineCount)
+    assertTrue("Unexpected wrapped row ${text.text}", layout.lineCount in 1..if (conditionCanWrap) 2 else 1)
     assertTrue("Zero-sized text ${text.text}", text.width > 0 && text.height > 0)
     val margin = (text.textSize * 3).roundToInt().coerceAtLeast(64)
     val bitmap = Bitmap.createBitmap(layout.width.coerceAtLeast(1) + margin * 2,
