@@ -43,21 +43,17 @@ import dev.pampa.fluidweather.strings.windowLabelRes
  * osservata — la pagella in miniatura, in attesa del Benchmark (fase 13).
  */
 @Composable
-internal fun NowcastPage(state: HomeUiState) {
-  dev.pampa.fluidweather.feature.home.HomeRainOverview(state.weatherBrief,
-    state.locationName ?: stringResource(R.string.summary_place_unknown))
+fun NowcastPage(state: HomeUiState) {
   val verdict = state.verdict
   val units = rememberUnitFormatter()
 
   TutorialSlot(screen = TutorialScreen.WIDGET_NOWCAST)
   Box(Modifier.fluidTutorialAnchor("nowcast_readiness_card")) {
-    PageSection(stringResource(R.string.accessibility_diagnostic))
+    PageSection(stringResource(R.string.quality_barometer_nowcast))
   }
   if (verdict == null) {
-    PageNote(
-      stringResource(R.string.nowcast_waiting_note),
-    )
     val readiness = state.readiness
+    if (readiness == null) PageNote(stringResource(R.string.quality_nowcast_collecting))
     if (readiness != null) {
       Spacer(Modifier.height(10.dp))
       Text(readiness.stageText(), style = MaterialTheme.typography.titleSmall, color = White)
@@ -97,130 +93,142 @@ internal fun NowcastPage(state: HomeUiState) {
 
     PageSection(stringResource(R.string.nowcast_prob_title))
     verdict.windows.forEach { WindowRow(it) }
-    PageNote(
-      stringResource(R.string.nowcast_band_note),
-    )
-
-    Box(Modifier.fluidTutorialAnchor("nowcast_factors_card")) {
-      PageSection(stringResource(R.string.nowcast_factors_title))
-    }
-    verdict.windows.forEach { window ->
-      Text(
-        windowLabel(window.window),
-        style = MaterialTheme.typography.labelMedium,
-        color = Faint,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+    PageDisclosure(
+      title = stringResource(R.string.nowcast_factors_title),
+      modifier = Modifier.fluidTutorialAnchor("nowcast_factors_card"),
+    ) {
+      PageNote(
+        stringResource(R.string.nowcast_band_note),
       )
-      if (window.topFactors.isEmpty()) {
-        Text(stringResource(R.string.nowcast_no_factors), style = MaterialTheme.typography.bodySmall, color = Faint)
-      } else {
-        val strongest = window.topFactors.maxOf { abs(it.contribution) }.coerceAtLeast(1e-9)
-        window.topFactors.forEach { FactorRow(it, strongest) }
+
+      verdict.windows.forEach { window ->
+        Text(
+          windowLabel(window.window),
+          style = MaterialTheme.typography.labelMedium,
+          color = Faint,
+          modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+        )
+        if (window.topFactors.isEmpty()) {
+          Text(stringResource(R.string.nowcast_no_factors), style = MaterialTheme.typography.bodySmall, color = Faint)
+        } else {
+          val strongest = window.topFactors.maxOf { abs(it.contribution) }.coerceAtLeast(1e-9)
+          window.topFactors.forEach { FactorRow(it, strongest) }
+        }
       }
     }
   }
 
   val explanation = state.nowcastExplanation
   if (explanation != null) {
-    PageSection(stringResource(R.string.learning_title))
-    explanation.verdict.windows.forEach { window ->
-      val raw = explanation.rawVerdict.forWindow(window.window)
-      val analogs = explanation.analogs[window.window]
-      val recalibrated = window.window in explanation.recalibrated
-      StatRow(
-        windowLabel(window.window),
-        "${(window.probability * 100).toInt()}%",
-        buildString {
-          append(stringResource(R.string.nowcast_model_prefix) + ((raw?.probability ?: 0.0) * 100).toInt() + "%")
-          if (recalibrated) append(stringResource(R.string.nowcast_recalibrated))
-          if (analogs != null) append(stringResource(R.string.nowcast_analogs, analogs.rained, analogs.neighbours))
-          // Il quarto passaggio: cio' che si vede fuori. La pagina mostra tutti i passaggi, e
-          // questo e' l'unico che non e' una statistica — quindi va detto per quello che e'.
-          if (window.window in explanation.observed) append(stringResource(R.string.nowcast_observed))
+    PageDisclosure(title = stringResource(R.string.learning_title)) {
+      explanation.verdict.windows.forEach { window ->
+        val raw = explanation.rawVerdict.forWindow(window.window)
+        val analogs = explanation.analogs[window.window]
+        val recalibrated = window.window in explanation.recalibrated
+        StatRow(
+          windowLabel(window.window),
+          "${(window.probability * 100).toInt()}%",
+          buildString {
+            append(stringResource(R.string.nowcast_model_prefix) + ((raw?.probability ?: 0.0) * 100).toInt() + "%")
+            if (recalibrated) append(stringResource(R.string.nowcast_recalibrated))
+            if (analogs != null) append(stringResource(R.string.nowcast_analogs, analogs.rained, analogs.neighbours))
+            // Il quarto passaggio: cio' che si vede fuori. La pagina mostra tutti i passaggi, e
+            // questo e' l'unico che non e' una statistica — quindi va detto per quello che e'.
+            if (window.window in explanation.observed) append(stringResource(R.string.nowcast_observed))
+          },
+        )
+      }
+      explanation.observation?.takeIf { it.rainingNow }?.let { observation ->
+        PageNote(stringResource(R.string.nowcast_seen_by, observation.source))
+      }
+      PageNote(
+        if (explanation.recalibrated.isEmpty() && explanation.analogs.isEmpty()) {
+          stringResource(R.string.learning_nothing_yet)
+        } else {
+          stringResource(R.string.learning_explain)
         },
       )
     }
-    explanation.observation?.takeIf { it.rainingNow }?.let { observation ->
-      PageNote(stringResource(R.string.nowcast_seen_by, observation.source))
-    }
-    PageNote(
-      if (explanation.recalibrated.isEmpty() && explanation.analogs.isEmpty()) {
-        stringResource(R.string.learning_nothing_yet)
-      } else {
-        stringResource(R.string.learning_explain)
-      },
-    )
   }
 
-  val cleaning = state.cleaning
-  if (cleaning != null && cleaning.filtered.size >= 2) {
-    PageSection(stringResource(R.string.nowcast_clean_signal))
-    CurveWithLabels(
-      values = units.pressureSeries(cleaning.filtered.map { it.levelHpa }),
-      labels = timeLabels(cleaning.filtered.map { it.timestampMillis }),
-      color = PageBlue,
-      unit = " " + units.pressureSymbol(),
-      decimals = units.pressureChartDecimals() + 1,
-    )
-    val latest = cleaning.latest
-    if (latest != null) {
-      StatRow(stringResource(R.string.pressure_level), units.pressure(latest.levelHpa, 1), units.pressureSigma(latest.levelSigmaHpa))
+  PageDisclosure(title = stringResource(R.string.quality_signal_history)) {
+    val cleaning = state.cleaning
+    if (cleaning != null && cleaning.filtered.size >= 2) {
+      PageSection(stringResource(R.string.nowcast_clean_signal))
+      CurveWithLabels(
+        values = units.pressureSeries(cleaning.filtered.map { it.levelHpa }),
+        labels = timeLabels(cleaning.filtered.map { it.timestampMillis }),
+        timestamps = cleaning.filtered.map { it.timestampMillis },
+        color = PageBlue,
+        unit = " " + units.pressureSymbol(),
+        decimals = units.pressureChartDecimals() + 1,
+      )
+      val latest = cleaning.latest
+      if (latest != null) {
+        StatRow(stringResource(R.string.pressure_level), units.pressure(latest.levelHpa, 1), units.pressureSigma(latest.levelSigmaHpa))
+        StatRow(
+          stringResource(R.string.pressure_trend),
+          units.pressureRate(latest.trendHpaPerHour, 2),
+          units.pressureSigma(latest.trendSigmaHpaPerHour, 2),
+        )
+      }
+      val tide = cleaning.tide
       StatRow(
-        stringResource(R.string.pressure_trend),
-        units.pressureRate(latest.trendHpaPerHour, 2),
-        units.pressureSigma(latest.trendSigmaHpaPerHour, 2),
+        stringResource(R.string.pressure_tide),
+        tideSourceLabel(tide.source),
+        "S1 ${units.pressure(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}",
+      )
+      if (tide.source != TideSource.NONE) {
+        StatRow(stringResource(R.string.nowcast_tide_now), units.pressureDelta(tide.tideAtLatestHpa, 2), stringResource(R.string.nowcast_tide_subtracted))
+      }
+    }
+
+    PageSection(stringResource(R.string.nowcast_history_title))
+    val history = state.verdictHistory
+    if (history.size >= 2) {
+      CurveWithLabels(
+        values = history.map { it.probability13 * 100 },
+        labels = timeLabels(history.map { it.timestampMillis }),
+        timestamps = history.map { it.timestampMillis }, maxGapMillis = 3 * 3_600_000L,
+        color = PageAmber,
+        unit = "%",
+      )
+      Text(
+        stringResource(R.string.nowcast_history_note),
+        style = MaterialTheme.typography.bodySmall,
+        color = Faint,
+      )
+      val alerts = history.count { it.level == AlertLevel.ALLERTA.name }
+      val watches = history.count { it.level == AlertLevel.SORVEGLIANZA.name }
+      StatRow(stringResource(R.string.nowcast_verdicts_recorded), "${history.size}", stringResource(R.string.nowcast_verdict_counts, alerts, watches))
+    } else {
+      PageNote(stringResource(R.string.nowcast_history_empty))
+    }
+
+    val observed = state.observedPrecipitation
+    if (observed.isNotEmpty()) {
+      PageSection(stringResource(R.string.nowcast_truth_title))
+      PageCharts.Bars(
+        values = observed.map { it.second },
+        color = PageBlue,
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(60.dp),
+      )
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+        Text(fmtTime(observed.first().first), style = MaterialTheme.typography.labelSmall, color = Faint)
+        Text(fmtTime(observed.last().first), style = MaterialTheme.typography.labelSmall, color = Faint)
+      }
+      StatRow(stringResource(R.string.nowcast_rain_observed), units.precipitation(observed.sumOf { it.second }), pluralStringResource(R.plurals.nowcast_last_hours, observed.size, observed.size))
+      PageNote(
+        stringResource(R.string.nowcast_truth_note),
       )
     }
-    val tide = cleaning.tide
-    StatRow(
-      stringResource(R.string.pressure_tide),
-      tideSourceLabel(tide.source),
-      "S1 ${units.pressure(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}",
-    )
-    if (tide.source != TideSource.NONE) {
-      StatRow(stringResource(R.string.nowcast_tide_now), units.pressureDelta(tide.tideAtLatestHpa, 2), stringResource(R.string.nowcast_tide_subtracted))
-    }
   }
-
-  PageSection(stringResource(R.string.nowcast_history_title))
-  val history = state.verdictHistory
-  if (history.size >= 2) {
-    CurveWithLabels(
-      values = history.map { it.probability13 * 100 },
-      labels = timeLabels(history.map { it.timestampMillis }),
-      color = PageAmber,
-      unit = "%",
-    )
-    Text(
-      stringResource(R.string.nowcast_history_note),
-      style = MaterialTheme.typography.bodySmall,
-      color = Faint,
-    )
-    val alerts = history.count { it.level == AlertLevel.ALLERTA.name }
-    val watches = history.count { it.level == AlertLevel.SORVEGLIANZA.name }
-    StatRow(stringResource(R.string.nowcast_verdicts_recorded), "${history.size}", stringResource(R.string.nowcast_verdict_counts, alerts, watches))
-  } else {
-    PageNote(stringResource(R.string.nowcast_history_empty))
-  }
-
-  val observed = state.observedPrecipitation
-  if (observed.isNotEmpty()) {
-    PageSection(stringResource(R.string.nowcast_truth_title))
-    PageCharts.Bars(
-      values = observed.map { it.second },
-      color = PageBlue,
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(60.dp),
-    )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
-      Text(fmtTime(observed.first().first), style = MaterialTheme.typography.labelSmall, color = Faint)
-      Text(fmtTime(observed.last().first), style = MaterialTheme.typography.labelSmall, color = Faint)
-    }
-    StatRow(stringResource(R.string.nowcast_rain_observed), units.precipitation(observed.sumOf { it.second }), pluralStringResource(R.plurals.nowcast_last_hours, observed.size, observed.size))
-    PageNote(
-      stringResource(R.string.nowcast_truth_note),
-    )
+  PageDisclosure {
+    PageNote(stringResource(R.string.accessibility_diagnostic))
+    PageNote(stringResource(R.string.quality_barometer_separate))
+    if (verdict == null) PageNote(stringResource(R.string.nowcast_waiting_note))
   }
 }
 

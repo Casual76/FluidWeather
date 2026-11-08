@@ -23,6 +23,37 @@ import kotlin.math.sin
  */
 object Charts {
 
+  /** Timestamp axis with explicit breaks. No interpolation across missing acquisition periods. */
+  @Composable
+  fun TimeLine(values: List<Double>, timestamps: List<Long>, maxGapMillis: Long,
+    modifier: Modifier = Modifier, color: Color) {
+    val segments = timedLineGeometry(timestamps, maxGapMillis)
+    Canvas(modifier) {
+      if (timestamps.size != values.size || segments.isEmpty() || values.any { !it.isFinite() }) return@Canvas
+      val min = values.min()
+      val span = (values.max() - min).takeIf { it > 1e-9 } ?: 1.0
+      fun point(sample: Pair<Int, Float>) = Offset(sample.second * size.width,
+        size.height * (0.08f + (1f - ((values[sample.first] - min) / span).toFloat()) * 0.84f))
+      segments.forEach { segment ->
+        val first = point(segment.first())
+        if (segment.size == 1) {
+          drawCircle(color, 2.dp.toPx(), first)
+        } else {
+          val path = Path().apply {
+            moveTo(first.x, first.y)
+            segment.drop(1).forEach { val p = point(it); lineTo(p.x, p.y) }
+          }
+          val last = point(segment.last())
+          val area = Path().apply {
+            addPath(path); lineTo(last.x, size.height); lineTo(first.x, size.height); close()
+          }
+          drawPath(area, Brush.verticalGradient(listOf(color.copy(alpha = .25f), color.copy(alpha = 0f))))
+          drawPath(path, color, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
+        }
+      }
+    }
+  }
+
   /** La curva morbida con riempimento sfumato sotto: temperatura, pressione, quello che serve. */
   @Composable
   fun SmoothLine(

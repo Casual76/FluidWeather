@@ -1380,3 +1380,41 @@ App stable manifest and Pampa Store index verified, UTF8 changelog matches, publ
 download is byte-identical. Publisher manifest commitbe2a2e0 was fast-forwarded locally.
 Evidence: artifacts/hotfix-2.1.1 and artifacts/releases/2.1.1. Prior C2 field and controlled
 C6 performance gaps remain open; this corrective release does not claim to close them.
+
+### Quality recovery after the user's six new screenshots — active
+
+The user rejected the remaining see-through detail controls and excessive diagnostic prose.
+Implementation/review concurrency is increased to three each; Sol high remains the configured
+model. Three implementers completed disjoint allocations: modal scene ownership and detail
+hierarchy, bounded precipitation experience, and qualified shared-rain presentation.
+Configuration, observable Q1–Q5 criteria and forthcoming review tables are maintained in
+docs/weather-quality-recovery.md; handoffs are docs/weather-quality-*-contract.md.
+Engine3.0.5 stays unchanged. Version2.1.2/code23 is prepared; no publication claimed.
+Integrated debug/test APK build and110 scoped JVM results pass. The Android suite has proven
+regular/lazy modal material isolation and found a sub-minute semantic interval regression;
+that finding is being corrected before final-device verification and three independent reviews.
+
+Quality recovery current checkpoint: correction2/3, frozen `Q-R2-0aad796e4a07`.
+Round0 and correction1 did not pass; criterion tables and full independent reports are in
+`weather-quality-recovery.md` and `weather-quality-review-r0/r1-*.md`. Their concrete
+findings drove visible probability values, complete Sun rows, explicit hourly missing/zero/
+trace values and time zones, timestamp-based curves and conservative pressure comparisons.
+Correction2 uses an exact unique +3h pressure endpoint and actual elapsed48h/24h horizons;
+Details selects each value with its timestamp and preserves gaps. Final physical SM-X710
+Android16 run:79/79 methods,112.127s;169 canonical JVM results include reused outputs.
+Release/debug/test APKs, actual installed debug identity, screenshots and failure history
+are frozen for three fresh Sol high reviewers. Release signing and engine-doctor pass.
+No2.1.2 publication yet. Full-app current phone and fresh launcher/widget execution remain
+NV after Device-managed AVD boot failures;360dp native-window tests are labelled as such.
+Field accuracy and controlled p95/memory comparisons remain separate open gates.
+
+Presentation correction3 is now approved: `Q-R3-db2d00bb8464`, all Q1–Q5 score8
+from all three fresh Sol high critics. Current full-app physical-phone coverage
+and80/80 Android methods close the previous phone validation gap. Full reports,
+mean/minimum table and remaining NV boundaries are recorded in the quality ledger.
+No publication: the user added a realistic sky, iOS-inspired widget composition and
+explicitly authorized reliability fixes for local startup hydration/sensor recovery.
+Those are separate implementations and still need integration/runtime/review.
+Live model/training and feedback behavior remain unchanged; the source diagnosis
+and proposals are in `weather-startup-diagnosis.md`. Lock-screen feasibility was
+researched, not implemented or promised for Samsung.

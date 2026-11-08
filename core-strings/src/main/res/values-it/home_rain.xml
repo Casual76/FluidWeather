@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="home_rain_model_wet">Stima recente del modello: pioggia</string>
-  <string name="home_rain_model_dry">Stima recente del modello: niente pioggia</string>
+  <string name="home_rain_model_wet">Pioggia prevista</string>
+  <string name="home_rain_model_dry">Pioggia non prevista</string>
   <string name="home_rain_radar_wet">Il radar rileva precipitazioni</string>
   <string name="home_rain_radar_no_echo">Nessun eco di pioggia sul radar</string>
   <string name="home_rain_wet">Pioggia indicata da radar e modello</string>

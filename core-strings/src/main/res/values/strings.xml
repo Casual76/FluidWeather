@@ -759,7 +759,7 @@
   <string name="pressure_points">Points in the period</string>
   <string name="pressure_provider_title">From the providers</string>
   <string name="pressure_provider_caption">at sea level, from the forecast</string>
-  <string name="pressure_provider_next3h">In 3 hours</string>
+  <string name="pressure_provider_next3h">3 hours later</string>
   <string name="pressure_provider_series">The next two days</string>
   <string name="pressure_provider_hours">Hours available</string>
   <string name="pressure_provider_note">Here there is no cleaning, no tide subtracted and no calibration: those need the phone\'s sensor, and the sensor is where you are. This is the pressure the providers forecast for this place, hour by hour.</string>

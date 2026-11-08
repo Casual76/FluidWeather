@@ -1,0 +1,21 @@
+<resources>
+  <string name="quality_device_times">Page times use the device time zone: %1$s</string>
+  <string name="quality_times_in">Times: %1$s</string>
+  <string name="quality_curve_gaps">Breaks mark gaps longer than %1$d minutes.</string>
+  <string name="quality_hourly_value">Forecast value</string>
+  <string name="quality_daylight_twelve">About 12 hours of daylight</string>
+  <string name="quality_method_sources">Method and sources</string>
+  <string name="quality_expanded">Expanded</string>
+  <string name="quality_collapsed">Collapsed</string>
+  <string name="quality_forecast_valid">Forecast · valid %1$s</string>
+  <string name="quality_forecast_sources">Combined forecast · %1$d responding weather services</string>
+  <string name="quality_downloaded">Forecast cache: %1$s</string>
+  <string name="quality_time_unknown">unknown</string>
+  <string name="quality_barometer_nowcast">Barometer outlook</string>
+  <string name="quality_barometer_separate">Local barometer estimate · separate from the rain forecast.</string>
+  <string name="quality_nowcast_collecting">Collecting pressure history. About 13 hours of continuous readings are needed.</string>
+  <string name="quality_signal_history">Pressure signal and history</string>
+  <string name="quality_pressure_signal">Raw readings and signal processing</string>
+  <string name="quality_uv_available_peak">Available peak today</string>
+  <string name="quality_uv_from_now">From now · at %1$s · %2$s</string>
+</resources>

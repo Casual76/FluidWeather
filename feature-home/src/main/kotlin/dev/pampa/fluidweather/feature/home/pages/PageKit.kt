@@ -2,6 +2,9 @@ package dev.pampa.fluidweather.feature.home.pages
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,14 +14,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material3.Icon
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.antigravity.fluidengine.ui.fluid.FluidChip
+import dev.antigravity.fluidengine.ui.theme.FluidListGroup
+import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.ui.BlackSheetNote
 import dev.pampa.fluidweather.core.ui.BlackSheetSectionTitle
@@ -32,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.strings.TimeFormats
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 
 /*
  * Il corredo delle pagine complete (fase 11b): formattazioni, righe di statistica, la curva con
@@ -74,19 +87,42 @@ internal fun PageSection(title: String) = BlackSheetSectionTitle(title)
 @Composable
 internal fun PageNote(text: String) = BlackSheetNote(text)
 
+/** Progressive disclosure keeps methodology available without displacing the actual metric. */
+@Composable
+internal fun PageDisclosure(
+  title: String = stringResource(R.string.quality_method_sources),
+  modifier: Modifier = Modifier,
+  content: @Composable ColumnScope.() -> Unit,
+) {
+  var expanded by rememberSaveable { mutableStateOf(false) }
+  val description = stringResource(if (expanded) R.string.quality_expanded else R.string.quality_collapsed)
+  FluidListGroup(modifier = modifier.padding(vertical = 8.dp)) {
+    FluidListRow(
+      title = title,
+      subtitle = "",
+      onClick = { expanded = !expanded },
+      disclosure = false,
+      modifier = Modifier.semantics { stateDescription = description },
+      badge = { Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, contentDescription = null) },
+    )
+    if (expanded) Column(
+      Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
+      content = content,
+    )
+  }
+}
+
 /** Una riga etichetta / valore / dettaglio, allineata come una tabella. */
 @Composable
 internal fun StatRow(label: String, value: String, detail: String? = null) {
-  Row(
-    verticalAlignment = Alignment.CenterVertically,
-    modifier = Modifier
-      .fillMaxWidth()
-      .padding(vertical = 5.dp),
-  ) {
-    Text(label, style = MaterialTheme.typography.bodyMedium, color = Dim, modifier = Modifier.weight(1f))
-    Text(value, style = MaterialTheme.typography.titleSmall, color = White)
-    if (detail != null) {
+  Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(label, style = MaterialTheme.typography.bodyMedium, color = Dim, modifier = Modifier.weight(1f))
       Spacer(Modifier.width(8.dp))
+      Text(value, style = MaterialTheme.typography.titleSmall, color = White)
+    }
+    if (detail != null) {
       Text(detail, style = MaterialTheme.typography.bodySmall, color = Faint)
     }
   }
@@ -97,7 +133,7 @@ internal fun StatRow(label: String, value: String, detail: String? = null) {
 internal fun BigStat(value: String, unit: String? = null, caption: String? = null, color: Color = White) {
   Column {
     Row(verticalAlignment = Alignment.Bottom) {
-      Text(value, fontSize = 44.sp, fontWeight = FontWeight.Light, color = color)
+      Text(value, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Light, color = color)
       if (unit != null) {
         Spacer(Modifier.width(6.dp))
         Text(unit, style = MaterialTheme.typography.titleSmall, color = Dim, modifier = Modifier.padding(bottom = 8.dp))
@@ -138,6 +174,8 @@ internal fun CurveWithLabels(
   height: Dp = 96.dp,
   markerIndex: Int? = null,
   decimals: Int = 0,
+  timestamps: List<Long>? = null,
+  maxGapMillis: Long = 30 * 60_000L,
 ) {
   if (values.size < 2) {
     PageNote(stringResource(R.string.page_no_curve))
@@ -161,7 +199,9 @@ internal fun CurveWithLabels(
         color = Faint,
       )
     }
-    Charts.SmoothLine(
+    if (timestamps != null) Charts.TimeLine(values, timestamps, maxGapMillis,
+      color = color, modifier = Modifier.fillMaxWidth().height(height))
+    else Charts.SmoothLine(
       values = values,
       color = color,
       markerIndex = markerIndex,
@@ -169,10 +209,21 @@ internal fun CurveWithLabels(
         .fillMaxWidth()
         .height(height),
     )
-    if (labels.isNotEmpty()) {
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        labels.forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = Faint) }
+    val axisLabels = if (timestamps != null && timestamps.size >= 2) {
+      val start = timestamps.first()
+      val end = timestamps.last()
+      listOf(start, start + (end - start) / 2, end).map {
+        if (end - start > 36 * 3_600_000L) TimeFormats.shortDate(it, zone()) + "\n" + fmtTime(it)
+        else fmtTime(it)
       }
+    } else labels
+    if (axisLabels.isNotEmpty()) {
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        axisLabels.forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = Faint) }
+      }
+    }
+    if (timestamps != null && timestamps.zipWithNext().any { (a, b) -> b - a > maxGapMillis }) {
+      PageNote(stringResource(R.string.quality_curve_gaps, (maxGapMillis / 60_000).toInt()))
     }
   }
 }
@@ -180,7 +231,7 @@ internal fun CurveWithLabels(
 /** Le pillole di scelta (periodo, giorno): una sola accesa. */
 @Composable
 internal fun ChipRow(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     options.forEachIndexed { index, label ->
       FluidChip(label = label, selected = index == selectedIndex, onClick = { onSelect(index) })
     }
@@ -196,9 +247,15 @@ internal fun ChipRow(options: List<String>, selectedIndex: Int, onSelect: (Int) 
  * niente.
  */
 internal fun curvePoints(hours: List<FusedHour>, variable: String): Pair<List<Double>, List<String>> {
-  val kept = hours.mapNotNull { hour -> hour.values[variable]?.value?.let { hour.timestampMillis to it } }
+  val kept = curveSamples(hours, variable)
   return kept.map { it.second } to timeLabels(kept.map { it.first })
 }
+
+/** Values and their clocks are selected together, including when a variable has gaps. */
+internal fun curveSamples(hours: List<FusedHour>, variable: String): List<Pair<Long, Double>> =
+  hours.groupBy { it.timestampMillis }.toSortedMap().mapNotNull { (time, samples) ->
+    samples.singleOrNull()?.values?.get(variable)?.value?.takeIf { it.isFinite() }?.let { time to it }
+  }
 
 /** Le etichette temporali per una serie: prima, meta' e ultima ora. */
 internal fun timeLabels(timestamps: List<Long>): List<String> {

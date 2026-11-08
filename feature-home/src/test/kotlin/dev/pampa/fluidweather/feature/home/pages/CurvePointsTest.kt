@@ -14,6 +14,20 @@ import org.junit.Test
  * etichetta finivano su ore che la curva non contiene — e chi guardava leggeva il punto sbagliato.
  */
 class CurvePointsTest {
+  @Test fun pressureValuesRetainTheirClocksAcrossSeventeenHourGap() {
+    val hours = listOf(FusedHour(0, mapOf(VARIABILE to FusedValue(1020.0, emptyList())), null),
+      FusedHour(3_600_000, emptyMap(), null),
+      FusedHour(17 * 3_600_000L, mapOf(VARIABILE to FusedValue(1017.0, emptyList())), null),
+      FusedHour(19 * 3_600_000L, mapOf(VARIABILE to FusedValue(1016.0, emptyList())), null))
+    assertEquals(listOf(0L to 1020.0, 17 * 3_600_000L to 1017.0, 19 * 3_600_000L to 1016.0), curveSamples(hours, VARIABILE))
+  }
+  @Test fun invalidOrAmbiguousCurveClocksAreNotInterpolated() {
+    val hours = listOf(FusedHour(0, mapOf(VARIABILE to FusedValue(Double.NaN, emptyList())), null),
+      FusedHour(1, mapOf(VARIABILE to FusedValue(1.0, emptyList())), null),
+      FusedHour(1, mapOf(VARIABILE to FusedValue(2.0, emptyList())), null),
+      FusedHour(2, mapOf(VARIABILE to FusedValue(3.0, emptyList())), null))
+    assertEquals(listOf(2L to 3.0), curveSamples(hours, VARIABILE))
+  }
 
   private val hourMillis = 3_600_000L
 

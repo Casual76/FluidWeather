@@ -21,11 +21,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.core.ui.BlackSheetLazy
 import dev.pampa.fluidweather.feature.home.HomeUiState
+import dev.pampa.fluidweather.feature.home.DetailClockNote
 import dev.pampa.fluidweather.feature.home.WeatherKindIcon
 import dev.pampa.fluidweather.feature.home.isNightAt
 import dev.pampa.fluidweather.strings.R
@@ -91,8 +95,8 @@ internal class HourlyModel(val days: List<HourlyDay>, val providers: Int) {
                 kind = hour.kind,
                 night = isNightAt(hour.timestampMillis, state.latitude, state.longitude),
                 temperature = value(FusionVariables.TEMPERATURE)?.let { units.degrees(it) } ?: "—",
-                probability = if (pop != null && pop >= 5) "${pop.toInt()}%" else "",
-                precipitation = if (mm != null && mm >= 0.05) units.precipitationValue(mm) else "",
+                probability = precipitationProbability(pop),
+                precipitation = precipitationSampleValue(mm, units),
                 wind = value(FusionVariables.WIND_SPEED)?.let { units.wind(it) } ?: "—",
                 windDirectionDeg = direction,
                 // "da NE": la freccia punta dove va il vento, il nome cardinale dice da dove
@@ -125,13 +129,26 @@ internal fun LazyListScope.hourlyPage(model: HourlyModel?) {
     item(key = "hourly-empty") { PageNote(stringResource(R.string.common_waiting_providers)) }
     return
   }
-  item(key = "hourly-note") { PageNote(stringResource(R.string.hourly_note, model.providers)) }
   model.days.forEach { day ->
     item(key = "hourly-day-${day.label}") {
       PageSection(day.label)
       HeaderRow()
     }
     items(day.rows, key = { it.timestampMillis }) { HourRow(it) }
+  }
+  item(key = "hourly-note") {
+    PageDisclosure { PageNote(stringResource(R.string.hourly_note, model.providers)) }
+  }
+}
+
+/** The real lazy detail surface, shared by Home and integration tests. */
+@Composable
+fun HourlyWeatherSheet(state: HomeUiState, onDismiss: () -> Unit,
+  contentMaxWidth: Dp = dev.antigravity.fluidengine.ui.fluid.FluidScreenDefaults.ContentMaxWidth) {
+  val model = rememberHourlyModel(state)
+  BlackSheetLazy(title = stringResource(R.string.widget_hourly), onDismiss = onDismiss, contentMaxWidth = contentMaxWidth) {
+    item(key = "hourly-clock-zone") { DetailClockNote(state) }
+    hourlyPage(model)
   }
 }
 
@@ -175,8 +192,10 @@ private fun HourRow(row: HourlyRow) {
     WeatherKindIcon(row.kind, size = 18.dp, night = row.night)
     Spacer(Modifier.width(8.dp))
     Text(row.temperature, style = MaterialTheme.typography.titleSmall, color = White, modifier = Modifier.width(44.dp))
-    Text(row.probability, style = MaterialTheme.typography.bodySmall, color = PageBlue, modifier = Modifier.width(52.dp))
-    Text(row.precipitation, style = MaterialTheme.typography.bodySmall, color = Dim, modifier = Modifier.width(44.dp))
+    Text(row.probability, style = MaterialTheme.typography.bodySmall, color = PageBlue,
+      modifier = Modifier.width(52.dp).testTag("hourly_probability_${row.timestampMillis}"))
+    Text(row.precipitation, style = MaterialTheme.typography.bodySmall, color = Dim,
+      modifier = Modifier.width(44.dp).testTag("hourly_amount_${row.timestampMillis}"))
     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
       Text(row.wind, style = MaterialTheme.typography.bodySmall, color = Dim)
       if (row.windDirectionDeg != null) {

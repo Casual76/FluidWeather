@@ -1,0 +1,26 @@
+<resources>
+  <string name="precip_quality_probability_unknown">Probabilità non disponibile per queste ore</string>
+  <string name="precip_quality_forecast">Previsione del modello</string>
+  <string name="precip_quality_peak">Probabilità più alta</string>
+  <string name="precip_quality_coverage">Valori disponibili: %1$d/%2$d</string>
+  <string name="precip_quality_sample_sum">Quantità disponibile</string>
+  <string name="precip_quality_amount_coverage">Campioni: %1$d/%2$d</string>
+  <string name="precip_quality_today">Oggi</string>
+  <string name="precip_quality_window">%1$s–%2$s</string>
+  <string name="precip_quality_earlier">Ore precedenti</string>
+  <string name="precip_quality_later">Ore successive</string>
+  <string name="precip_quality_scale">Probabilità oraria</string>
+  <string name="precip_quality_legend">× Dato non disponibile</string>
+  <string name="precip_quality_empty">Previsioni non disponibili</string>
+  <string name="precip_quality_show_hours">Ore e quantità</string>
+  <string name="precip_quality_hide_hours">Nascondi i dettagli orari</string>
+  <string name="precip_quality_hour_values">%1$s · %2$s</string>
+  <string name="precip_quality_hour_columns">Probabilità · quantità</string>
+  <string name="precip_quality_sources">Fonti e metodo</string>
+  <string name="precip_quality_expanded">Espanso</string>
+  <string name="precip_quality_collapsed">Compresso</string>
+  <string name="precip_quality_method">Questi sono campioni previsti dai modelli, separati dalla valutazione condivisa della pioggia adesso. La probabilità combina i provider che forniscono quella variabile; non stabilisce quando inizia o finisce la pioggia.</string>
+  <string name="precip_quality_provider_list">Provider dei modelli che contribuiscono: %1$s</string>
+  <string name="precip_quality_download">Cache della previsione: %1$s</string>
+  <string name="precip_quality_interval_limit">Qui non sono accertati emissione e intervallo di accumulo della fonte. Le quantità sono somme dei campioni disponibili, non totali verificati di sei ore o giornalieri. Lacune, timestamp duplicati e posizioni fuori griglia restano sconosciuti. Seleziona un giorno e usa le ore precedenti o successive per consultare il resto della previsione.</string>
+</resources>
