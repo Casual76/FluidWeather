@@ -65,12 +65,23 @@ fun WeatherWidgetContent(
     age < 1440 -> resources.getString(R.string.widget_quality_age_hours, age / 60)
     else -> resources.getString(R.string.widget_quality_age_days, age / 1440)
   }
+  val stale = age == null || age >= 90
+  val validTime = if (model.usesHourlyForecast) model.forecastAtMillis?.let {
+    resources.getString(R.string.widget_quality_valid_time,
+      TimeFormats.time(it, model.zone, resources.configuration.locales[0]))
+  } ?: resources.getString(R.string.widget_quality_valid_time_unknown) else null
+  val compactFallback = density.compact && enlarged && stale && validTime != null
+  val displayedHeroSize = if (compactFallback) 20 else heroSize
   Column(
     modifier = GlanceModifier.fillMaxSize()
       .background(ImageProvider(sky), contentScale = ContentScale.Crop)
       .cornerRadius(EngineWidgetShape.Container)
       .padding(horizontal = density.padding.dp,
-        vertical = (density.padding - if (enlarged && !density.compact) 2 else 0).dp)
+        vertical = (density.padding - when {
+          compactFallback -> 3
+          enlarged && !density.compact -> 2
+          else -> 0
+        }).dp)
       .clickable(actionStartActivity(target)),
   ) {
     if (model.isEmpty) {
@@ -84,11 +95,11 @@ fun WeatherWidgetContent(
         Label(place, ink, placeSize, FontWeight.Medium, GlanceModifier.defaultWeight())
         WeatherIcon(model.iconRes, ink, 14)
       }
-      Label(model.temperatureC?.takeIf { it.isFinite() }?.let { units.degrees(it) } ?: "\u2014", ink, heroSize)
+      Label(model.temperatureC?.takeIf { it.isFinite() }?.let { units.degrees(it) } ?: "\u2014", ink, displayedHeroSize)
       // The icon carries conditions in the square cell; stale age takes precedence over range
       // when large type leaves room for only three lines.
-      val stale = age == null || age >= 90
-      if (!enlarged || !stale) RangeLine(model, units, ink, detailSize)
+      if (validTime != null) Label(validTime, secondary, detailSize)
+      else if (!enlarged || !stale) RangeLine(model, units, ink, detailSize)
       if (stale) Label(ageText, secondary, detailSize)
     } else {
       Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
@@ -98,9 +109,10 @@ fun WeatherWidgetContent(
         }
         Column(GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.End) {
           WeatherIcon(model.iconRes, ink, if (enlarged) 18 else 22)
-          Label(if (short && (age == null || age >= 90)) ageText else condition, ink, if (enlarged) 10 else 12,
+          Label(validTime ?: if (short && stale) ageText else condition, ink, if (enlarged) 10 else 12,
             modifier = GlanceModifier.clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))), maxLines = 2)
-          RangeLine(model, units, secondary, detailSize)
+          if (validTime != null && short && stale) Label(ageText, secondary, detailSize)
+          else RangeLine(model, units, secondary, detailSize)
         }
       }
       if (density.hourCount > 0 && model.hours.isNotEmpty()) {

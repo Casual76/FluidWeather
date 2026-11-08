@@ -106,7 +106,12 @@ class WeatherWidgetNavigationTest {
       // Actual singleTask delivery: identical URI must still generate a fresh AppRequest nonce.
       instrumentation.targetContext.startActivity(link.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       awaitSavedHourly()
-      closeDetail()
+      // Same-place root delivery must dismiss a still-open detail; no Back or place change.
+      instrumentation.targetContext.startActivity(intent(AppDestination.Home(place.id))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      await("same-place root dismisses the active Hourly detail") { root ->
+        graph.selectedPlaceStore.current() == place.id && hasText(root, place.name) && !closeVisible(root)
+      }
       graph.selectedPlaceStore.select(Place.GPS_ID)
       instrumentation.targetContext.startActivity(intent(AppDestination.Home(place.id))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

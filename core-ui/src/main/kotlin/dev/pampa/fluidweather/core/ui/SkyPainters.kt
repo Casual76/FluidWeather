@@ -1266,8 +1266,16 @@ internal object ScrimPainter {
 
   fun draw(scope: DrawScope, sky: SkyPalette.Sky) {
     val strength = scrimStrength(sky)
-    if (strength <= 0f) return
     val height = scope.size.height
+    // Widget-only scrim: the celestial glow can cross the header independently of the
+    // underlying gradient. Keep white place/temperature ink readable without moving the sky.
+    val headerStrength = if (sky.starAlpha > 0.5f) 0.12f else maxOf(0.3f, strength)
+    scope.drawRect(brush = Brush.verticalGradient(
+      colors = listOf(Color.Black.copy(alpha = headerStrength), Color.Transparent),
+      startY = 0f,
+      endY = height * 0.55f,
+    ))
+    if (strength <= 0f) return
     scope.drawRect(
       brush = Brush.verticalGradient(
         colors = listOf(Color.Transparent, Color.Black.copy(alpha = strength)),

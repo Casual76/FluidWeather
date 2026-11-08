@@ -63,7 +63,9 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
         val texts = descendants(root).filterIsInstance<TextView>().filter { it.text.isNotEmpty() }.toList()
         assertTrue("No framework TextViews: is this still a RemoteViews host?", texts.isNotEmpty())
         texts.filter { it.text.toString() != host.model.placeName }.forEach { text ->
-          assertEquals("Essential text was ellipsized: ${text.text}", 0, text.layout.getEllipsisCount(0))
+          for (line in 0 until text.layout.lineCount) {
+            assertEquals("Essential text was ellipsized on line $line: ${text.text}", 0, text.layout.getEllipsisCount(line))
+          }
         }
         val condition = host.model.kind?.labelRes()?.let { host.widgetContext.getString(it) }
         val painted = texts.map { it to assertPaintedTextFits(root, it,
@@ -97,11 +99,17 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
     } else {
       assertFalse(texts.any { it.text.toString() == emptyLabel })
       assertEquals("Unexpected extra/missing text rows", when {
-        case.width == 110 -> if (case.variant == "stale" && case.fontScale == 1f) 4 else 3
+        case.width == 110 -> if (case.variant == "stale") 4 else 3
         case.height == 110 -> 4
         case.height == 200 -> 13
         else -> 20
       }, texts.size)
+      if (model.usesHourlyForecast) {
+        val valid = requireNotNull(model.forecastAtMillis)
+        val label = host.widgetContext.getString(R.string.widget_quality_valid_time,
+          dev.pampa.fluidweather.strings.TimeFormats.time(valid, model.zone, Locale.forLanguageTag(case.language)))
+        assertEquals("Hourly fallback validity must remain visible", 1, texts.count { it.text.toString() == label })
+      }
       // Each hourly column contributes one time and one temperature.
       val hourLabels = model.hours.map { dev.pampa.fluidweather.strings.TimeFormats.time(it.timestampMillis, model.zone) }
       val hours = texts.filter { it.text.toString() in hourLabels }

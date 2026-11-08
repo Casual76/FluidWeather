@@ -32,6 +32,7 @@ import dev.pampa.fluidweather.feature.home.HomeAssistantBar
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import dev.pampa.fluidweather.feature.home.HomeDependencies
 import dev.pampa.fluidweather.feature.home.HomeScreen
 import dev.pampa.fluidweather.feature.radar.RadarDependencies
@@ -130,8 +131,14 @@ private fun FluidWeatherRoutes(
   // lo stato; una tessera pretende comunque di passare dalla home, quindi se siamo altrove si
   // torna li' prima — un tocco sul widget mentre l'app e' aperta sulle Impostazioni non deve
   // limitarsi a portare avanti le Impostazioni.
+  var homeRequestNonce by remember { mutableStateOf<Long?>(null) }
   LaunchedEffect(request) {
-    when (val destination = request?.destination ?: return@LaunchedEffect) {
+    val destination = request?.destination ?: run {
+      homeRequestNonce = null
+      return@LaunchedEffect
+    }
+    if (destination !is AppDestination.Home) homeRequestNonce = null
+    when (destination) {
       is AppDestination.Home -> {
         val placeId = try {
           WidgetPlaceTarget.resolve(destination.placeId, graph.savedLocationsRepository.places.first())
@@ -140,11 +147,12 @@ private fun FluidWeatherRoutes(
         } catch (_: Exception) {
           dev.pampa.fluidweather.core.model.Place.GPS_ID
         }
+        ensureActive()
         placeId?.let(graph.selectedPlaceStore::select)
+        homeRequestNonce = request?.nonce
         if (navController.currentDestination?.route != Routes.Home) {
           navController.popBackStack(Routes.Home, inclusive = false)
         }
-        onRequestConsumed()
       }
       is AppDestination.Widget ->
         if (navController.currentDestination?.route != Routes.Home) {
@@ -226,7 +234,10 @@ private fun FluidWeatherRoutes(
       var requestedWidgetNonce by remember { mutableStateOf(0L) }
       LaunchedEffect(request) {
         when (val destination = request?.destination) {
-          is AppDestination.Home -> Unit // Selected by the route owner; no detail sheet.
+          is AppDestination.Home -> {
+            requestedWidget = null
+            requestedWidgetPlaceId = null
+          }
           is AppDestination.Widget -> {
             requestedWidgetPlaceId = destination.placeId
             requestedWidgetNonce = request?.nonce ?: 0L
@@ -295,6 +306,11 @@ private fun FluidWeatherRoutes(
         requestedWidget = requestedWidget,
         requestedWidgetPlaceId = requestedWidgetPlaceId,
         requestedWidgetNonce = requestedWidgetNonce,
+        homeRequestNonce = homeRequestNonce,
+        onHomeRequestConsumed = { nonce ->
+          if (homeRequestNonce == nonce) homeRequestNonce = null
+          if (request?.nonce == nonce && request.destination is AppDestination.Home) onRequestConsumed()
+        },
         onWidgetConsumed = { requestedWidget = null; requestedWidgetPlaceId = null; onRequestConsumed() },
         coveredByPage = coveredByPage,
         overlay = { chrome ->

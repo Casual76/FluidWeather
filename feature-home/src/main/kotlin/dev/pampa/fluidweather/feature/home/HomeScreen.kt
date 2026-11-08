@@ -151,6 +151,8 @@ fun HomeScreen(
   requestedWidget: HomeWidget? = null,
   requestedWidgetPlaceId: Long? = null,
   requestedWidgetNonce: Long = 0L,
+  homeRequestNonce: Long? = null,
+  onHomeRequestConsumed: (Long) -> Unit = {},
   onWidgetConsumed: () -> Unit = {},
   /**
    * Una pagina di navigazione (il radar, le impostazioni) copre la home: sotto non c'e' niente da
@@ -219,6 +221,8 @@ fun HomeScreen(
       onRefresh = home.refresh,
       requestedWidget = requestedWidget.takeIf { widgetPlaceReady },
       requestedWidgetNonce = requestedWidgetNonce,
+      homeRequestNonce = homeRequestNonce,
+      onHomeRequestConsumed = onHomeRequestConsumed,
       onWidgetConsumed = onWidgetConsumed,
       coveredByPage = coveredByPage,
       overlay = overlay,
@@ -243,6 +247,8 @@ private fun HomeShell(
   onRefresh: () -> Unit,
   requestedWidget: HomeWidget?,
   requestedWidgetNonce: Long,
+  homeRequestNonce: Long?,
+  onHomeRequestConsumed: (Long) -> Unit,
   onWidgetConsumed: () -> Unit,
   coveredByPage: Boolean,
   overlay: @Composable BoxScope.(GlassBackdropState) -> Unit,
@@ -291,6 +297,12 @@ private fun HomeShell(
   val order = liveOrder ?: HomeWidget.ordered(storedOrder).map { it.id }
   val drag = remember(gridState) { GridDragController(gridState) }
   var selectedWidget by remember(selectedPlace.id) { mutableStateOf<HomeWidget?>(null) }
+  LaunchedEffect(homeRequestNonce) {
+    homeRequestNonce?.let { nonce ->
+      selectedWidget = null
+      onHomeRequestConsumed(nonce)
+    }
+  }
   // Un widget chiesto da fuori (assistente, chip) apre la sua pagina nera come un tocco.
   LaunchedEffect(requestedWidget, requestedWidgetNonce) {
     if (requestedWidget != null) {

@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="widget_quality_empty">No data</string>
+  <string name="widget_quality_valid_time">At %1$s</string>
+  <string name="widget_quality_valid_time_unknown">Time &#8212;</string>
   <string name="widget_quality_days">NEXT DAYS</string>
   <string name="widget_quality_age_unknown">Age unknown</string>
   <string name="widget_quality_age_minutes">%1$d min ago</string>
