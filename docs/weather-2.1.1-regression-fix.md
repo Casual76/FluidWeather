@@ -63,3 +63,9 @@ APK di produzione dev.pampa.fluidweather, 2.1.1/code22, 24.967.980 byte,
 SHA256 fccf640813a36a828857d5dfef3565bc34df60a7620b86e42325828216f1a184.
 ZIP integro, ARM64/ARMv7, flag debug assente; apksigner verifica la firma v2 e il
 certificato coincide con la stable 2.1.0 per l'aggiornamento sul posto.
+
+Stable correttiva pubblicata e verificata: tag stable-fluidweather-v2.1.1 sul sorgente
+380fdf00a68cdd431091d2771becd2c6f97cd70e, release non prerelease né draft, GitHub latest.
+Manifest stable dell'app e indice Pampa Store aggiornati. L'APK pubblico riscaricato
+coincide per byte e SHA256 con quello firmato locale; changelog UTF8 identico alle note.
+https://github.com/Casual76/FluidWeather/releases/tag/stable-fluidweather-v2.1.1

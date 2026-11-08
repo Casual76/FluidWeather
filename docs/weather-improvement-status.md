@@ -1368,3 +1368,15 @@ Full Home inspected with real Sesto Fiorentino data on phone and Roma data on ta
 actual launcher widget displays numbers, source qualification and a short data clock; its
 temperature opens Home. No launcher resize or exhaustive device matrix claimed. All owned
 AVDs are off after QA; no physical-device operation. Release signing/publication checks follow.
+
+Corrective publication completed: source380fdf00a68cdd431091d2771becd2c6f97cd70e,
+stable-fluidweather-v2.1.1, published2026-11-08T09:24:44Z. Final release build passed
+in1m19s,1,138tasks22executed1,116up-to-date; engine-doctor clean. Signed production APK
+24,967,980bytes, SHA256 fccf640813a36a828857d5dfef3565bc34df60a7620b86e42325828216f1a184.
+Same certificate as2.1.0, v2 verified, ZIP intact, ARM64/ARMv7, no debug flag. Publisher
+probe and dry-run were inspected before live publication, with clean pushed source.
+Public release is latest, draft=false/prerelease=false, tag resolves to the source above.
+App stable manifest and Pampa Store index verified, UTF8 changelog matches, public APK
+download is byte-identical. Publisher manifest commitbe2a2e0 was fast-forwarded locally.
+Evidence: artifacts/hotfix-2.1.1 and artifacts/releases/2.1.1. Prior C2 field and controlled
+C6 performance gaps remain open; this corrective release does not claim to close them.
