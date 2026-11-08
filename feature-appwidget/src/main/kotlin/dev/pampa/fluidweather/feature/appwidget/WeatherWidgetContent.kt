@@ -172,12 +172,13 @@ private fun HourStrip(
   model: AppWidgetModel, units: UnitFormatter, ink: ColorProvider, secondary: ColorProvider,
   target: Intent, count: Int, enlarged: Boolean,
 ) {
+  val locale = LocalContext.current.resources.configuration.locales[0]
   Row(
     GlanceModifier.fillMaxWidth().clickable(actionStartActivity(widgetIntent(target, HomeWidget.HOURLY))),
   ) {
     model.hours.take(count).forEach { hour ->
       Column(GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
-        Label(TimeFormats.time(hour.timestampMillis, model.zone), secondary, if (enlarged) 10 else 11)
+        Label(TimeFormats.hour(hour.timestampMillis, model.zone, locale), secondary, if (enlarged) 10 else 11)
         Spacer(GlanceModifier.height(4.dp))
         WeatherIcon(hour.iconRes, ink, if (enlarged) 18 else 20)
         Spacer(GlanceModifier.height(4.dp))

@@ -111,7 +111,8 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
         assertEquals("Hourly fallback validity must remain visible", 1, texts.count { it.text.toString() == label })
       }
       // Each hourly column contributes one time and one temperature.
-      val hourLabels = model.hours.map { dev.pampa.fluidweather.strings.TimeFormats.time(it.timestampMillis, model.zone) }
+      val hourLabels = model.hours.map { dev.pampa.fluidweather.strings.TimeFormats.hour(it.timestampMillis, model.zone,
+        Locale.forLanguageTag(case.language)) }
       val hours = texts.filter { it.text.toString() in hourLabels }
       assertEquals(if (case.height >= 200) 4 else 0, hours.size)
       hours.forEach { assertTrue("Hours must follow hero", bounds(root, it).top >= bounds(root, hero).bottom) }
