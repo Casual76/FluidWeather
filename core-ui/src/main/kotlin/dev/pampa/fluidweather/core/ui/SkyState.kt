@@ -28,6 +28,7 @@ data class SkyState(
   /** Shared present assessment, never a forecast arrival. Defaults preserve widget/preview callers. */
   val precipitation: PrecipitationState? = null,
   val assessmentKnown: Boolean = false,
+  val atmosphere: SkyAtmosphere? = null,
 )
 
 /** Unknown/conflicting input keeps atmosphere but cannot animate a certain rain shower. */

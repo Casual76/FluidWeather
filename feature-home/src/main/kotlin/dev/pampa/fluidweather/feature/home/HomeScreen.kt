@@ -305,6 +305,8 @@ private fun HomeShell(
       state = SkyState(
         state.phase, state.weatherBrief?.current?.kind ?: state.kind, state.cloudCover, state.latitude, state.longitude,
         precipitation = state.weatherBrief?.precipitation?.state, assessmentKnown = true,
+        atmosphere = homeSkyAtmosphere(state, deps, selectedPlace,
+          active = !covered && gridState.firstVisibleItemIndex == 0),
       ),
       quality = glassLevel.toSceneQuality(),
       running = !covered && gridState.firstVisibleItemIndex == 0,
