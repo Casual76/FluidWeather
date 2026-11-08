@@ -75,6 +75,22 @@ Decision: CORRECT; no publication. The four correction targets pass, but R1 foun
 
 Correction2 uses an optional strict acquisition mode at the actual production API boundary, enabled by Home's polling and ordinary load. Failures preserve displayed data; confirmed empty reads and wipe still clear it. A new three-method real API Android suite passed; native navigation repeated2/2. No numerical model, cleaner, readiness formula, schema, cloud painter or widget content changed. Signed build and fresh independent review follow before acceptance.
 
+## Independent review correction2
+
+Version `Premium-R2-f5d86638ae35`, reviewed HEAD `3cc7d6c32f07cc01471e28d00d60bbdb1b50d801`, production inputs `2d058c92ad92be38faa9470ccc45a1ca230f047a`. The three fresh Sol-high reports (`weather-premium-review-r2-r1.md`, `-r2.md`, `-r3.md`) independently checked833 frozen files, actual images and external APKs. ZIP SHA256 `147740fa59656a8c3c72bb48e6a8025195cf4b69be7e3cab7e8967bb0eef187a`.
+
+| Criterion | R1 technical | R2 visual | R3 integration | Mean | Minimum |
+|---|---:|---:|---:|---:|---:|
+| P1.sky | 8 | 8.5 | 8 | 8.17 | 8 |
+| P2.widget | 8 | 8.5 | 8 | 8.17 | 8 |
+| P3.reliability | 6 | 6 | 6 | 6 | 6 |
+| P4.regression | 8 | 8 | 7 | 7.67 | 7 |
+| P5.delivery | 8 | 8 | 8 | 8 | 8 |
+
+Decision: CORRECT; no publication. All critics identified the same high-severity missing boundary: strict ordinary evaluate could escape the Home LaunchedEffect. API tests deliberately caught its propagated exception and therefore did not verify the actual Home caller. Independent polling had its own correct boundary, so those helper passes did not compensate.
+
+Correction3, the last permitted correction round, handles ordinary evaluation through cancellation-preserving `homeCatching`, merges local fields only on success, completes loading/refresh flags and continues auxiliary work after ordinary failure. Successful empty still clears. A real `rememberHomeState` Compose regression uses the production use case/cleaner and isolated acquisition, baseline and history stores; it exercises success, IO failure, retained state, remaining work, recovery, cancellation and confirmed empty. Its execution and signed build remain to be recorded before review. Default baseline persistence and geocoding are retained through narrow injectable constructor/callback seams, allowing this test to avoid changing real settings or making GPS/network requests. No new cloud/widget artwork or model/schema change is included.
+
 ## Explicit limits (unchanged)
 
 Field forecast accuracy, controlled whole-app p95/memory comparison, process death, multi-day sensor continuity, exact-alarm delivery on other OEMs and live AI/audio are not established. PendingIntent existence still cannot prove an armed future exact alarm; rearm failure is reported and existing health recovery remains. No new accuracy, continuous-collection or broad hardware claim follows from short device tests.
