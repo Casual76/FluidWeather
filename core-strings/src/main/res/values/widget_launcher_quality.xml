@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="widget_quality_empty">No weather yet</string>
+  <string name="widget_quality_days">NEXT DAYS</string>
+  <string name="widget_quality_age_unknown">Age unknown</string>
+  <string name="widget_quality_age_minutes">%1$d min ago</string>
+  <string name="widget_quality_age_hours">%1$d h ago</string>
+  <string name="widget_quality_age_days">%1$d d ago</string>
+</resources>

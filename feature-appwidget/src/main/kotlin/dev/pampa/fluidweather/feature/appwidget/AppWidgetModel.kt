@@ -72,6 +72,9 @@ data class AppWidgetModel(
   val hours: List<AppWidgetHour>,
   val usesHourlyForecast: Boolean = false,
   val forecastAtMillis: Long? = null,
+  val todayMinC: Double? = minC,
+  val todayMaxC: Double? = maxC,
+  val days: List<AppWidgetDay> = emptyList(),
 ) {
   /** Precipitation atmosphere requires a shared known wet state, even when current kind is rainy. */
   val skyKind: WeatherKind? get() {
@@ -142,6 +145,9 @@ object AppWidgetModelBuilder {
       } else {
         snapshot?.fused?.hours?.rainProbabilityPercent(nowMillis)
       },
+      todayMinC = range.first,
+      todayMaxC = range.second,
+      days = if (tier == AppWidgetTier.LARGE) widgetDays(snapshot?.fused?.hours.orEmpty(), nowMillis, zone) else emptyList(),
       forecastAtMillis = forecast?.timestampMillis,
       usesHourlyForecast = current?.temperatureC == null && forecast?.values?.get(FusionVariables.TEMPERATURE) != null,
       // Le ore si calcolano solo se qualcuno le disegnera': un widget piccolo non deve pagare
