@@ -111,7 +111,11 @@ Low nonblocking observations remain explicit: the caller test does not gate a su
 
 The existing explicit stable-publication instruction authorizes proceeding after this acceptance. Publication, remote asset/hash verification and catalog outcome are recorded separately after execution. Global field accuracy, matched whole-app performance and multi-day/other-OEM hardware continuity remain NV, outside this scoped acceptance.
 
-## Explicit limits (unchanged)
+## Publication outcome
+
+Stable2.1.2/code23 published successfully on2026-11-08 under `stable-fluidweather-v2.1.2`, source `79a74070da25dd8b5e533af4e9d28d16947b1b80`. Non-draft, non-prerelease and latest verified. Downloaded APK bytes/SHA256 match the accepted signed candidate; stable app manifest and Pampa index/changelog verified. See [the publication record](releases/2.1.2-publication.md). This records completion of the separately authorized stable release, without changing the scoped review/NV boundaries.
+
+## Explicit limits after delivery
 
 Field forecast accuracy, controlled whole-app p95/memory comparison, process death, multi-day sensor continuity, exact-alarm delivery on other OEMs and live AI/audio are not established. PendingIntent existence still cannot prove an armed future exact alarm; rearm failure is reported and existing health recovery remains. No new accuracy, continuous-collection or broad hardware claim follows from short device tests.
 

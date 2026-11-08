@@ -1440,3 +1440,8 @@ P1/P2=8/8/8, P3/P4/P5=8.5/8/8. Root closes the scoped collective delivery gate.
 No field-accuracy, multi-day sensor or controlled whole-app performance approval
 follows from these checks. Correction3 is the last permitted correction round;
 the authorized stable publication proceeds with remote verification recorded separately.
+
+Stable2.1.2/code23 is published and remotely verified: latest/non-draft/non-prerelease,
+correct source tag, downloaded APK size/hash, stable manifest, Pampa index and UTF-8
+changelog. [Publication record](releases/2.1.2-publication.md). No field-accuracy,
+multi-day sensor or whole-app performance acceptance is inferred from publication.
