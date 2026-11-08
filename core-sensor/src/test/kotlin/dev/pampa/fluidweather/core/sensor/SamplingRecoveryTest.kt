@@ -23,10 +23,28 @@ class SamplingRecoveryTest {
   }
 
   @Test fun `unsupported hardware succeeds without collecting or notifying`() = runTest {
+    var weatherUpdates = 0
     val result = runPass {
-      scheduledSensorPass(false, { error("must not collect") }, { error("must not notify") })
+      scheduledSensorPass(false, { error("must not collect") }, { error("must not notify") }, { weatherUpdates++ })
     }
     assertEquals(ListenableWorker.Result.success(), result)
+    assertEquals(1, weatherUpdates)
+  }
+
+  @Test fun `failed sensor keeps weather updates but cancellation owns both paths`() = runTest {
+    var weatherUpdates = 0
+    var successfulSamples = 0
+    assertEquals(ListenableWorker.Result.retry(), runPass {
+      scheduledSensorPass(true, { 0 }, { successfulSamples++ }, { weatherUpdates++ })
+    })
+    assertEquals(0, successfulSamples)
+    assertEquals(1, weatherUpdates)
+    try {
+      scheduledSensorPass(true, { throw CancellationException("wipe") },
+        { successfulSamples++ }, { weatherUpdates++ })
+      fail("cancellation must propagate")
+    } catch (_: CancellationException) { }
+    assertEquals(1, weatherUpdates)
   }
 
   @Test fun `stored samples complete once`() = runTest {

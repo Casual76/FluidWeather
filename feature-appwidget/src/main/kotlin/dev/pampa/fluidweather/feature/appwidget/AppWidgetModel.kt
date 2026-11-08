@@ -75,6 +75,7 @@ data class AppWidgetModel(
   val todayMinC: Double? = minC,
   val todayMaxC: Double? = maxC,
   val days: List<AppWidgetDay> = emptyList(),
+  val atmosphere: dev.pampa.fluidweather.core.ui.SkyAtmosphere? = null,
 ) {
   /** Precipitation atmosphere requires a shared known wet state, even when current kind is rainy. */
   val skyKind: WeatherKind? get() {
@@ -115,6 +116,8 @@ object AppWidgetModelBuilder {
     val phase = SkyScene.phaseOf(snapshot?.latitude, snapshot?.longitude, nowMillis, zone)
     return AppWidgetModel(
       placeName = placeName,
+      atmosphere = dev.pampa.fluidweather.core.ui.SkyAtmosphereEvidence.derive(snapshot?.context,
+        brief?.precipitation, snapshot?.latitude, snapshot?.longitude, nowMillis),
       temperatureC = current?.temperatureC ?: forecast?.values?.get(FusionVariables.TEMPERATURE)?.value,
       kind = kind,
       cloudCover = forecast?.values?.get(FusionVariables.CLOUD_COVER)?.value,

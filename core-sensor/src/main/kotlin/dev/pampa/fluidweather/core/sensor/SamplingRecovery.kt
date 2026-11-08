@@ -17,10 +17,21 @@ internal suspend fun scheduledSensorPass(
   available: Boolean,
   collect: suspend () -> Int,
   completed: suspend () -> Unit,
+  weatherRefresh: suspend () -> Unit = {},
 ) {
-  if (!available) return
-  requireSamples(collect())
-  completed()
+  if (!available) { weatherRefresh(); return }
+  try {
+    requireSamples(collect())
+    completed()
+  } catch (cancelled: CancellationException) {
+    throw cancelled
+  } catch (failure: Exception) {
+    // Weather acquisition must keep working on a device whose pressure sensor failed.
+    // This hook does not acknowledge or fabricate a pressure sample.
+    weatherRefresh()
+    throw failure
+  }
+  weatherRefresh()
 }
 
 /** Context failure cannot discard local pressure history; caller cancellation still owns it. */

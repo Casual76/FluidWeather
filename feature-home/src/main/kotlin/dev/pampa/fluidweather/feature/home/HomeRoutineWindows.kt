@@ -55,10 +55,11 @@ fun HomeRoutineWindows(assessments: List<RoutineWindowAssessment>, readFailed: B
         onClick = { expanded = !expanded },
       )
     }
-    FluidButton(
-      text = stringResource(if (!readFailed && assessments.isEmpty()) R.string.routines_add else R.string.routines_edit),
-      style = FluidButtonStyle.Plain,
-      onClick = onOpenRoutines,
-    )
+    val editLabel = stringResource(if (!readFailed && assessments.isEmpty()) R.string.routines_add else R.string.routines_edit)
+    if (LocalFluidCanvasBackdrop.current != null) {
+      FluidGlassButton(text = editLabel, onClick = onOpenRoutines, grip = FluidPressGrip.YieldsToScroll)
+    } else {
+      FluidButton(text = editLabel, style = FluidButtonStyle.Plain, onClick = onOpenRoutines)
+    }
   }
 }

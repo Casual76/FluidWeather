@@ -65,8 +65,8 @@ class SamplingEngine(
         if (mode.surveillanceCapable && PressureTrend.callsForSurveillance(currentTrend())) {
           surveillance.start()
         }
-        notifyPassCompleted(SampleSource.PERIODIC)
       },
+      weatherRefresh = { notifyPassCompleted(SampleSource.PERIODIC) },
     )
   }
 

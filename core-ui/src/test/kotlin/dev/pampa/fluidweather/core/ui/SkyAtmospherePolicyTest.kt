@@ -46,6 +46,15 @@ class SkyAtmospherePolicyTest {
     assertEquals(0f, sky.storminess)
   }
 
+  @Test fun alreadyOvercastSkyCanDeepenBeforeHeavyRainWithoutStartingParticles() {
+    val baseline = scene(sample(100.0, 0.0))
+    val front = scene(sample(100.0, 0.0), f = sample(100.0, 20.0).copy(validAtMillis = now + 45 * 60_000))
+    assertTrue(front.cloudDepth > baseline.cloudDepth)
+    assertTrue(front.cloudDarkness > baseline.cloudDarkness)
+    assertEquals(0f, front.precipitationStrength)
+    assertEquals(0f, front.storminess)
+  }
+
   @Test fun staleConflictFutureAndMissingClocksCannotProduceRain() {
     for (p in listOf(wet(20.0).copy(conflicting = true),
       wet(20.0).copy(sourceAtMillis = now - 21 * 60_000),

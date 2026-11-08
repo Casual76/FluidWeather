@@ -25,14 +25,13 @@ class HomeSkyAtmosphereTest {
 
   @Test fun newRoundCannotRejuvenateOldContext() {
     val old = deriveHomeSkyAtmosphere(state, snapshot(bundle(now - 91 * 60_000)), now)
-    assertEquals(0f, old.cloudDepth)
-    assertEquals(0.35f, old.cloudCoverage, 0.001f)
+    assertNull(old)
   }
 
   @Test fun unknownHourlyDurationCannotDarkenAsHeavyRainOrAuthorizePresentRain() {
-    val unknown = deriveHomeSkyAtmosphere(state, snapshot(bundle()), now)
+    val unknown = deriveHomeSkyAtmosphere(state, snapshot(bundle()), now)!!
     val known = deriveHomeSkyAtmosphere(state, snapshot(bundle().copy(
-      hourlyPrecipitation = PrecipitationAccumulation(3_600_000L, AccumulationAnchor.PRECEDING))), now)
+      hourlyPrecipitation = PrecipitationAccumulation(3_600_000L, AccumulationAnchor.PRECEDING))), now)!!
     assertTrue(known.cloudDepth > unknown.cloudDepth)
     assertEquals(0f, known.precipitationStrength)
     assertEquals(0f, unknown.precipitationStrength)
@@ -42,20 +41,20 @@ class HomeSkyAtmosphereTest {
     val c = ProviderCurrent(now, kind = WeatherKind.RAIN, precipitationMm = 3.0,
       accumulationIntervalMillis = 900_000L, downloadedAtMillis = now)
     val wet = state.copy(weatherBrief = brief(c))
-    val sky = deriveHomeSkyAtmosphere(wet, snapshot(bundle(current = c)), now)
+    val sky = deriveHomeSkyAtmosphere(wet, snapshot(bundle(current = c)), now)!!
     assertEquals(0.8f, sky.precipitationStrength, 0.001f)
     val unmatched = deriveHomeSkyAtmosphere(wet, snapshot(bundle(current = c.copy(
-      accumulationIntervalMillis = 300_000L))), now)
+      accumulationIntervalMillis = 300_000L))), now)!!
     assertEquals(0.12f, unmatched.precipitationStrength, 0.001f)
   }
 
   @Test fun futureAccumulationAndWrongLocationCannotMakePresentRain() {
     val c = ProviderCurrent(now + 60_000, kind = WeatherKind.THUNDERSTORM,
       precipitationMm = 8.0, accumulationIntervalMillis = 900_000L, downloadedAtMillis = now)
-    val future = deriveHomeSkyAtmosphere(state.copy(weatherBrief = brief(c)), snapshot(bundle(current = c)), now)
+    val future = deriveHomeSkyAtmosphere(state.copy(weatherBrief = brief(c)), snapshot(bundle(current = c)), now)!!
     assertEquals(0f, future.precipitationStrength)
     assertEquals(0f, future.storminess)
     val elsewhere = deriveHomeSkyAtmosphere(state.copy(latitude = 40.0), snapshot(bundle()), now)
-    assertEquals(0f, elsewhere.cloudDepth)
+    assertNull(elsewhere)
   }
 }

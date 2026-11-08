@@ -118,6 +118,9 @@ fun HomeRainOverview(
       // No decorative chart for entirely missing data. Gaps within a useful forecast stay visible.
       if (hasForecast) RainTimeline(brief, now, zone.zoneId, forecast, showTitle = !forecastLeads, compact = !showCurrent)
     }
+    // These actions sit on the weather glass. Use its foreground ink; a brand-blue label
+    // can disappear over a bright cloud even though the app's dark-theme palette is valid.
+    MaterialTheme(colorScheme = colors.copy(primary = colors.onSurface)) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       if (onOpenSummary != null) FluidButton(text = stringResource(R.string.weather_summary_ui_title),
         onClick = onOpenSummary, style = FluidButtonStyle.Plain, grip = FluidPressGrip.YieldsToScroll,
@@ -128,6 +131,7 @@ fun HomeRainOverview(
           style = FluidButtonStyle.Plain, grip = FluidPressGrip.YieldsToScroll,
           modifier = Modifier.heightIn(min = 48.dp).testTag("home_rain_sources_toggle").semantics { stateDescription = expandedLabel })
       }
+    }
     }
     if (sourcesExpanded) RainSourceDetails(brief, evidence, limits, now, zone, locale)
   }

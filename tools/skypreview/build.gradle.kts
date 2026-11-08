@@ -27,7 +27,7 @@ val repoRoot = layout.projectDirectory.dir("../..")
 val stageSkySources by tasks.registering(Sync::class) {
   from(repoRoot.dir("core-model/src/main/kotlin"))
   from(repoRoot.dir("core-ui/src/main/kotlin")) {
-    include("**/SkyPainters.kt", "**/SkyPalette.kt", "**/SkyState.kt", "**/SkyAtmosphere.kt", "**/AtlasCloudLayer.kt", "**/Celestial.kt")
+    include("**/SkyPainters.kt", "**/SkyPalette.kt", "**/SkyState.kt", "**/SkyAtmosphere.kt", "**/Celestial.kt")
   }
   into(layout.buildDirectory.dir("skysrc"))
 }

@@ -59,7 +59,6 @@ fun WeatherScene(
   val animated = sceneMotionAllowed(quality, LocalFluidMotionPolicy.current.allowDecorativeMotion,
     running, lifecycleState.isAtLeast(Lifecycle.State.RESUMED))
   val sky = remember(rendered) { SkyPalette.sky(rendered) }
-  val cloudAtlas = ImageBitmap.imageResource(R.drawable.cloud_atlas_v1)
 
   // Il cielo cambia colore con calma: un fronte che arriva e' una dissolvenza, non uno scatto.
   // Si animano le cinque fermate e i tre colori delle nuvole, e il fotogramma legge quelli.
@@ -90,7 +89,7 @@ fun WeatherScene(
   // non deve rifare le nuvole da capo.
   val coverBucket = ((rendered.cloudCoverPercent ?: SkyPalette.defaultCover(rendered.kind)) / 10.0).roundToInt() * 10.0
   val painter = remember(rendered, coverBucket, quality) {
-    SkyScenePainter(rendered.copy(cloudCoverPercent = coverBucket), quality, SkyVariation.seedFor(System.currentTimeMillis()), cloudAtlas)
+    SkyScenePainter(rendered.copy(cloudCoverPercent = coverBucket), quality, SkyVariation.seedFor(System.currentTimeMillis()))
   }
   // L'astro si ricalcola a ogni minuto di orologio, non a ogni fotogramma: si sposta di un
   // quattrocentesimo di schermo al minuto, e le effemeridi non sono gratis.

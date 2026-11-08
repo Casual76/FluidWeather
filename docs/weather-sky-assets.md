@@ -1,3 +1,7 @@
+# Rejected cloud texture experiment
+
+The generated cloud atlas below was tested in a private prototype on 2026-11-08. The user rejected its pasted appearance and full-height cloud placement. It is not shipped or loaded by the app/widget. The accepted direction restores the previous procedural cloud shapes, upper-sky composition and shared continuous atmospheric lighting.
+
 # Sky cloud atlas
 
 Generated with the built-in imagegen tool for this prototype, 2026-11-08.

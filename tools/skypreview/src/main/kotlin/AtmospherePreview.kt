@@ -3,7 +3,6 @@ import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.toAwtImage
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import dev.pampa.fluidweather.core.model.DayPhase
@@ -36,7 +35,6 @@ object AtmospherePreview {
   @JvmStatic fun main(args: Array<String>) {
     val out = File(args.firstOrNull() ?: "out/atmosphere").apply { mkdirs() }
     val zone = ZoneId.of("Europe/Rome")
-    val atlas = ImageIO.read(File("core-ui/src/main/res/drawable-nodpi/cloud_atlas_v1.png")).toComposeImageBitmap()
     val w = 240
     val h = 400
     val label = 32
@@ -55,7 +53,7 @@ object AtmospherePreview {
         for ((col, case) in cases.withIndex()) {
           val state = SkyState(phase, case.kind, null, 43.77, 11.26, atmosphere = case.air)
           val sky = SkyPalette.sky(state)
-          val painter = SkyScenePainter(state, quality, 2026166, atlas)
+          val painter = SkyScenePainter(state, quality, 2026166)
           val body = Celestial.at(at, 43.77, 11.26, zone)
           fun frame(t: Float): BufferedImage {
             val bitmap = ImageBitmap(w, h)

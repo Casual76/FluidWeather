@@ -20,4 +20,10 @@ class SkyAssessmentPolicyTest {
     assertFalse(sceneMotionAllowed(SceneQuality.FULL, true, false, true))
     assertFalse(sceneMotionAllowed(SceneQuality.FULL, true, true, false))
   }
+  @Test fun clearConditionWithoutCoverageDoesNotAcquireAnInventedCloudDeck() {
+    val state = SkyState(DayPhase.DAY, WeatherKind.CLEAR, null,
+      assessmentKnown = true, precipitation = PrecipitationState.UNAVAILABLE).forRendering()
+    assertEquals(5.0, state.cloudCoverPercent!!, 0.0)
+    assertEquals(WeatherKind.CLEAR, state.kind)
+  }
 }

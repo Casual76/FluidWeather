@@ -40,7 +40,7 @@ fun SkyState.forRendering(): SkyState {
     kind in wetKinds -> WeatherKind.CLOUDY
     else -> kind ?: WeatherKind.CLOUDY
   }
-  return copy(kind = renderedKind, cloudCoverPercent = cloudCoverPercent ?: 65.0)
+  return copy(kind = renderedKind, cloudCoverPercent = cloudCoverPercent ?: SkyPalette.defaultCover(renderedKind))
 }
 
 fun sceneMotionAllowed(quality: SceneQuality, decorative: Boolean, running: Boolean, resumed: Boolean): Boolean =

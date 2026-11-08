@@ -70,7 +70,8 @@ object SkyAtmospherePolicy {
     } else 0.0
     val futureCoverage = percent(f?.cloudCoverPercent) ?: coverage
     val futureRate = positive(f?.precipitationRateMmPerHour) ?: 0.0
-    val front = approach * max(0.0, futureCoverage - coverage)
+    val front = approach * max(max(0.0, futureCoverage - coverage),
+      futureCoverage * max(0.0, futureRate / (futureRate + 3.0) - wetCloud))
     depth += front * (0.6 + 0.4 * futureRate / (futureRate + 3.0))
     darkness += front * 0.5
     filtered += front * 0.7
