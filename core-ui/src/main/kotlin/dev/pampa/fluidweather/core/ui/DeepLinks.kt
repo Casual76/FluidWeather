@@ -24,7 +24,7 @@ enum class AppScreen(val id: String) {
 
 /** Dove porta una richiesta arrivata da fuori: una tessera della home o una pagina. */
 sealed interface AppDestination {
-  data class Widget(val widget: HomeWidget) : AppDestination
+  data class Widget(val widget: HomeWidget, val placeId: Long? = null) : AppDestination
   data class Screen(val screen: AppScreen) : AppDestination
 }
 
@@ -57,7 +57,12 @@ object AppDeepLink {
 
   const val HOST: String = "open"
 
-  fun uri(destination: AppDestination): Uri = Uri.parse("$SCHEME://$HOST/${idOf(destination)}")
+  fun uri(destination: AppDestination): Uri =
+    Uri.parse("$SCHEME://$HOST/${idOf(destination)}").buildUpon().apply {
+      if (destination is AppDestination.Widget && destination.placeId != null) {
+        appendQueryParameter("placeId", destination.placeId.toString())
+      }
+    }.build()
 
   fun idOf(destination: AppDestination): String = when (destination) {
     is AppDestination.Widget -> destination.widget.id
@@ -75,7 +80,10 @@ object AppDeepLink {
     if (uri == null) return null
     if (uri.scheme != null && uri.scheme != SCHEME) return null
     val id = uri.lastPathSegment?.trim()?.lowercase() ?: return null
-    HomeWidget.entries.firstOrNull { it.id == id }?.let { return AppDestination.Widget(it) }
+    HomeWidget.entries.firstOrNull { it.id == id }?.let {
+      val placeId = if (uri.isHierarchical) uri.getQueryParameter("placeId")?.toLongOrNull() else null
+      return AppDestination.Widget(it, placeId)
+    }
     AppScreen.fromId(id)?.let { return AppDestination.Screen(it) }
     return null
   }

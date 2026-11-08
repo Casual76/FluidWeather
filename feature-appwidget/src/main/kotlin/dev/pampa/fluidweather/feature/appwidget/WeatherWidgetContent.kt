@@ -175,5 +175,7 @@ private fun HourStrip(
   }
 }
 
-private fun widgetIntent(base: Intent, widget: HomeWidget) =
-  Intent(base).setData(AppDeepLink.uri(AppDestination.Widget(widget)))
+private fun widgetIntent(base: Intent, widget: HomeWidget): Intent {
+  val placeId = (AppDeepLink.parse(base.data) as? AppDestination.Widget)?.placeId
+  return Intent(base).setData(AppDeepLink.uri(AppDestination.Widget(widget, placeId)))
+}

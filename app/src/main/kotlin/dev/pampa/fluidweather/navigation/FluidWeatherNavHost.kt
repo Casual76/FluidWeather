@@ -207,9 +207,15 @@ private fun FluidWeatherRoutes(
       // veniva ricomposta (Radar e indietro basta). Chi consuma la richiesta la spegne anche in
       // `MainActivity`, cosi' la ricomposizione successiva non ha piu' niente da leggere.
       var requestedWidget by remember { mutableStateOf<HomeWidget?>(null) }
+      var requestedWidgetPlaceId by remember { mutableStateOf<Long?>(null) }
+      var requestedWidgetNonce by remember { mutableStateOf(0L) }
       LaunchedEffect(request) {
         when (val destination = request?.destination) {
-          is AppDestination.Widget -> requestedWidget = destination.widget
+          is AppDestination.Widget -> {
+            requestedWidgetPlaceId = destination.placeId
+            requestedWidgetNonce = request?.nonce ?: 0L
+            requestedWidget = destination.widget
+          }
           is AppDestination.Screen -> when (destination.screen) {
             AppScreen.BENCHMARK -> { benchmarkOpen = true; onRequestConsumed() }
             AppScreen.REPORT -> { reportOpen = true; onRequestConsumed() }
@@ -271,7 +277,9 @@ private fun FluidWeatherRoutes(
           onBounds = { overlayState.originBounds = it },
         ),
         requestedWidget = requestedWidget,
-        onWidgetConsumed = { requestedWidget = null; onRequestConsumed() },
+        requestedWidgetPlaceId = requestedWidgetPlaceId,
+        requestedWidgetNonce = requestedWidgetNonce,
+        onWidgetConsumed = { requestedWidget = null; requestedWidgetPlaceId = null; onRequestConsumed() },
         coveredByPage = coveredByPage,
         overlay = { chrome ->
           if (assistantEnabled || overlayState.mode != OverlayMode.HIDDEN) {

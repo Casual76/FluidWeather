@@ -112,6 +112,7 @@ import dev.pampa.fluidweather.core.model.PlaceCycle
 import dev.pampa.fluidweather.core.ui.GlassTile
 import dev.pampa.fluidweather.core.ui.GridReorder
 import dev.pampa.fluidweather.core.ui.HomeWidget
+import dev.pampa.fluidweather.core.ui.WidgetPlaceTarget
 import dev.pampa.fluidweather.core.ui.SkyState
 import dev.pampa.fluidweather.core.ui.TutorialScreen
 import dev.pampa.fluidweather.core.ui.TutorialSlot
@@ -148,6 +149,8 @@ fun HomeScreen(
   assistant: HomeAssistantBar? = null,
   /** Una pagina nera di widget chiesta da fuori (l'assistente, un chip): si apre e si consuma. */
   requestedWidget: HomeWidget? = null,
+  requestedWidgetPlaceId: Long? = null,
+  requestedWidgetNonce: Long = 0L,
   onWidgetConsumed: () -> Unit = {},
   /**
    * Una pagina di navigazione (il radar, le impostazioni) copre la home: sotto non c'e' niente da
@@ -164,9 +167,20 @@ fun HomeScreen(
   val glassLevel = GlassPolicy.resolve(appearance, powerSave, deviceTier)
 
   // La localita' che comanda la home: GPS o una salvata (fase 10).
-  val places by deps.savedLocations.places.collectAsState(initial = listOf(Place.gps()))
+  // Null distinguishes Room's first read from a genuinely empty saved-place repository.
+  val loadedPlaces by deps.savedLocations.places.collectAsState(initial = null)
+  val places = loadedPlaces ?: listOf(Place.gps())
   val selectedId by deps.selectedPlaceStore.selectedId.collectAsState(initial = Place.GPS_ID)
   val selectedPlace = places.firstOrNull { it.id == selectedId } ?: Place.gps()
+
+  val widgetPlaceId = loadedPlaces?.let {
+    WidgetPlaceTarget.resolve(requestedWidgetPlaceId, it)
+  }
+  LaunchedEffect(requestedWidget, requestedWidgetPlaceId, requestedWidgetNonce, widgetPlaceId) {
+    if (requestedWidget != null && widgetPlaceId != null) deps.selectedPlaceStore.select(widgetPlaceId)
+  }
+  val widgetPlaceReady = requestedWidgetPlaceId == null ||
+    (widgetPlaceId != null && selectedId == widgetPlaceId && selectedPlace.id == widgetPlaceId)
 
   val home = rememberHomeState(deps, selectedPlace, active = !coveredByPage)
   val state by home.state
@@ -203,7 +217,8 @@ fun HomeScreen(
       onOpenAiSettings = onOpenAiSettings,
       assistant = assistant,
       onRefresh = home.refresh,
-      requestedWidget = requestedWidget,
+      requestedWidget = requestedWidget.takeIf { widgetPlaceReady },
+      requestedWidgetNonce = requestedWidgetNonce,
       onWidgetConsumed = onWidgetConsumed,
       coveredByPage = coveredByPage,
       overlay = overlay,
@@ -227,6 +242,7 @@ private fun HomeShell(
   assistant: HomeAssistantBar?,
   onRefresh: () -> Unit,
   requestedWidget: HomeWidget?,
+  requestedWidgetNonce: Long,
   onWidgetConsumed: () -> Unit,
   coveredByPage: Boolean,
   overlay: @Composable BoxScope.(GlassBackdropState) -> Unit,
@@ -274,9 +290,9 @@ private fun HomeShell(
   var liveOrder by remember { mutableStateOf<List<String>?>(null) }
   val order = liveOrder ?: HomeWidget.ordered(storedOrder).map { it.id }
   val drag = remember(gridState) { GridDragController(gridState) }
-  var selectedWidget by remember { mutableStateOf<HomeWidget?>(null) }
+  var selectedWidget by remember(selectedPlace.id) { mutableStateOf<HomeWidget?>(null) }
   // Un widget chiesto da fuori (assistente, chip) apre la sua pagina nera come un tocco.
-  LaunchedEffect(requestedWidget) {
+  LaunchedEffect(requestedWidget, requestedWidgetNonce) {
     if (requestedWidget != null) {
       selectedWidget = requestedWidget
       onWidgetConsumed()
