@@ -39,6 +39,7 @@ fun HomeRainOverview(
   /** Injected only by focused UI tests; production follows the consumption clock. */
   nowMillis: Long? = null,
   onOpenSummary: (() -> Unit)? = null,
+  showCurrent: Boolean = true,
 ) {
   var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
   val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -69,9 +70,8 @@ fun HomeRainOverview(
     RainHeadline.UNAVAILABLE -> R.string.home_rain_unavailable
   })
   GlassTile(modifier.testTag("home_rain_overview")) {
-    // A themed tonal band gives the answer a stable contrast base over bright and dark skies.
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.88f),
-      MaterialTheme.shapes.large).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      if (showCurrent) {
       Text(locationName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
       Text(
         if (current != null && (current.temperatureC != null || current.kind != null)) stringResource(
@@ -81,23 +81,25 @@ fun HomeRainOverview(
         ) else stringResource(R.string.home_rain_current_unknown),
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
-      Text(headlineText, style = MaterialTheme.typography.headlineMedium,
+      }
+      Text(headlineText, style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.semantics { heading() }.testTag("home_rain_headline"))
       val transition = HomeRainPresentation.transition(brief, now)
-      Text(if (transition != null) stringResource(if (transition.arrival) R.string.home_rain_arrival else R.string.home_rain_end,
+      if (transition != null) Text(stringResource(if (transition.arrival) R.string.home_rain_arrival else R.string.home_rain_end,
         TimeFormats.time(transition.startMillis, zone.zoneId, locale), TimeFormats.time(transition.endMillis, zone.zoneId, locale))
-        else stringResource(R.string.home_rain_no_eta), style = MaterialTheme.typography.titleSmall,
+        , style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurface)
-      Text(stringResource(when {
+      if (showCurrent || sourcesExpanded) Text(stringResource(when {
         headline == RainHeadline.UNAVAILABLE -> R.string.home_rain_unknown_limit
         headline in setOf(RainHeadline.CONFLICT, RainHeadline.UNCERTAIN) -> R.string.home_rain_conflict_limit
         headline in setOf(RainHeadline.MODEL_WET, RainHeadline.MODEL_DRY) -> R.string.home_rain_model_limit
         else -> R.string.home_rain_radar_limit
       }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-      RainTimeline(brief, now, zone.zoneId)
+      if (showCurrent || brief?.timeline?.any { it.state != PrecipitationState.UNAVAILABLE } == true)
+        RainTimeline(brief, now, zone.zoneId, compact = !showCurrent)
     }
-    brief?.precipitation?.radarAvailability?.takeIf { it != RadarAvailability.AVAILABLE }?.let { radar ->
+    if (sourcesExpanded) brief?.precipitation?.radarAvailability?.takeIf { it != RadarAvailability.AVAILABLE }?.let { radar ->
       Text(stringResource(when (radar) {
         RadarAvailability.OUTSIDE -> R.string.home_rain_radar_outside
         RadarAvailability.UNKNOWN -> R.string.home_rain_radar_unknown
@@ -107,7 +109,7 @@ fun HomeRainOverview(
     val resources = LocalContext.current.resources
     // Distinct source facts remain distinct even when the types match (e.g. old quarter/current).
     val evidence = (brief?.precipitation?.evidence.orEmpty() + current?.evidence.orEmpty()).distinct()
-    evidence.groupBy { it.sourceId }.forEach { (id, sources) ->
+    if (sourcesExpanded) evidence.groupBy { it.sourceId }.forEach { (id, sources) ->
       val at = sources.mapNotNull { it.sourceTimestampMillis ?: it.effectiveInterval?.endMillis }.minOrNull()
       if (at != null && at <= now) {
         Text(stringResource(R.string.home_rain_source_summary, id,
@@ -123,7 +125,7 @@ fun HomeRainOverview(
         style = FluidButtonStyle.Plain, grip = FluidPressGrip.YieldsToScroll,
         modifier = Modifier.heightIn(min = 48.dp).testTag("home_summary_open"),
       )
-      if (evidence.isNotEmpty()) {
+      if (evidence.isNotEmpty() || limits.isNotEmpty()) {
         val expandedLabel = stringResource(if (sourcesExpanded) R.string.home_rain_sources_expanded else R.string.home_rain_sources_collapsed)
         FluidButton(
           text = stringResource(R.string.home_rain_sources),
@@ -140,17 +142,17 @@ fun HomeRainOverview(
           modifier = Modifier.padding(top = 4.dp))
       }
     }
-    if (WeatherEvidenceLimit.PARTIAL_COVERAGE in limits) Text(stringResource(R.string.routines_partial), style = MaterialTheme.typography.labelSmall)
-    if (WeatherEvidenceLimit.UNKNOWN_PROVENANCE in limits) Text(stringResource(R.string.routines_provenance_unknown), style = MaterialTheme.typography.labelSmall)
-    if (WeatherEvidenceLimit.STALE in limits) Text(stringResource(R.string.home_rain_stale), style = MaterialTheme.typography.labelSmall)
-    if (zone.source == WeatherZoneSource.DEVICE_FALLBACK) Text(
+    if (sourcesExpanded && WeatherEvidenceLimit.PARTIAL_COVERAGE in limits) Text(stringResource(R.string.routines_partial), style = MaterialTheme.typography.labelSmall)
+    if (sourcesExpanded && WeatherEvidenceLimit.UNKNOWN_PROVENANCE in limits) Text(stringResource(R.string.routines_provenance_unknown), style = MaterialTheme.typography.labelSmall)
+    if (sourcesExpanded && WeatherEvidenceLimit.STALE in limits) Text(stringResource(R.string.home_rain_stale), style = MaterialTheme.typography.labelSmall)
+    if (sourcesExpanded && zone.source == WeatherZoneSource.DEVICE_FALLBACK) Text(
       stringResource(R.string.home_rain_zone_fallback, zone.zoneId.id), style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant)
   }
 }
 
 @Composable
-private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId) {
+private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId, compact: Boolean = false) {
   val parts = HomeRainPresentation.timeline(brief, now)
   val locale = LocalConfiguration.current.locales[0]
   val units = rememberUnitFormatter()
@@ -172,7 +174,7 @@ private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId) {
       else stringResource(R.string.accessibility_resolution, resolutions.joinToString(" / ") { "${it / 1000.0} s" })
     interval + ": " + (part.period?.amountMm?.let { "$label \u00b7 ${units.precipitation(it)}" } ?: label) + ". " + precision
   }
-  val title = stringResource(R.string.home_rain_hour)
+  val title = stringResource(if (compact) R.string.home_rain_hour_short else R.string.home_rain_hour)
   val colors = MaterialTheme.colorScheme
   Column(Modifier.fillMaxWidth().testTag("home_rain_timeline")
     .clearAndSetSemantics { contentDescription = title + ". " + descriptions.joinToString("; ") }) {
@@ -202,6 +204,6 @@ private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId) {
       PrecipitationState.UNCERTAIN -> uncertain
       else -> unknown
     } }.distinct()
-    Text(legend.joinToString(" \u00b7 "), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+    if (!compact) Text(legend.joinToString(" \u00b7 "), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
   }
 }

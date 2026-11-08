@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -64,6 +67,13 @@ fun GlassTile(
   }
 
   val interaction = remember { MutableInteractionSource() }
+  // The content glass is drawn over the weather canvas, independent of light/dark app theme.
+  // Keep both default Text and explicit onSurface consumers on that same foreground palette.
+  val palette = MaterialTheme.colorScheme
+  MaterialTheme(colorScheme = if (canvas != null) palette.copy(
+    onSurface = Color.White, onSurfaceVariant = Color.White.copy(alpha = 0.75f),
+  ) else palette) {
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
   Column(
     modifier = modifier
       .fillMaxWidth()
@@ -84,6 +94,8 @@ fun GlassTile(
       .padding(14.dp),
     content = content,
   )
+    }
+  }
 }
 
 /**

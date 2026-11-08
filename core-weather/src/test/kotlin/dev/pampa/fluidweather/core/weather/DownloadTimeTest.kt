@@ -51,7 +51,7 @@ class DownloadTimeTest {
   }
 
   @Test
-  fun `un colpo di cache dieci minuti dopo porta l'ora del primo download`() = runTest {
+  fun `un colpo di cache un minuto dopo porta l'ora del primo download`() = runTest {
     var now = t0
     var calls = 0
     val fixture = javaClass.getResource("/openmeteo.json")!!.readText()
@@ -62,7 +62,7 @@ class DownloadTimeTest {
     )
 
     val first = client.fetch(43.83, 11.2, null)
-    now += 10 * 60_000L
+    now += 1 * 60_000L
     val second = client.fetch(43.83, 11.2, null)
 
     assertEquals("la seconda doveva venire dalla cache", 1, calls)

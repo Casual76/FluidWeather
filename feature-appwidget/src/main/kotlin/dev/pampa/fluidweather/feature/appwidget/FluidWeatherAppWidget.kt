@@ -22,7 +22,6 @@ import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.ContentScale
-import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -46,6 +45,7 @@ import dev.pampa.fluidweather.core.ui.AppDestination
 import dev.pampa.fluidweather.core.ui.HomeWidget
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.strings.R
+import dev.pampa.fluidweather.strings.dataAgeLabel
 import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.UnitFormatter
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -74,9 +74,10 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
 
   override suspend fun provideGlance(context: Context, id: GlanceId) {
     val runtime = context.appWidgetRuntime()
+    val fallback = resolvePlace(runtime)
     val read = widgetLocalRead { readAppWidgetBrief(runtime.cachedWeatherBriefs) { resolvePlace(runtime) } }
     val readToken = runtime.cachedWeatherBriefs.cachedInputUpdates.value
-    val place = read?.first
+    val place = read?.first ?: fallback?.takeIf { resolvePlace(runtime) == it }
     val brief = read?.second
     val verdict = widgetLocalRead { runtime.nowcastHistory.since(0L).lastOrNull() }
       ?.takeIf { place?.place?.isGps == true && it.variant == NowcastVerdictRecord.VARIANT_INDEPENDENT }
@@ -133,7 +134,7 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     provideContent {
       val tier = tierFor(LocalSize.current)
       val (model, sky) = scenes.getValue(tier)
-      Body(model, tier, UnitFormatter(LocalContext.current.resources, units), target, sky)
+      Body(model, tier, UnitFormatter(LocalContext.current.resources, units), now, target, sky)
     }
   }
 
@@ -162,6 +163,7 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     model: AppWidgetModel,
     tier: AppWidgetTier,
     units: UnitFormatter,
+    nowMillis: Long,
     target: Intent,
     sky: android.graphics.Bitmap,
   ) {
@@ -169,70 +171,93 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     val onSky = ColorProvider(ComposeColor.White)
     val dim = ColorProvider(ComposeColor.White.copy(alpha = 0.75f))
 
-    // A collection keeps the mandatory source disclosures reachable on short launcher cells.
-    // Sky raster dimensions and the three responsive tiers stay unchanged.
-    LazyColumn(modifier = GlanceModifier.fillMaxSize()
-      .background(ImageProvider(sky), contentScale = ContentScale.Crop)) {
-      item {
-        Column(
-          modifier = GlanceModifier
-            .fillMaxWidth()
-            .padding(if (tier == AppWidgetTier.SMALL) 12.dp else 14.dp)
-            .clickable(actionStartActivity(target)),
-          verticalAlignment = Alignment.Vertical.Top,
-        ) {
-          if (model.isEmpty) {
-            Text(
-              text = resources.getString(R.string.appwidget_empty),
-              style = TextStyle(color = onSky, fontSize = 13.sp, fontWeight = FontWeight.Medium),
-            )
-            return@Column
-          }
+    Column(
+      modifier = GlanceModifier
+        .fillMaxSize()
+        // `Crop` e non il `FillBounds` implicito: la bitmap ha le proporzioni della taglia
+        // dichiarata, non quelle della cella che il launcher assegna davvero, e stirandola il
+        // disco del sole diventerebbe un'ellisse.
+        .background(ImageProvider(sky), contentScale = ContentScale.Crop)
+        .padding(if (tier == AppWidgetTier.SMALL) 12.dp else 14.dp)
+        .clickable(actionStartActivity(target)),
+      verticalAlignment = Alignment.Vertical.Top,
+    ) {
+      if (model.isEmpty) {
+        Text(
+          text = resources.getString(R.string.appwidget_empty),
+          style = TextStyle(color = onSky, fontSize = 13.sp, fontWeight = FontWeight.Medium),
+        )
+        return@Column
+      }
 
-          Row(verticalAlignment = Alignment.Vertical.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
-            Image(
-              provider = ImageProvider(model.iconRes),
-              contentDescription = null,
-              colorFilter = androidx.glance.ColorFilter.tint(onSky),
-              modifier = GlanceModifier.size(if (tier == AppWidgetTier.SMALL) 22.dp else 26.dp),
-            )
-            Spacer(GlanceModifier.width(8.dp))
-            Text(
-              text = model.temperatureC?.let { units.degrees(it) } ?: "—",
-              style = TextStyle(
-                color = onSky,
-                fontSize = if (tier == AppWidgetTier.SMALL) 30.sp else 34.sp,
-                fontWeight = FontWeight.Medium,
-              ),
-            )
-          }
-          Text(text = model.placeName ?: resources.getString(R.string.place_my_location),
-            style = TextStyle(color = dim, fontSize = 13.sp))
-          Text(text = WidgetSharedRainFormatter.headline(resources, model.headline),
-            style = TextStyle(color = onSky, fontSize = 11.sp),
-            modifier = GlanceModifier.clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))))
-          Text(text = WidgetSharedRainFormatter.provenance(resources, model.brief, model.assessedAtMillis,
-            model.zone, model.zoneFallback, resources.configuration.locales[0]),
-            style = TextStyle(color = dim, fontSize = 11.sp))
-
-          if (tier != AppWidgetTier.LARGE) TodayLine(model, units, onSky, dim, leadingSpace = true)
-
-          if (tier != AppWidgetTier.SMALL && model.verdictLevel != null) {
-            Spacer(GlanceModifier.height(6.dp))
-            VerdictLine(model, resources, onSky, target)
-          }
-
-          if (tier == AppWidgetTier.LARGE && model.hours.isNotEmpty()) {
-            Spacer(GlanceModifier.height(10.dp))
-            HourStrip(model, units, onSky, dim, target)
-          }
-
-          model.dataAtMillis?.let {
-            Text(text = resources.getString(R.string.widget_shared_bundle,
-              WidgetSharedRainFormatter.absoluteTime(it, model.zone, resources.configuration.locales[0])),
-              style = TextStyle(color = dim, fontSize = 11.sp))
-          }
+      Row(verticalAlignment = Alignment.Vertical.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
+        Image(
+          provider = ImageProvider(model.iconRes),
+          contentDescription = null,
+          colorFilter = androidx.glance.ColorFilter.tint(onSky),
+          modifier = GlanceModifier.size(if (tier == AppWidgetTier.SMALL) 22.dp else 26.dp),
+        )
+        Spacer(GlanceModifier.width(8.dp))
+        Text(
+          text = model.temperatureC?.let { units.degrees(it) } ?: "—",
+          style = TextStyle(
+            color = onSky,
+            fontSize = if (tier == AppWidgetTier.SMALL) 30.sp else 34.sp,
+            fontWeight = FontWeight.Medium,
+          ),
+        )
+      }
+      // Il nome del posto, e accanto o sotto massima/minima e pioggia.
+      //
+      // La taglia MEDIA e' larga e BASSA (sotto i 150 dp): li' una riga in piu' verrebbe tagliata
+      // dal launcher a meta', senza avvisare. Ma di larghezza ne ha, quindi i tre numeri stanno
+      // sulla stessa riga del posto e non costano un pixel di altezza. La PICCOLA e' l'opposto —
+      // stretta ma con spazio sotto — e li' vanno a capo.
+      if (tier == AppWidgetTier.MEDIUM) {
+        Row(verticalAlignment = Alignment.Vertical.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
+          Text(
+            text = model.placeName ?: resources.getString(R.string.place_my_location),
+            style = TextStyle(color = dim, fontSize = 13.sp),
+            maxLines = 1,
+            modifier = GlanceModifier.defaultWeight(),
+          )
+          TodayLine(model, units, onSky, dim, leadingSpace = false)
         }
+      } else {
+        Text(
+          text = model.placeName ?: resources.getString(R.string.place_my_location),
+          style = TextStyle(color = dim, fontSize = 13.sp),
+          maxLines = 1,
+        )
+        if (tier == AppWidgetTier.SMALL) TodayLine(model, units, onSky, dim, leadingSpace = true)
+      }
+
+      if (model.usesHourlyForecast) Text(
+        text = resources.getString(R.string.widget_shared_forecast) +
+          (model.forecastAtMillis?.let { " \u00b7 " + TimeFormats.time(it, model.zone) } ?: ""),
+        style = TextStyle(color = dim, fontSize = 11.sp), maxLines = 1,
+      )
+      if (model.headline != BriefRainHeadline.UNAVAILABLE) Text(
+        text = WidgetSharedRainFormatter.headline(resources, model.headline),
+        style = TextStyle(color = onSky, fontSize = 11.sp), maxLines = 2,
+        modifier = GlanceModifier.clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))),
+      )
+      if (tier != AppWidgetTier.SMALL && model.verdictLevel != null) {
+        Spacer(GlanceModifier.height(6.dp))
+        VerdictLine(model, resources, onSky, target)
+      }
+
+      if (tier == AppWidgetTier.LARGE && model.hours.isNotEmpty()) {
+        Spacer(GlanceModifier.height(10.dp))
+        HourStrip(model, units, onSky, dim, target)
+      }
+
+      // L'eta' dei dati, con la stessa frase della testata della home: un widget che mostra una
+      // temperatura di nove ore fa senza dirlo e' peggio di un widget vuoto.
+      (dataAgeLabel(resources, model.dataAtMillis, nowMillis)
+        ?: model.dataAtMillis?.let { resources.getString(R.string.home_age_at, TimeFormats.time(it, model.zone)) })?.let {
+        Spacer(GlanceModifier.height(6.dp))
+        Text(text = it, style = TextStyle(color = dim, fontSize = 11.sp), maxLines = 1)
       }
     }
   }
@@ -292,14 +317,35 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     onSky: ColorProvider,
     target: Intent,
   ) {
+    // Titolo e valore, non sottotitolo: alle taglie piccola e media il budget dell'engine mette
+    // `compact`, e in compatto le righe del kit buttano via il sottotitolo. Scriverlo li' avrebbe
+    // voluto dire non vederlo mai.
     val window = model.verdictWindow?.let { resources.getString(windowLabelRes(it)) }.orEmpty()
-    Text(text = resources.getString(R.string.widget_shared_history,
-      model.verdictAtMillis?.let { WidgetSharedRainFormatter.absoluteTime(it, model.zone, resources.configuration.locales[0]) }.orEmpty(),
-      model.zone.id, model.verdictProbabilityPercent?.toString() ?: "?", window),
-      style = TextStyle(color = onSky, fontSize = 11.sp),
-      modifier = GlanceModifier.clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))))
-    Text(text = resources.getString(R.string.widget_shared_history_location),
-      style = TextStyle(color = onSky, fontSize = 11.sp))
+    val percent = model.verdictProbabilityPercent
+    Row(
+      modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))),
+      verticalAlignment = Alignment.Vertical.CenterVertically,
+    ) {
+      Text(
+        // The qualified shared rain headline is already above; this row is the separate
+        // barometric verdict, not an additional assertion that rain is observed now.
+        text = resources.getString(when (model.verdictLevel) {
+          dev.pampa.fluidweather.nowcast.verdict.AlertLevel.ALLERTA -> R.string.level_alert
+          dev.pampa.fluidweather.nowcast.verdict.AlertLevel.SORVEGLIANZA -> R.string.level_watch
+          else -> R.string.level_quiet
+        }),
+        style = TextStyle(color = onSky, fontSize = 13.sp, fontWeight = FontWeight.Medium),
+        maxLines = 1,
+        modifier = GlanceModifier.defaultWeight(),
+      )
+      if (percent != null) {
+        Text(
+          text = "$percent%  $window",
+          style = TextStyle(color = onSky, fontSize = 13.sp),
+          maxLines = 1,
+        )
+      }
+    }
   }
 
   @Composable

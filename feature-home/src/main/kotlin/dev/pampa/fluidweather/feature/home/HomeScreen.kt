@@ -1,5 +1,13 @@
 package dev.pampa.fluidweather.feature.home
 
+import kotlinx.coroutines.delay
+import dev.pampa.fluidweather.strings.dataAgeLabel
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
@@ -119,6 +127,7 @@ import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.strings.labelRes
 import dev.pampa.fluidweather.strings.windowLabelRes
 
 /**
@@ -178,7 +187,7 @@ fun HomeScreen(
 
   FluidTheme(
     settings = remember { EngineSettings(themeMode = ThemeMode.DARK, dynamicColorEnabled = false) },
-    brand = WeatherAccent.presetFor(state.weatherBrief?.current?.kind, state.phase),
+    brand = WeatherAccent.presetFor(state.weatherBrief?.current?.kind ?: state.kind, state.phase),
   ) {
     HomeShell(
       state = state,
@@ -294,7 +303,7 @@ private fun HomeShell(
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
       state = SkyState(
-        state.phase, state.weatherBrief?.current?.kind, state.cloudCover, state.latitude, state.longitude,
+        state.phase, state.weatherBrief?.current?.kind ?: state.kind, state.cloudCover, state.latitude, state.longitude,
         precipitation = state.weatherBrief?.precipitation?.state, assessmentKnown = true,
       ),
       quality = glassLevel.toSceneQuality(),
@@ -612,13 +621,91 @@ private fun widgetIcon(widget: HomeWidget) = when (widget) {
 
 @Composable
 private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: HeaderCollapseState, onOpenSummary: () -> Unit) {
-  HomeRainOverview(
-    brief = state.weatherBrief,
-    onOpenSummary = onOpenSummary,
-    locationName = state.locationName ?: stringResource(if (state.hasLocation) R.string.place_my_location else R.string.place_unknown),
-    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(top = 12.dp, bottom = 6.dp)
-      .onSizeChanged { collapse.travelPx = it.height.toFloat() },
-  )
+  Column(Modifier.fillMaxWidth()) {
+    HomeWeatherHero(state, gridState, collapse)
+    HomeRainOverview(
+      brief = state.weatherBrief,
+      locationName = state.locationName.orEmpty(),
+      onOpenSummary = onOpenSummary,
+      showCurrent = false,
+      modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+    )
+  }
+}
+
+@Composable
+private fun HomeWeatherHero(state: HomeUiState, gridState: LazyGridState, collapse: HeaderCollapseState) {
+  val shadow = Shadow(color = Color.Black.copy(alpha = 0.35f), blurRadius = 14f)
+  // In orizzontale (tablet, 2026-09-26) l'altezza e' poca e la testata da telefono ne prendeva
+  // quasi meta': un po' meno aria sopra e una temperatura un filo piu' piccola, e le tessere
+  // cominciano dove l'occhio le cerca.
+  val window = LocalWindowInfo.current.containerSize
+  val landscape = window.width > window.height
+  Column(
+    horizontalAlignment = Alignment.CenterHorizontally,
+    modifier = Modifier
+      .fillMaxWidth()
+      .statusBarsPadding()
+      .padding(top = if (landscape) 14.dp else 34.dp, bottom = 18.dp)
+      // La testata misura da sola il proprio viaggio: e' la sua altezza.
+      .onSizeChanged { collapse.travelPx = it.height.toFloat() }
+      .graphicsLayer {
+        // Parallasse: la testata scorre a meta' velocita' della pagina e sfuma prima di
+        // toccare la barra compatta. Legge lo stato QUI, cosi' invalida solo il disegno.
+        val travel = collapse.travelPx
+        val offset = minOf(collapse.scrolledPx(gridState), travel)
+        val progress = HeaderCollapse.progress(offset, travel)
+        translationY = offset * 0.45f
+        alpha = 1f - progress * 1.15f
+      },
+  ) {
+    val units = rememberUnitFormatter()
+    Text(
+      text = state.locationName ?: if (state.hasLocation) stringResource(R.string.place_my_location) else stringResource(R.string.place_unknown),
+      style = MaterialTheme.typography.titleLarge.copy(shadow = shadow),
+      color = Color.White,
+    )
+    Text(
+      text = state.temperatureC?.let { units.degrees(it) } ?: "—",
+      fontSize = if (landscape) 88.sp else 108.sp,
+      fontWeight = FontWeight.ExtraLight,
+      style = MaterialTheme.typography.displayLarge.copy(fontFamily = MaterialTheme.typography.bodyLarge.fontFamily, shadow = shadow),
+      color = Color.White,
+    )
+    Text(
+      text = state.kind?.labelRes()?.let { stringResource(it) } ?: if (state.loading) "…" else "",
+      style = MaterialTheme.typography.titleMedium.copy(shadow = shadow),
+      color = Color.White.copy(alpha = 0.92f),
+      textAlign = TextAlign.Center,
+    )
+    if (state.maxC != null && state.minC != null) {
+      Text(
+        text = stringResource(R.string.home_max_min, units.degrees(state.maxC), units.degrees(state.minC)),
+        style = MaterialTheme.typography.titleSmall.copy(shadow = shadow),
+        color = Color.White.copy(alpha = 0.9f),
+        modifier = Modifier.padding(top = 2.dp),
+      )
+    }
+    // L'eta' dei dati, una riga sola e solo qui: le tessere non si marcano (decisione dell'utente).
+    // `dataAtMillis` e' fisso ma "adesso" no, quindi senza un orologio la riga si congelerebbe su
+    // "aggiornato 2 h fa" per sempre. Il battito e' della testata: esce di composizione con lei.
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+      while (true) {
+        delay(60_000L)
+        nowMillis = System.currentTimeMillis()
+      }
+    }
+    val age = dataAgeLabel(LocalContext.current.resources, state.dataAtMillis, nowMillis, state.loading)
+    if (age != null) {
+      Text(
+        text = age,
+        style = MaterialTheme.typography.titleSmall.copy(shadow = shadow),
+        color = Color.White.copy(alpha = 0.75f),
+        modifier = Modifier.padding(top = 6.dp),
+      )
+    }
+  }
 }
 
 /**

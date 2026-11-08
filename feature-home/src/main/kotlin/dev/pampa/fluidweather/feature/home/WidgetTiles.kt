@@ -97,7 +97,6 @@ internal fun WidgetTileContent(widget: HomeWidget, state: HomeUiState) {
 
 @Composable
 private fun NowcastTile(state: HomeUiState) {
-  SharedRainHeadline(state.weatherBrief)
   val verdict = state.verdict
   if (verdict == null) {
     val readiness = state.readiness
@@ -123,14 +122,17 @@ private fun NowcastTile(state: HomeUiState) {
     )
     return
   }
-  Text(stringResource(R.string.accessibility_barometer_issued,
-    stringResource(R.string.accessibility_issue_unknown)),
-    style = MaterialTheme.typography.bodySmall)
-  Text(stringResource(when (verdict.level) {
-    AlertLevel.QUIETE -> R.string.tile_level_quiet
-    AlertLevel.SORVEGLIANZA -> R.string.tile_level_watch
-    AlertLevel.ALLERTA -> R.string.tile_level_alert
-  }), style = MaterialTheme.typography.bodyMedium)
+  // La sintesi condivisa sopra descrive la pioggia. Qui resta il verdetto barometrico,
+  // senza ripubblicare una vecchia osservazione come condizione corrente.
+  Text(
+    text = stringResource(when (verdict.level) {
+      AlertLevel.QUIETE -> R.string.tile_level_quiet
+      AlertLevel.SORVEGLIANZA -> R.string.tile_level_watch
+      AlertLevel.ALLERTA -> R.string.tile_level_alert
+    }),
+    style = MaterialTheme.typography.bodyMedium,
+    color = MaterialTheme.colorScheme.onSurface,
+  )
   Spacer(Modifier.height(10.dp))
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     verdict.windows.forEach { window ->
@@ -159,8 +161,12 @@ private fun NowcastTile(state: HomeUiState) {
   }
   val topFactor = verdict.windows.firstOrNull { it.window == "1-3h" }?.topFactors?.firstOrNull()
   if (topFactor != null) {
-    Text(stringResource(R.string.tile_top_factor, stringResource(featureLabelRes(topFactor.name))),
-      style = MaterialTheme.typography.labelSmall)
+    Spacer(Modifier.height(8.dp))
+    Text(
+      text = stringResource(R.string.tile_top_factor, stringResource(featureLabelRes(topFactor.name))),
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+    )
   }
 }
 
@@ -335,12 +341,13 @@ private fun DailyTile(state: HomeUiState) {
     return
   }
   val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
-  val formatter = remember(locale) { DateTimeFormatter.ofPattern("EEEE d MMMM", locale) }
+  val compact = androidx.compose.ui.platform.LocalDensity.current.fontScale <= 1.4f
+  val formatter = remember(locale, compact) { DateTimeFormatter.ofPattern(if (compact) "EEE" else "EEEE d MMMM", locale) }
   DailyForecastRows(model.days.map { (date, temps, kind) ->
     DailyForecastRow(date.toString(),
-      if (date == model.today) stringResource(R.string.common_today) + " \u00b7 " + formatter.format(date) else formatter.format(date),
+      if (date == model.today) stringResource(R.string.common_today) + (if (compact) "" else " \u00b7 " + formatter.format(date)) else formatter.format(date),
       temps.min(), temps.max(), kind, if (date == model.today) state.temperatureC else null)
-  }, model.periodMin, model.periodMax)
+  }, model.periodMin, model.periodMax, compact = compact)
 }
 
 // ------------------------------------------------------------------------------ precipitazioni

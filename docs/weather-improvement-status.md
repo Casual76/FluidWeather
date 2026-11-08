@@ -1346,3 +1346,25 @@ locally via fast-forward; source and release evidence stored artifacts/releases/
 Field C2 and controlled measured-performance C6 remain open as documented in release notes;
 stable publication does not change their verification status. No emulator or physical-device
 action required for this metadata/signing/publication step; prior owned AVD remains shut down.
+
+### Post-publication regressions and corrective stable 2.1.1 — 2026-11-08
+
+The user's full-app and launcher screenshots exposed regressions missed by the earlier
+acceptance: replaced weather hero, inherited black text over weather glass, an opaque inner
+panel and a diagnostic-heavy widget without a useful temperature. The previous phase votes
+remain historical scoped evidence; they do not certify these aspects of the 2.1.0 product.
+The orchestrator accepted the result without a sufficient normal populated-state check.
+
+Corrections and evidence boundaries: docs/weather-2.1.1-regression-fix.md. Restored weather
+hero and compact glass summary, light foreground for default/explicit weather text, compact
+Daily/precipitation presentation and useful cache-only widget with qualified hourly fallback.
+Best-match Open-Meteo current response cache is five minutes; original clocks stay original.
+No engine changes. Version2.1.1/code22; production package retained for an in-place update.
+
+375 relevant JVM results pass (45 widget,44 home,286 weather), including corrected legacy-cache
+expectations and current-cache expiry. The new light-theme weather-glass pixel test passes on
+Android15, last UI APK run1/1 in5.919s; the Android17 redraw failure is retained as a failure.
+Full Home inspected with real Sesto Fiorentino data on phone and Roma data on tablet. The
+actual launcher widget displays numbers, source qualification and a short data clock; its
+temperature opens Home. No launcher resize or exhaustive device matrix claimed. All owned
+AVDs are off after QA; no physical-device operation. Release signing/publication checks follow.

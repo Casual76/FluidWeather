@@ -86,7 +86,8 @@ class AppWidgetModelTest {
 
     assertTrue("la piccola non ha spazio per le ore", model.hours.isEmpty())
     assertNull("ne' per il verdetto", model.verdictLevel)
-    assertNull(model.temperatureC)
+    assertEquals(19.0, model.temperatureC!!, 0.0)
+    assertTrue(model.usesHourlyForecast)
   }
 
   @Test
@@ -108,11 +109,12 @@ class AppWidgetModelTest {
   }
 
   @Test
-  fun `legacy fused hour is forecast and never current`() {
-    // F6: the shared current summary is required; a fused future hour cannot fill it.
+  fun `legacy cache retains temperature as explicitly qualified hourly forecast`() {
+    // The legacy forecast is still useful, but the model must expose its forecast qualification.
     val model = AppWidgetModelBuilder.of(istantanea(), null, null, adesso, AppWidgetTier.MEDIUM)
 
-    assertNull(model.temperatureC)
+    assertEquals(19.0, model.temperatureC!!, 0.0)
+    assertTrue(model.usesHourlyForecast)
   }
 
   @Test
@@ -122,7 +124,8 @@ class AppWidgetModelTest {
     val model = AppWidgetModelBuilder.of(vecchia, null, null, adesso, AppWidgetTier.MEDIUM)
 
     assertEquals(DataFreshness.VERY_STALE, model.freshness)
-    assertNull("F6: legacy forecast stays dated without inventing current", model.temperatureC)
+    assertEquals(19.0, model.temperatureC!!, 0.0)
+    assertTrue(model.usesHourlyForecast)
     assertEquals(adesso - 9 * ora, model.dataAtMillis)
   }
 

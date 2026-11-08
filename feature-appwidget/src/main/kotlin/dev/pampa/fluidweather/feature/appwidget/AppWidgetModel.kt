@@ -70,6 +70,8 @@ data class AppWidgetModel(
   val maxC: Double?,
   val rainProbabilityPercent: Int?,
   val hours: List<AppWidgetHour>,
+  val usesHourlyForecast: Boolean = false,
+  val forecastAtMillis: Long? = null,
 ) {
   /** Precipitation atmosphere requires a shared known wet state, even when current kind is rainy. */
   val skyKind: WeatherKind? get() {
@@ -99,14 +101,20 @@ object AppWidgetModelBuilder {
     zoneFallback: Boolean = true,
   ): AppWidgetModel {
     val current = WidgetSharedRainFormatter.current(brief, nowMillis)
-    val kind = current?.kind
+    // A missing new current block must not erase existing forecast data after an upgrade.
+    // This fallback stays explicitly labelled a model forecast in the launcher.
+    val forecast = snapshot?.fused?.hours?.groupBy { it.timestampMillis }?.values
+      ?.mapNotNull { it.singleOrNull() }
+      ?.filter { kotlin.math.abs(it.timestampMillis - nowMillis) < 3_600_000L }
+      ?.minByOrNull { kotlin.math.abs(it.timestampMillis - nowMillis) }
+    val kind = current?.kind ?: forecast?.kind
     val range = snapshot?.fused?.hours?.todayRange(nowMillis, zone) ?: (null to null)
     val phase = SkyScene.phaseOf(snapshot?.latitude, snapshot?.longitude, nowMillis, zone)
     return AppWidgetModel(
       placeName = placeName,
-      temperatureC = current?.temperatureC,
+      temperatureC = current?.temperatureC ?: forecast?.values?.get(FusionVariables.TEMPERATURE)?.value,
       kind = kind,
-      cloudCover = null,
+      cloudCover = forecast?.values?.get(FusionVariables.CLOUD_COVER)?.value,
       iconRes = kind.appWidgetIconRes(phase),
       latitude = snapshot?.latitude,
       longitude = snapshot?.longitude,
@@ -134,6 +142,8 @@ object AppWidgetModelBuilder {
       } else {
         snapshot?.fused?.hours?.rainProbabilityPercent(nowMillis)
       },
+      forecastAtMillis = forecast?.timestampMillis,
+      usesHourlyForecast = current?.temperatureC == null && forecast?.values?.get(FusionVariables.TEMPERATURE) != null,
       // Le ore si calcolano solo se qualcuno le disegnera': un widget piccolo non deve pagare
       // una lista che non entra da nessuna parte.
       hours = if (tier == AppWidgetTier.LARGE) {

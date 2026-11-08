@@ -42,12 +42,15 @@ class AppWidgetSharedBriefTest {
     assertEquals(BriefRainHeadline.UNAVAILABLE, model(null).headline)
   }
 
-  @Test fun `missing current never borrows forecast temperature and no data never means dry`() {
+  @Test fun `forecast-only cache remains useful without inventing a current observation or dry verdict`() {
     val snapshot = WeatherSnapshot(WeatherSnapshot.keyFor(place.id), point.latitude, point.longitude,
       now, emptyList(), FusedForecast(listOf(FusedHour(now + 60_000,
         mapOf(FusionVariables.TEMPERATURE to FusedValue(35.0, emptyList())), WeatherKind.RAIN)), emptyMap()), null)
     val m = AppWidgetModelBuilder.of(snapshot, place.name, null, now, AppWidgetTier.LARGE)
-    assertNull(m.temperatureC); assertNull(m.kind)
+    assertEquals(35.0, m.temperatureC!!, 0.0)
+    assertEquals(WeatherKind.RAIN, m.kind)
+    assertTrue(m.usesHourlyForecast)
+    assertNull(m.brief?.current)
     assertEquals(35.0, m.hours.single().temperatureC!!, 0.0)
     assertEquals(BriefRainHeadline.UNAVAILABLE, m.headline)
     assertNull(m.rainProbabilityPercent)

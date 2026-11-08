@@ -40,7 +40,7 @@ class OpenMeteoClient(
       append("&timeformat=unixtime&timezone=auto&wind_speed_unit=kmh")
       if (model != null) append("&models=$model")
     }
-    val (root, downloadedAt) = http.readJsonTimed(url, FORECAST_TTL_MILLIS)
+    val (root, downloadedAt) = http.readJsonTimed(url, if (model == null) 5 * 60_000L else FORECAST_TTL_MILLIS)
     val hourly = root["hourly"]
 
     val times = hourly["time"].asArray()

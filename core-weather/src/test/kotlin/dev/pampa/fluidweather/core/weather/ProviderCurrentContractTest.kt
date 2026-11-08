@@ -43,6 +43,12 @@ class ProviderCurrentContractTest {
     assertEquals(WeatherKind.RAIN, current.kind)
     assertEquals(20.5, current.temperatureC!!, 0.0)
     assertEquals(true, second.minutelyPossiblyInterpolated)
+    // Current data must not be held by the old thirty-minute forecast TTL.
+    clock += 5 * 60_000L
+    val refreshed = client.fetch(43.0, 11.0, null)
+    assertEquals(2, calls)
+    assertEquals(clock, refreshed.current!!.downloadedAtMillis)
+    assertEquals(time, refreshed.current!!.timestampMillis) // a new download never renews source time
   }
 
   @Test fun `missing current and invalid values stay unknown`() = runTest {

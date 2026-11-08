@@ -40,9 +40,16 @@ internal fun PrecipitationForecastSamples(state: HomeUiState, compact: Boolean =
   val locale = LocalConfiguration.current.locales[0]
   val next6 = ForecastRainSamples.slots(upcoming, start, start + 6 * ForecastRainSamples.HOUR)
   PageSection(stringResource(R.string.precip_next_6h))
+  if (compact) {
+    val peak = next6.mapNotNull { it.probability }.maxOrNull()
+    Text(stringResource(R.string.home_forecast_rain_peak, peak?.let { "${it.toInt()}%" } ?: "\u2014"),
+      style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.widget_shared_forecast), style = MaterialTheme.typography.labelSmall)
+    SampleGraph(next6, zone, compact = true)
+    return
+  }
   SampleSum(next6)
   SampleGraph(next6, zone)
-  if (compact) return
 
   // Diagnostics retain the original model probabilities; never substitute them for shared rain.
   state.verdict?.let { verdict ->
@@ -93,7 +100,7 @@ private fun SampleSum(slots: List<ForecastRainSlot>) {
 
 /** Elapsed-time x positions; unknown slots are crossed, true zero has a baseline mark. */
 @Composable
-private fun SampleGraph(slots: List<ForecastRainSlot>, zone: ZoneId) {
+private fun SampleGraph(slots: List<ForecastRainSlot>, zone: ZoneId, compact: Boolean = false) {
   if (slots.isEmpty()) return
   val locale = LocalConfiguration.current.locales[0]
   val unknown = stringResource(R.string.home_rain_timeline_unknown)
@@ -119,5 +126,9 @@ private fun SampleGraph(slots: List<ForecastRainSlot>, zone: ZoneId) {
     }
   }
   // Text gives each slot its exact clock, units and unknown/zero distinction without tiny columns.
-  labels.forEach { Text(it, style = MaterialTheme.typography.labelSmall) }
+  if (compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    listOf(slots.first().at, slots.last().at).forEach {
+      Text(dev.pampa.fluidweather.strings.TimeFormats.time(it, zone, locale), style = MaterialTheme.typography.labelSmall)
+    }
+  } else labels.forEach { Text(it, style = MaterialTheme.typography.labelSmall) }
 }
