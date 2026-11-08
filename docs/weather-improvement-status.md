@@ -1434,6 +1434,9 @@ at the actual NowcastUseCase boundary. Its three critics then found the same
 unguarded ordinary Home evaluation caller; P3=6/6/6 and P4=8/8/7, so publication
 remains blocked. Correction3 adds that cancellation-preserving caller boundary.
 Four current actual-Home/API methods and two native navigation methods pass on
-the tablet; final signed build and three fresh reviews remain required.
+the tablet; signed Release, seven pertinent JVM tasks and doctor pass. All three
+fresh final reviews of `Premium-R3-f8af8d8afa54` pass every mandatory criterion:
+P1/P2=8/8/8, P3/P4/P5=8.5/8/8. Root closes the scoped collective delivery gate.
 No field-accuracy, multi-day sensor or controlled whole-app performance approval
-follows from these checks. Correction3 is the last permitted correction round.
+follows from these checks. Correction3 is the last permitted correction round;
+the authorized stable publication proceeds with remote verification recorded separately.

@@ -91,6 +91,26 @@ Decision: CORRECT; no publication. All critics identified the same high-severity
 
 Correction3, the last permitted correction round, handles ordinary evaluation through cancellation-preserving `homeCatching`, merges local fields only on success, completes loading/refresh flags and continues auxiliary work after ordinary failure. Successful empty still clears. A real `rememberHomeState` Compose regression uses the production use case/cleaner and isolated acquisition, baseline and history stores; it exercises success, IO failure, retained state, remaining work, recovery, cancellation and confirmed empty. Its execution and signed build remain to be recorded before review. Default baseline persistence and geocoding are retained through narrow injectable constructor/callback seams, allowing this test to avoid changing real settings or making GPS/network requests. No new cloud/widget artwork or model/schema change is included.
 
+## Independent review correction3 and scoped acceptance
+
+Version `Premium-R3-f8af8d8afa54`, reviewed HEAD `e118fc81030b3cdd009706e87c562a7ca2246959`, production inputs `905f84edba6dfbf952373369c546219dbd247627`. All three fresh independent Sol-high reports are preserved as `weather-premium-review-r3-r1.md`, `-r2.md`, `-r3.md`. All852 manifest files, actual images and three external APKs were verified independently. ZIP SHA256 `affc6756b60b962c9047e936386a8f80989bdf7f80b3039452dc6b551cfea4ad`.
+
+| Criterion | R1 technical | R2 visual | R3 integration | Mean | Minimum |
+|---|---:|---:|---:|---:|---:|
+| P1.sky | 8 | 8 | 8 | 8 | 8 |
+| P2.widget | 8 | 8 | 8 | 8 | 8 |
+| P3.reliability | 8.5 | 8 | 8 | 8.17 | 8 |
+| P4.regression | 8.5 | 8 | 8 | 8.17 | 8 |
+| P5.delivery | 8.5 | 8 | 8 | 8.17 | 8 |
+
+Root decision: **ACCEPT for this scoped premium delivery**. Every mandatory individual score reaches8; all three reports are present and no blocker remains. Root closes the collective P5 gate on these inputs. No average compensates for failure. The last permitted correction round succeeds; no fourth round is started.
+
+Actual Home caller/API4 methods pass in2.403s, native navigation2 in6.437s on the preserved current Debug/test APKs. Release and seven pertinent JVM tasks pass;620 XML results include reused outputs. Signing matches the actual downloaded prior stable APK; engine3.0.5 is clean. The widget64-layout run and unchanged sky captures remain historical and are not presented as fresh correction3 execution. Release is build/signature verified, not principal-device tested.
+
+Low nonblocking observations remain explicit: the caller test does not gate a suspended auxiliary lookup to directly observe early refresh-flag completion, and its shared acquisition latch does not uniquely attribute cancellation to ordinary evaluation versus independent hydration. Source ordering and the separate actual API identity tests support the accepted behavior. These are future test-strength improvements, not established production defects, and no extra correction is made after freezing.
+
+The existing explicit stable-publication instruction authorizes proceeding after this acceptance. Publication, remote asset/hash verification and catalog outcome are recorded separately after execution. Global field accuracy, matched whole-app performance and multi-day/other-OEM hardware continuity remain NV, outside this scoped acceptance.
+
 ## Explicit limits (unchanged)
 
 Field forecast accuracy, controlled whole-app p95/memory comparison, process death, multi-day sensor continuity, exact-alarm delivery on other OEMs and live AI/audio are not established. PendingIntent existence still cannot prove an armed future exact alarm; rearm failure is reported and existing health recovery remains. No new accuracy, continuous-collection or broad hardware claim follows from short device tests.
