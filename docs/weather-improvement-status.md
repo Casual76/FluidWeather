@@ -1317,3 +1317,32 @@ documented radar removals and release housekeeping are selected. Generated artif
 Actual field C2 and controlled-performance C6 stay NV/open; publication does not fabricate
 those measurements. Build/signature/APK metadata and publisher dry-run/live remote verification
 are required for this separate authorized release task. Current publication is not yet claimed.
+
+### Stable 2.1.0 published and verified — 2026-11-08
+
+User-authorized stable publication completed via direct Pampa publisher. Source committed
+and pushed as 06fc7c6ffa40abf8db4876790ab2e08bcdbc5b8c; production package
+dev.pampa.fluidweather, version2.1.0/code21, engine3.0.5 unchanged. Release build passed
+in2m20s,920tasks160executed8fromcache752up-to-date, including R8/resource shrinking and
+release vital lint. No functional changes after the reviewed implementation; version,
+release notes and generated-artifact ignore are the publication preparation delta.
+
+Signed APK:24,968,589bytes, SHA256
+40a26baf4dd5d3de6b23a7555f60b5468b71dbd7d8d2e9a5d4e58837c7780066.
+Apksigner verifies v2; certificate SHA256 matches the downloaded previous stable2.0.2:
+825738500ce9605429ffba3c4019228f992f2c37d1b70a2230a7ce2c25637e43.
+ZIP/production package/version21/2.1.0 and ARM64/ARMv7 ABI inventory checked. Probe with
+existing GitHub CLI credential in child environment only; no token/key logged or persisted.
+Dry-run sourcePreflight ready/clean/pushed; actual live publisher succeeded without force.
+
+Release: https://github.com/Casual76/FluidWeather/releases/tag/stable-fluidweather-v2.1.0
+Asset: https://github.com/Casual76/FluidWeather/releases/download/stable-fluidweather-v2.1.0/fluidweather-2.1.0.apk
+Published2026-11-08T08:32:08Z, draft=false, prerelease=false, GitHub latest. Actual tag
+resolves to source06fc7c6. App stable manifest and canonical fluidweather Pampa-store index
+entry verified through API. Published APK downloaded again, exact bytes/SHA256 equal local
+signed artifact. New changelog UTF8 verified. Publisher manifest commit3143bd3 synchronized
+locally via fast-forward; source and release evidence stored artifacts/releases/2.1.0.
+
+Field C2 and controlled measured-performance C6 remain open as documented in release notes;
+stable publication does not change their verification status. No emulator or physical-device
+action required for this metadata/signing/publication step; prior owned AVD remains shut down.
