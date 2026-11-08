@@ -62,6 +62,10 @@ import dev.pampa.fluidweather.core.model.GeoPoint
 import dev.pampa.fluidweather.core.model.WeatherBrief
 import dev.pampa.fluidweather.core.data.RoutineWindowStore
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.catch
 import dev.pampa.fluidweather.core.weather.WeatherBriefService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -167,15 +171,6 @@ data class HomeUiState(
   val routineReadError: Boolean = false,
 )
 
-/**
- * Ogni quanto la barra del barometro si ricalcola mentre la home e' aperta.
- *
- * Un minuto: la storia cresce di un punto ogni cadenza (5-30 minuti) e la barra non ha niente di
- * piu' fine da dire, ma un minuto e' abbastanza spesso da non sembrare ferma — che e' esattamente
- * il difetto che aveva, perche' si calcolava **una volta sola** all'apertura.
- */
-private const val READINESS_REFRESH_MILLIS = 60_000L
-
 /** Quanto si aspetta al massimo un fix per un giro silenzioso: la ripresa non deve inchiodarsi. */
 private const val SILENT_FIX_TIMEOUT_MILLIS = 5_000L
 
@@ -197,6 +192,7 @@ class HomeStateHandle(
   val refresh: () -> Unit,
 )
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @Composable
 fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = true): HomeStateHandle {
   val context = LocalContext.current
@@ -222,7 +218,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
       coroutineScope {
         // Il corpo qui sotto scrive in `value` come prima: e' lo stesso caricamento, spostato.
         val loadGeneration = deps.dataGeneration()
-        var value by GenerationHomeState(holder, deps.dataGeneration, loadGeneration)
+        var value by GenerationHomeState(holder, deps.dataGeneration, loadGeneration, currentCoroutineContext())
         value = value.copy(loading = true, refreshing = reloads > 0)
         val now = System.currentTimeMillis()
         val key = if (place.isGps) WeatherSnapshot.GPS_KEY else WeatherSnapshot.keyFor(place.id)
@@ -237,9 +233,17 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         //
         // E si legge con `lastKnown`, senza limite di distanza: cosa vale la pena mostrare lo decide
         // l'eta' dichiarata in testata, non un taglio muto a tre chilometri.
-        val known = homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
-          ?.takeIf { homeSnapshotMatches(place, homePoint(if (place.isGps) it.latitude else place.latitude, if (place.isGps) it.longitude else place.longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) && it.ageMillis(now) <= DataAge.SHOWABLE_AGE_MILLIS }
-        if (!place.isGps && known != null) deps.savedLocations.backfillZoneId(place.id, known.zoneId)
+        val known = homeReadSnapshot(deps.dataGeneration, loadGeneration,
+          read = { homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull() },
+          accepts = {
+            homeSnapshotMatches(place, homePoint(if (place.isGps) it.latitude else place.latitude,
+              if (place.isGps) it.longitude else place.longitude), it) &&
+              (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) &&
+              it.ageMillis(now) <= DataAge.SHOWABLE_AGE_MILLIS
+          },
+          backfill = { if (!place.isGps) deps.savedLocations.backfillZoneId(place.id, it.zoneId) },
+        )
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
         if (deps.dataGeneration() == loadGeneration) briefSnapshot = known
         if (known != null) {
           value = value.copy(
@@ -288,6 +292,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
             return@coroutineScope
           }
         }
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
         if (presetName != null) value = value.copy(locationName = presetName)
 
         val phase = SolarEphemeris.phaseAt(now, latitude, longitude)
@@ -297,11 +302,15 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         //    barometro, o presa troppo lontano da qui.
         val cadenceMillis = homeCatching { deps.samplingSettings.current().mode.cadenceMinutes * 60_000L }
           .getOrDefault(DEFAULT_CADENCE_MILLIS)
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
         val cached = known?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
         if (known != null && cached == null) {
+          // Drop weather from A when GPS resolves B, retaining this device's local archive.
           value = HomeUiState(locationName = presetName, latitude = latitude, longitude = longitude,
             phase = phase, sensorAvailable = deps.barometerAvailable,
-            barometerApplies = place.isGps && deps.barometerAvailable)
+            barometerApplies = place.isGps && deps.barometerAvailable,
+            cleaning = value.cleaning, latestRawPressureHpa = value.latestRawPressureHpa,
+            verdictHistory = value.verdictHistory, readiness = value.readiness)
           briefSnapshot = null
         }
         val snapshotCandidate = if (canRefresh && (cached == null || cached.ageMillis(now) > cadenceMillis)) {
@@ -313,8 +322,10 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         val snapshot = homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
           ?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
           ?: snapshotCandidate?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
-        if (deps.dataGeneration() == loadGeneration) briefSnapshot = snapshot
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
+        briefSnapshot = snapshot
         if (!place.isGps && snapshot != null) deps.savedLocations.backfillZoneId(place.id, snapshot.zoneId)
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
         if (snapshot != null && snapshot !== known) value = value.applySnapshot(snapshot, now, deps)
 
         // Sole: oggi e ieri, per il "piu' corto/lungo di ieri" del widget.
@@ -342,12 +353,12 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
             pointLatitude = latitude,
             pointLongitude = longitude,
           ) }
-          val history = homeCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
+          val history = homeCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrElse { value.verdictHistory }
           value = value.copy(
             barometerApplies = true,
             verdict = nowcast.verdict,
-            cleaning = nowcast.cleaning,
-            latestRawPressureHpa = nowcast.latestRawPressureHpa,
+            cleaning = nowcast.cleaning ?: value.cleaning,
+            latestRawPressureHpa = nowcast.latestRawPressureHpa ?: value.latestRawPressureHpa,
             verdictHistory = history,
             nowcastExplanation = nowcast.explanation,
             readiness = nowcast.readiness,
@@ -445,21 +456,28 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
       currentCoroutineContext().ensureActive()
       if (deps.dataGeneration() != readGeneration) return@collect
       val recovering = wiped
-      val point = if (recovering) {
-        if (place.isGps) homePoint(fresh.latitude, fresh.longitude) else homePoint(place.latitude, place.longitude)
-      } else homePoint(holder.value.latitude, holder.value.longitude)
+      val missingPoint = homePoint(holder.value.latitude, holder.value.longitude) == null
+      val point = homeSnapshotRecoveryPoint(place,
+        homePoint(holder.value.latitude, holder.value.longitude), fresh, recovering)
       if (!recovering && invalidatedBefore != null && fresh.fetchedAtMillis <= invalidatedBefore!!) return@collect
       if (!homeSnapshotMatches(place, point, fresh)) return@collect
       if (!place.isGps) deps.savedLocations.backfillZoneId(place.id, fresh.zoneId)
       currentCoroutineContext().ensureActive()
       if (deps.dataGeneration() != readGeneration) return@collect
       briefSnapshot = fresh
-      holder.value = holder.value.applySnapshot(fresh, System.currentTimeMillis(), deps)
+      val now = System.currentTimeMillis()
+      holder.value = holder.value.copy(
+        latitude = fresh.latitude, longitude = fresh.longitude, hasLocation = true,
+        phase = SolarEphemeris.phaseAt(now, fresh.latitude, fresh.longitude),
+      ).applySnapshot(fresh, now, deps)
       if (recovering) {
         // The guarded store read is from the current epoch; old pre-wipe commits are
         // rejected upstream. Re-arm consumers without extending any source clock.
         invalidatedBefore = null
         wiped = false
+        reloads++
+      } else if (missingPoint) {
+        // Re-arm the load that returned without a fix. Snapshot clocks remain unchanged.
         reloads++
       }
     }
@@ -486,35 +504,30 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
     }
   }
 
-  // La barra del barometro, viva.
-  //
-  // Prima `readiness` si calcolava solo dentro il caricamento qui sopra, e nient'altro la toccava:
-  // `applySnapshot` non la sfiora, e il collettore della taratura muove solo la parte della
-  // raffica. Chi apriva la home subito dopo l'onboarding vedeva "0 ore di 13" e restava li' a
-  // guardarla finche' non tirava giu' per aggiornare — che e' precisamente il baco raccontato.
+  // Local history is a separate read-only consumer: GPS/network cannot delay or stop it.
   LaunchedEffect(deps, place, lifecycle, active, wiped) {
-    if (!active || wiped || !place.isGps || !deps.barometerAvailable) return@LaunchedEffect
+    if (!active || wiped || !homeLocalApplies(place, deps.barometerAvailable)) return@LaunchedEffect
     lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
       val observed = deps.dataGeneration()
-      while (true) {
-        // Prima si calcola, poi si aspetta: senza un fix GPS il caricamento esce subito e la
-        // readiness non la calcola nessuno, quindi per un minuto intero la tessera diceva solo
-        // "in attesa" — anche quando il campionamento era fermo da giorni (2026-09-26). La barra
-        // del barometro non ha bisogno della posizione: legge l'archivio.
-        // Fuori dal thread della UI: rileggere ventiquattro ore di campioni e rifarci passare la
-        // pipeline di pulizia e' lavoro vero, e qui succede ogni minuto per tutto il tempo che la
-        // home resta aperta.
-        val readiness = homeCatching {
-          withContext(Dispatchers.Default) {
-            deps.nowcast.readiness(
-              nowMillis = System.currentTimeMillis(),
-              calibrationProgress = deps.calibrationController.progress.value
-                ?.let { it.completedSeconds to it.totalSeconds },
-            )
-          }
-        }.getOrNull()
-        if (readiness != null && deps.dataGeneration() == observed) holder.value = holder.value.copy(readiness = readiness)
-        delay(READINESS_REFRESH_MILLIS)
+      val local = HomeLocalHydration(
+        generation = deps.dataGeneration,
+        cleaning = { deps.nowcast.clean(it) },
+        rawPressure = { since -> deps.pressureRepository.samplesSince(since)
+          .maxByOrNull { it.timestampMillis }?.pressureHpa },
+        history = deps.nowcastHistory::since,
+        readiness = { now -> deps.nowcast.readiness(now,
+          deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds }) },
+      )
+      // Room invalidations recover promptly after sampling starts; timer also picks up verdict
+      // writes and ages readiness when no new samples arrive. Observation failure keeps polling.
+      val samples = deps.pressureRepository.latest(1).map { Unit }.catch { failure ->
+        if (failure is CancellationException) throw failure
+        emit(Unit)
+      }
+      val calibration = deps.calibrationController.progress.map { it != null }
+        .distinctUntilChanged().map { Unit }
+      local.consume(merge(samples, calibration), observed) { reading ->
+        holder.value = reading.applyTo(holder.value)
       }
     }
   }
@@ -613,9 +626,11 @@ private class GenerationHomeState(
   private val holder: androidx.compose.runtime.MutableState<HomeUiState>,
   private val generation: () -> Long,
   private val observed: Long,
+  private val context: kotlin.coroutines.CoroutineContext,
 ) {
   operator fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>): HomeUiState = holder.value
   operator fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: HomeUiState) {
+    context.ensureActive()
     if (generation() == observed) holder.value = value
   }
 }
