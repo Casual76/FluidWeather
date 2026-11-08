@@ -109,15 +109,18 @@ private fun HomeSummarySession(
   // Regenerate synchronously for input changes and consumption expiry: never draw an old DTO
   // while waiting for SideEffect, a periodic domain tick, or a resumed coroutine.
   val fresh = WeatherBriefFormatter.document(resources, brief.takeUnless { controller.wiped }, placeLabel, units, locale, System.currentTimeMillis())
-  val current = state.document.contextKey == fresh.contextKey
-  val text = if (current) state.render(System.currentTimeMillis()) ?: fresh.render() else fresh.render()
+  val now = System.currentTimeMillis()
+  val current = state.document.contextKey == fresh.contextKey && now < state.document.validUntilMillis
+  val document = if (current) state.document else fresh
   val phase = if (current) state.phase else HomeSummaryPhase.DEFAULT
   FluidSheetScaffold(
     title = stringResource(R.string.weather_summary_ui_title),
     modifier = Modifier.testTag("weather_summary_sheet"),
     // All actions scroll too: at 2x text on a short display they must not consume the body budget.
   ) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("weather_summary_text"))
+    HomeGlanceSummaryContent(document, brief.takeUnless { controller.wiped }, placeLabel,
+      state.ids.takeIf { current }, now)
+    if (phase != HomeSummaryPhase.DEFAULT && phase != HomeSummaryPhase.NOT_CONFIGURED)
     Text(stringResource(when (phase) {
       HomeSummaryPhase.LOADING -> R.string.weather_summary_ui_loading
       HomeSummaryPhase.READY -> R.string.weather_summary_ui_ready
@@ -135,7 +138,7 @@ private fun HomeSummarySession(
       FluidButton(stringResource(R.string.weather_summary_ui_settings), { controller.pause(); onDismiss(); onOpenAiSettings() },
         fillWidth = true, grip = FluidPressGrip.YieldsToScroll, modifier = Modifier.testTag("weather_summary_settings"))
     } else if (!controller.wiped) {
-      FluidButton(stringResource(if (phase in setOf(HomeSummaryPhase.FAILED, HomeSummaryPhase.CANCELLED, HomeSummaryPhase.INVALIDATED)) R.string.weather_summary_ui_retry else R.string.weather_summary_ui_request),
+      FluidButton(stringResource(if (phase in setOf(HomeSummaryPhase.FAILED, HomeSummaryPhase.CANCELLED, HomeSummaryPhase.INVALIDATED)) R.string.weather_summary_ui_retry else R.string.glance_ai),
         { controller.request(configured) }, enabled = resumed && owned, fillWidth = true,
         grip = FluidPressGrip.YieldsToScroll, modifier = Modifier.testTag("weather_summary_request"))
     }

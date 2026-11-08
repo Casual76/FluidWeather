@@ -68,20 +68,24 @@ class HomeSummarySheetTest {
     compose.runOnIdle { assertTrue(settingsOpened); assertEquals(0, calls) }
   }
 
-  @Test fun explicitSelectionUsesCurrentDocumentAndMandatoryFacts() {
+  @Test fun explicitSelectionUsesCurrentDocumentAndKeepsMandatoryFactsReachable() {
     show()
     compose.runOnIdle { assertEquals(0, calls) }
     compose.onNodeWithTag("weather_summary_request").performScrollTo().performClick()
     compose.waitUntil { calls == 1 }
-    compose.onNodeWithTag("weather_summary_text").assertTextEquals(input!!.render())
+    compose.onNodeWithTag("weather_summary_text").assertTextEquals("Roma")
+    compose.onNodeWithTag("weather_summary_rain").assertTextEquals(input!!.facts.first { it.id == "rain" }.text)
     compose.onNodeWithTag("weather_summary_status").assertTextEquals("AI highlights selected from the current weather facts.")
+    compose.onNodeWithTag("weather_summary_details").performScrollTo().performClick()
+    compose.onNodeWithTag("weather_summary_complete").performScrollTo().performClick()
+    compose.onNodeWithTag("weather_summary_metadata").assertTextEquals(input!!.facts.joinToString("\n") { it.text })
   }
 
   @Test fun malformedIdsRetainDeterministicFacts() {
     show { WeatherSummaryResult(it.contextKey, WeatherSummaryStatus.READY, listOf("invented-time")) }
     compose.onNodeWithTag("weather_summary_request").performScrollTo().performClick()
     compose.waitUntil { calls == 1 }
-    compose.onNodeWithTag("weather_summary_text").assertTextEquals(input!!.render())
+    compose.onNodeWithTag("weather_summary_text").assertTextEquals("Roma")
     compose.onNodeWithTag("weather_summary_status").assertTextEquals("Could not select highlights. Your current summary is still available.")
   }
 
@@ -96,7 +100,7 @@ class HomeSummarySheetTest {
     response.complete(WeatherSummaryResult(old.contextKey, WeatherSummaryStatus.READY, old.defaultFactIds))
     compose.waitForIdle()
     compose.onNodeWithTag("weather_summary_text").assertTextContains("Milano", substring = true)
-    compose.onNodeWithTag("weather_summary_status").assertTextEquals("AI is optional. Your summary is ready.")
+    compose.onNodeWithTag("weather_summary_status").assertDoesNotExist()
     compose.runOnIdle { assertEquals(1, calls) }
   }
 

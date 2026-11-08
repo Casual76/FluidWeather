@@ -1,0 +1,20 @@
+<resources>
+  <string name="glance_partial_dry">Niente pioggia nei periodi coperti</string>
+  <string name="glance_details">Dettagli</string>
+  <string name="glance_less">Meno</string>
+  <string name="glance_sources">Fonti e metodo</string>
+  <string name="glance_complete">Riepilogo completo</string>
+  <string name="glance_ai">Punti chiave IA</string>
+  <string name="glance_partial">Parziale</string>
+  <string name="glance_samples">Campioni</string>
+  <string name="glance_wet">Pioggia prevista</string>
+  <string name="glance_dry">Pioggia non prevista</string>
+  <string name="glance_uncertain">Incerto</string>
+  <string name="glance_unknown">Sconosciuto</string>
+  <string name="glance_today">Oggi</string>
+  <string name="glance_tomorrow">Domani</string>
+  <string name="glance_probability">Probabilit&#224; massima di pioggia</string>
+  <string name="glance_temperature">Temperature campionate</string>
+  <string name="glance_forecast">Previsione</string>
+  <string name="glance_time">Orario</string>
+</resources>

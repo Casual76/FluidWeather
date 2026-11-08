@@ -1,0 +1,20 @@
+<resources>
+  <string name="glance_partial_dry">No rain in covered periods</string>
+  <string name="glance_details">Details</string>
+  <string name="glance_less">Less</string>
+  <string name="glance_sources">Sources &amp; method</string>
+  <string name="glance_complete">Complete summary</string>
+  <string name="glance_ai">AI highlights</string>
+  <string name="glance_partial">Partial</string>
+  <string name="glance_samples">Samples</string>
+  <string name="glance_wet">Rain forecast</string>
+  <string name="glance_dry">No rain forecast</string>
+  <string name="glance_uncertain">Uncertain</string>
+  <string name="glance_unknown">Unknown</string>
+  <string name="glance_today">Today</string>
+  <string name="glance_tomorrow">Tomorrow</string>
+  <string name="glance_probability">Maximum rain probability</string>
+  <string name="glance_temperature">Sampled temperatures</string>
+  <string name="glance_forecast">Forecast</string>
+  <string name="glance_time">Time</string>
+</resources>
