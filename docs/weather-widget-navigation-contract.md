@@ -57,14 +57,26 @@ GPS-default cold Activity -> synthetic saved-place Hourly with owned cached
 probability -> dismiss/repeat identical URI -> delete saved place -> GPS Hourly.
 It checks the cached Hourly row as well as SelectedPlaceStore, not selection alone.
 
-Tests are **UNRUN** in the implementation checkout. Parent owns all Gradle,
+Allocation tests were unrun by the implementer. Root subsequently compiled them
+and `premium-tablet-navigation-passed.log` records 2/2 in7.442s, terminal -1, on
+SM-X710. The native runtime flow includes consecutive identical Hourly requests,
+root Home without a sheet and deleted-place GPS fallback. Back closes each detail.
+This supersedes the allocation's unrun status. Parent owns all Gradle,
 build and physical-device work. The integration source requires an offline debug
 package, no existing MainActivity, completed onboarding and no release gate. It temporarily
 disables Debug tutorials and restores their prior setting in finally. It
 changes no global settings and does not wipe data. It removes only its unique
 saved-place row and snapshot file, restores session selection and closes its own
 Activity. Instrumentation shares the application process: this exercises a cold
-Activity starting from GPS, not OS process-death restoration. Real launcher
+Activity starting from GPS, not OS process-death restoration. Root's integration
+test now observes the native visible package/window rather than waiting for global
+Compose idleness on an animated Home. It requires the Hourly title, close control,
+the unique cached 37% fixture and the selected repository identity together; then
+tests a consecutive identical URI, a root Home target and deletion fallback.
+Cleanup runs even if Activity closure fails and retains a primary assertion error.
+An explicit optional `cleanupOwnedPlaceId` instrumentation argument can recover a
+known failed-run fixture only after validating its SYNTHETIC UUID name and exact
+fixture coordinates; no archive scan or broad wipe is performed. Real launcher
 PendingIntent delivery and physical tablet rendering still require parent QA.
 Engine stays at 3.0.5; no model, cache runtime, feedback, sky, layout, dependency
 or release version changes belong to this patch.

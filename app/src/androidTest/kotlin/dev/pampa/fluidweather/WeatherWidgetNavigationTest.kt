@@ -4,8 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Uri
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
+import android.util.Log
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -17,14 +18,12 @@ import dev.pampa.fluidweather.strings.R
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
-import org.junit.Rule
 import org.junit.Test
 import java.io.File
 import java.util.UUID
 
 /** Parent-run only: real Activity/graph, offline, no wipe or global settings changes. */
 class WeatherWidgetNavigationTest {
-  @get:Rule val compose = createEmptyComposeRule()
   private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
   private val app get() = instrumentation.targetContext.applicationContext as FluidWeatherApp
   private val graph get() = app.graph
@@ -61,15 +60,28 @@ class WeatherWidgetNavigationTest {
     assertTrue("Complete onboarding before running", io { graph.onboardingStore.done.first() })
     val previousTutorialsDisabled = io { graph.tutorialStore.disabledAll.first() }
     assertNull("Resolve release gate before running", io { ReleaseGate.of(graph.remoteConfig.config.first()) })
+    // Explicit recovery for a parent's failed run only; never scans/deletes arbitrary archives.
+    InstrumentationRegistry.getArguments().getString("cleanupOwnedPlaceId")?.toLongOrNull()?.let { id ->
+      val owned = io { graph.savedLocationsRepository.places.first() }.singleOrNull { it.id == id }
+      if (owned != null) {
+        require(owned.name.startsWith("SYNTHETIC-widget-") && owned.latitude == 44.0 && owned.longitude == 11.0)
+        UUID.fromString(owned.name.removePrefix("SYNTHETIC-widget-"))
+        io { graph.savedLocationsRepository.remove(id) }
+        val ownedFile = File(app.filesDir, "snapshots/${WeatherSnapshot.keyFor(id)}.json")
+        if (ownedFile.exists()) check(ownedFile.delete())
+      }
+    }
     val place = Place(-System.currentTimeMillis(), "SYNTHETIC-widget-${UUID.randomUUID()}", null, 44.0, 11.0, "Europe/Rome")
     val key = WeatherSnapshot.keyFor(place.id)
     val file = File(app.filesDir, "snapshots/$key.json")
     assertFalse(file.exists())
     assertTrue(io { graph.savedLocationsRepository.places.first() }.none { it.id == place.id })
     val previous = graph.selectedPlaceStore.current()
+    Log.i("WeatherWidgetNavTest", "Owned fixture id=${place.id}, name=${place.name}")
     val start = System.currentTimeMillis() / 3_600_000 * 3_600_000
     val hour = start + 3_600_000
     var scenario: ActivityScenario<MainActivity>? = null
+    var primaryFailure: Throwable? = null
     try {
       io {
         graph.tutorialStore.setDisabledAll(true)
@@ -84,40 +96,42 @@ class WeatherWidgetNavigationTest {
       val link = intent(AppDestination.Widget(HomeWidget.HOURLY, place.id))
       scenario = ActivityScenario.launch(link)
       fun awaitSavedHourly() {
-        compose.waitUntil(15_000) {
-          graph.selectedPlaceStore.current() == place.id &&
-            compose.onAllNodesWithTag("hourly_probability_$hour").fetchSemanticsNodes().isNotEmpty()
+        await("saved-place Hourly with owned probability") { root ->
+          graph.selectedPlaceStore.current() == place.id && hasText(root, "37%") &&
+            hasText(root, app.getString(R.string.widget_hourly)) && closeVisible(root)
         }
-        compose.onNodeWithTag("hourly_probability_$hour").assertTextEquals("37%")
       }
       awaitSavedHourly()
-      compose.onNodeWithContentDescription(app.getString(R.string.common_close)).performClick()
-      compose.waitUntil(5_000) { compose.onAllNodesWithTag("hourly_probability_$hour").fetchSemanticsNodes().isEmpty() }
-      graph.selectedPlaceStore.select(Place.GPS_ID)
-      instrumentation.targetContext.startActivity(intent(AppDestination.Home(place.id))
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      compose.waitUntil(15_000) { graph.selectedPlaceStore.current() == place.id }
-      compose.onNodeWithTag("hourly_probability_$hour").assertDoesNotExist()
+      closeDetail()
       // Actual singleTask delivery: identical URI must still generate a fresh AppRequest nonce.
       instrumentation.targetContext.startActivity(link.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       awaitSavedHourly()
-      compose.onNodeWithContentDescription(app.getString(R.string.common_close)).performClick()
-      compose.waitUntil(5_000) { compose.onAllNodesWithTag("hourly_probability_$hour").fetchSemanticsNodes().isEmpty() }
+      closeDetail()
+      graph.selectedPlaceStore.select(Place.GPS_ID)
+      instrumentation.targetContext.startActivity(intent(AppDestination.Home(place.id))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      await("root widget opens saved Home without a detail") { root ->
+        graph.selectedPlaceStore.current() == place.id && hasText(root, place.name) && !closeVisible(root)
+      }
       io { graph.savedLocationsRepository.remove(place.id) }
       instrumentation.targetContext.startActivity(link)
-      compose.waitUntil(15_000) {
+      await("deleted target opens GPS Hourly") { root ->
         graph.selectedPlaceStore.current() == Place.GPS_ID &&
-          compose.onAllNodesWithText(app.getString(R.string.widget_hourly)).fetchSemanticsNodes().isNotEmpty() &&
-          compose.onAllNodesWithContentDescription(app.getString(R.string.common_close)).fetchSemanticsNodes().isNotEmpty()
+          hasText(root, app.getString(R.string.widget_hourly)) && closeVisible(root) && !hasText(root, "37%")
       }
-      compose.onNodeWithTag("hourly_probability_$hour").assertDoesNotExist()
       assertTrue(io { graph.savedLocationsRepository.places.first() }.none { it.id == place.id })
+    } catch (failure: Throwable) {
+      primaryFailure = failure
+      Log.e("WeatherWidgetNavTest", "Primary navigation assertion failed", failure)
+      throw failure
     } finally {
       try {
-        scenario?.close()
-        io { graph.savedLocationsRepository.remove(place.id) }
-        // Only the unique file owned by this fixture. No global cache clear/wipe.
-        if (file.exists()) assertTrue(file.delete())
+        try { scenario?.close() } catch (cleanup: Throwable) {
+          if (primaryFailure != null) primaryFailure.addSuppressed(cleanup) else throw cleanup
+        } finally {
+          io { graph.savedLocationsRepository.remove(place.id) }
+          if (file.exists()) assertTrue(file.delete())
+        }
       } finally {
         graph.selectedPlaceStore.select(previous)
         io { graph.tutorialStore.setDisabledAll(previousTutorialsDisabled) }
@@ -128,4 +142,37 @@ class WeatherWidgetNavigationTest {
   private fun intent(destination: AppDestination) = Intent(Intent.ACTION_VIEW, AppDeepLink.uri(destination), app, MainActivity::class.java)
     .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
   private fun <T> io(block: suspend () -> T): T = runBlocking { kotlinx.coroutines.withTimeout(5_000) { block() } }
+
+  // Native visible nodes avoid coupling a live animated Home to global Compose idleness.
+  private fun await(label: String, predicate: (AccessibilityNodeInfo) -> Boolean) {
+    val deadline = SystemClock.uptimeMillis() + 15_000
+    while (SystemClock.uptimeMillis() < deadline) {
+      val root = instrumentation.uiAutomation.rootInActiveWindow
+      if (root != null) try { if (predicate(root)) return } finally { @Suppress("DEPRECATION") root.recycle() }
+      Thread.sleep(50)
+    }
+    throw AssertionError("Deadline exceeded: $label")
+  }
+  private fun find(root: AccessibilityNodeInfo, predicate: (AccessibilityNodeInfo) -> Boolean): Boolean {
+    var count = 0
+    fun visit(node: AccessibilityNodeInfo): Boolean {
+      check(++count <= 2_000)
+      if (node.isVisibleToUser && node.packageName?.toString() == app.packageName && predicate(node)) return true
+      for (i in 0 until node.childCount) node.getChild(i)?.let { child ->
+        try { if (visit(child)) return true } finally { @Suppress("DEPRECATION") child.recycle() }
+      }
+      return false
+    }
+    return visit(root)
+  }
+  private fun hasText(root: AccessibilityNodeInfo, text: String) = find(root) {
+    it.text?.toString()?.split('\n')?.contains(text) == true || it.contentDescription?.toString() == text
+  }
+  private fun closeVisible(root: AccessibilityNodeInfo) = find(root) {
+    it.contentDescription?.toString() == app.getString(R.string.common_close)
+  }
+  private fun closeDetail() {
+    instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+    await("closed detail") { !closeVisible(it) }
+  }
 }

@@ -38,4 +38,15 @@ Canonical JVM inventory after the first main integration: core-ui58, sensor57, h
 
 ## Limits kept open
 
+## Final candidate execution
+
+- `premium-final-build.log`: Debug, Android test and signed Release succeeded in 4m15s; 1,495 tasks, 142 executed, four cached, 1,349 up-to-date. Release optimization accounts for the longer build. The Debug-only RemoteViews host is absent from the release manifest. Package `dev.pampa.fluidweather`, version2.1.2/code23, ARM64+ARMv7; ZIP integrity passes and the signing certificate matches stable2.1.1.
+- `premium-navigation-back-build.log`: test-only rebuild, 34s, 537 tasks/four executed. `premium-tablet-navigation-passed.log`: two distinct methods passed in7.442s, terminal -1, on the final production Debug APK. URI identity/legacy compatibility plus real MainActivity/graph/cache delivery, consecutive identical Hourly links, root Home and deletion fallback are checked. These are separate from the earlier144-method binary; counts are not described as146 methods rerun on the final binary.
+- The initial navigation run failed its tutorial precondition (no fixtures created). The subsequent Compose-based attempt failed Activity closure and masked the original assertion; it is not a runtime pass or a diagnosed product crash. Native visible-window observation independently confirmed the saved Hourly data, then its ACTION_CLICK close selector failed. The final run uses the production Back key, preserving place/data/repeat/deletion assertions. A known failed-run fixture was recovered through an explicit ID after validating SYNTHETIC UUID ownership and exact coordinates. Cleanup now runs even if closure fails, restores Debug tutorials/selection and preserves the primary failure.
+- The tablet Wi-Fi was temporarily disabled for the offline navigation fixture and restored to its previously enabled state immediately afterward. Principal application data, permissions and appearance were not changed. No phone commands occurred after handoff.
+- Current canonical inventory: core-ui60, sensor57, home76, widget51 =244 XML results, zero failures/errors/skips, including reused outputs. These are not244 new tests in each build. The two new place-target JVM cases are included in core-ui60.
+- Final APK sizes, SHA256, certificate and source identities are frozen separately in `candidate-apks.json`. Production release inputs did not change during the later Android-test-only refinements. The reviewed commit includes those test/docs refinements; no Gradle source-commit stamp is embedded in the APK.
+
+## Remaining limits
+
 Independent field accuracy, a matched whole-app p95/memory comparison, process death, multi-day sensor continuity, OS exact-alarm delivery on other OEMs, live IA/audio and complete launcher/resize coverage are not established. PendingIntent existence cannot prove a future alarm is armed; errors are now reported and existing recovery paths remain. No new physical-sensor continuity claim follows from short tests. Full TalkBack/contrast certification is not a prerequisite for this proportionate quality correction.
