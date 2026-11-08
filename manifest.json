@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "2.1.1",
+        "releaseDate": "2026-11-08",
+        "changelog": "FluidWeather 2.1.1\n\n- Ripristinata la home con temperatura grande, località, condizioni e cielo animato. La sintesi pioggia resta compatta sotto la testata.\n- Corretto il testo nero sulle tessere in vetro con il tema chiaro; eliminato il pannello opaco sopra il vetro.\n- Ripristinato il widget compatto con temperatura, località, prossime ore e orario dei dati. Le cache con previsioni orarie utilizzabili tornano a mostrare la temperatura, qualificata come previsione.\n- Previsioni giornaliere e precipitazioni tornano sintetiche nella home; fonti, limiti e diagnostica restano nei dettagli.\n- Ridotta la durata della cache Open-Meteo che contiene le condizioni correnti, evitando che scadano mentre la risposta resta in cache.\n\nQuesta versione corregge le regressioni di presentazione e del widget introdotte dalla 2.1.0. Le indicazioni sulla pioggia restano stime con i limiti delle fonti disponibili.",
+        "releaseTag": "stable-fluidweather-v2.1.1",
+        "apkAsset": "fluidweather-2.1.1.apk",
+        "sizeBytes": 24967980
+      },
+      {
         "version": "2.1.0",
         "releaseDate": "2026-11-08",
         "changelog": "FluidWeather 2.1.0\n\n- La home mette in primo piano la pioggia presente e imminente, con una timeline compatta, transizioni approssimative e fonti consultabili.\n- Dati correnti, accumuli recenti e previsioni sono distinti. Età delle fonti, copertura radar, conflitti e informazioni mancanti vengono dichiarati senza trasformarli in tempo asciutto.\n- Aggiunti gli orari personali abituali: configura nome, giorni e fascia oraria per vedere rapidamente le condizioni previste nei prossimi momenti che ti interessano, anche attraverso mezzanotte e cambi di fuso.\n- Nuova sintesi rapida disponibile senza configurare un'IA; l'elaborazione IA resta facoltativa e su richiesta. Sintesi, chat, home e widget usano i fatti condivisi dell'app.\n- Widget e dettagli mostrano provenienza e orari dei dati. Migliorata la leggibilità delle previsioni giornaliere con caratteri grandi.\n- Corretto il recupero dopo la cancellazione dei dati: i vecchi aggiornamenti in corso non ripopolano le cache e la home può ricevere nuovi dati senza essere chiusa. Conservate località, personalizzazioni e configurazioni nella migrazione.\n\nLe indicazioni imminenti restano stime vincolate alla disponibilità e alla freschezza delle fonti. Il confronto sul campo dell'accuratezza e quello controllato delle prestazioni restano documentati tra le verifiche aperte.",
@@ -185,20 +193,20 @@
       }
     ],
     "beta": {
-      "version": "2.1.1",
+      "version": "2.1.2",
       "releaseDate": "2026-11-08",
-      "changelog": "FluidWeather 2.1.1\n\n- Ripristinata la home con temperatura grande, località, condizioni e cielo animato. La sintesi pioggia resta compatta sotto la testata.\n- Corretto il testo nero sulle tessere in vetro con il tema chiaro; eliminato il pannello opaco sopra il vetro.\n- Ripristinato il widget compatto con temperatura, località, prossime ore e orario dei dati. Le cache con previsioni orarie utilizzabili tornano a mostrare la temperatura, qualificata come previsione.\n- Previsioni giornaliere e precipitazioni tornano sintetiche nella home; fonti, limiti e diagnostica restano nei dettagli.\n- Ridotta la durata della cache Open-Meteo che contiene le condizioni correnti, evitando che scadano mentre la risposta resta in cache.\n\nQuesta versione corregge le regressioni di presentazione e del widget introdotte dalla 2.1.0. Le indicazioni sulla pioggia restano stime con i limiti delle fonti disponibili.",
-      "releaseTag": "stable-fluidweather-v2.1.1",
-      "apkAsset": "fluidweather-2.1.1.apk",
-      "sizeBytes": 24967980
+      "changelog": "FluidWeather 2.1.2\n\n- Ripristinati la grande temperatura e il vetro della home. Pulsanti, icone e selettori dei dettagli usano il fondale del proprio pannello.\n- Cielo più dinamico, con luce, ombre delle nuvole, foschia e movimento adattati alle condizioni disponibili. Nuvole concentrate nella parte alta della scena.\n- Widget ridisegnati: temperatura e località in primo piano, condizioni e minime/massime nei formati compatti, ore e giorni nei formati più grandi. Migliorata la disposizione con caratteri grandi. I tocchi aprono la città corretta e tornano alla home anche dai dettagli.\n- Lo storico locale del barometro si carica senza aspettare GPS o provider e si aggiorna quando arrivano nuove letture, senza richiedere un refresh manuale.\n- Gestiti i tentativi sensore rifiutati o senza campioni e il riavvio della sorveglianza dopo un errore. Gli aggiornamenti meteo continuano anche sui dispositivi senza barometro.\n- Precipitazioni più leggibili, con grafico compatto, scelta del giorno, finestre di sei ore e tabella su richiesta. Metodo e diagnostica restano espandibili.\n- Corretti intervalli e interruzioni nei grafici pressione, confronto a tre ore, picco UV nelle ore restanti e disposizione delle date del Sole.\n- “Aggiungi un momento” ora ha un pulsante in vetro visibile; ridotte le ripetizioni nella home e nei dettagli.",
+      "releaseTag": "stable-fluidweather-v2.1.2",
+      "apkAsset": "fluidweather-2.1.2.apk",
+      "sizeBytes": 25012586
     },
     "stable": {
-      "version": "2.1.1",
+      "version": "2.1.2",
       "releaseDate": "2026-11-08",
-      "changelog": "FluidWeather 2.1.1\n\n- Ripristinata la home con temperatura grande, località, condizioni e cielo animato. La sintesi pioggia resta compatta sotto la testata.\n- Corretto il testo nero sulle tessere in vetro con il tema chiaro; eliminato il pannello opaco sopra il vetro.\n- Ripristinato il widget compatto con temperatura, località, prossime ore e orario dei dati. Le cache con previsioni orarie utilizzabili tornano a mostrare la temperatura, qualificata come previsione.\n- Previsioni giornaliere e precipitazioni tornano sintetiche nella home; fonti, limiti e diagnostica restano nei dettagli.\n- Ridotta la durata della cache Open-Meteo che contiene le condizioni correnti, evitando che scadano mentre la risposta resta in cache.\n\nQuesta versione corregge le regressioni di presentazione e del widget introdotte dalla 2.1.0. Le indicazioni sulla pioggia restano stime con i limiti delle fonti disponibili.",
-      "releaseTag": "stable-fluidweather-v2.1.1",
-      "apkAsset": "fluidweather-2.1.1.apk",
-      "sizeBytes": 24967980
+      "changelog": "FluidWeather 2.1.2\n\n- Ripristinati la grande temperatura e il vetro della home. Pulsanti, icone e selettori dei dettagli usano il fondale del proprio pannello.\n- Cielo più dinamico, con luce, ombre delle nuvole, foschia e movimento adattati alle condizioni disponibili. Nuvole concentrate nella parte alta della scena.\n- Widget ridisegnati: temperatura e località in primo piano, condizioni e minime/massime nei formati compatti, ore e giorni nei formati più grandi. Migliorata la disposizione con caratteri grandi. I tocchi aprono la città corretta e tornano alla home anche dai dettagli.\n- Lo storico locale del barometro si carica senza aspettare GPS o provider e si aggiorna quando arrivano nuove letture, senza richiedere un refresh manuale.\n- Gestiti i tentativi sensore rifiutati o senza campioni e il riavvio della sorveglianza dopo un errore. Gli aggiornamenti meteo continuano anche sui dispositivi senza barometro.\n- Precipitazioni più leggibili, con grafico compatto, scelta del giorno, finestre di sei ore e tabella su richiesta. Metodo e diagnostica restano espandibili.\n- Corretti intervalli e interruzioni nei grafici pressione, confronto a tre ore, picco UV nelle ore restanti e disposizione delle date del Sole.\n- “Aggiungi un momento” ora ha un pulsante in vetro visibile; ridotte le ripetizioni nella home e nei dettagli.",
+      "releaseTag": "stable-fluidweather-v2.1.2",
+      "apkAsset": "fluidweather-2.1.2.apk",
+      "sizeBytes": 25012586
     }
   },
   "engine": {
