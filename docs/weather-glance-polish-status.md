@@ -31,3 +31,23 @@ Riscontro preliminare sul tablet, in sola lettura: il widget principale esistent
 Implementazione integrata e verifiche concluse sul tablet. Candidate2.1.3/code24, produzione compilata da `a359a6f28a85b269b477e3c59c97a4d672cd6131`. I219 risultati JVM correnti includono output riutilizzati;211 metodi Android finali distinti sono passati (128 widget,82 riepilogo/pioggia/native-map,1 URI). I quattro casi native-map appartengono a un solo metodo. Firma Release e identità verificate. Nessuna pubblicazione2.1.3 ancora eseguita.
 
 Le tre review indipendenti devono ancora valutare il congelato corrente: punteggi e accettazione restano NV. Vedere [verifiche e limiti](weather-glance-polish-verification.md). Le prove riguardano presentazione e integrazione; non attestano nuova accuratezza meteorologica o miglioramento del modello.
+
+## Review round0: accettato
+
+Freeze `Glance-R0-0921d7defd15`, HEAD revisionata `34d1e1321dd2fdaf4c574f1b321619c47d496631`;921 file e tre APK esterni verificati da tutti i revisori. R1 tecnico, R2 esperienza e R3 coerenza/consegna: modello effettivo GPT-6.1 Sol, effort high, tre contesti freschi indipendenti. Nessun build o device eseguito dai revisori.
+
+| Criterio obbligatorio | R1 | R2 | R3 | Media | Minimo | Esito |
+|---|---:|---:|---:|---:|---:|---|
+| G1.widget |8|8,5|8,5|8,33|8|PASS|
+| G2.rapidita |8|8,5|8,5|8,33|8|PASS|
+| G3.coerenza |8|8,5|8|8,17|8|PASS|
+| G4.regressioni |8|8|8|8|8|PASS|
+| G5.consegna |8|9|8,5|8,5|8|PASS|
+
+Media per revisore: R1 8,00; R2 8,50; R3 8,30. Media globale8,27 e minimo8: ogni voto obbligatorio supera individualmente la soglia, senza compensazioni. Tutti e tre raccomandano ADVANCE, nessun rilievo di prodotto bloccante.
+
+Report completi: [R1](reviews/weather-glance-2.1.3-r0-r1.md), [R2](reviews/weather-glance-2.1.3-r0-r2.md), [R3](reviews/weather-glance-2.1.3-r0-r3.md).
+
+Unico rilievo comune, P3/S3 documentale: il handoff summary descriveva ancora un badge Campioni nella vista iniziale. Root ha allineato la frase a codice, test e immagini: qualifica nella semantica e nei dettagli. Correzione solo documentale successiva al congelato; nessun sorgente compilato o APK cambia, nessun nuovo giro di review necessario. Il congelato conserva la frase originale per tracciabilità.
+
+Decisione orchestratore: accettata la correzione di consultazione rapida e widget per stable2.1.3. Restano NV accuracy sul campo, fedeltà futura dei temporali, altri launcher, IA/audio live, telefono completo e process death; questi punti non entrano nei voti della fase. Pubblicazione soggetta ai controlli di provenienza/firma e verifica remota, registrata separatamente dopo l'upload.

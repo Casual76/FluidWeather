@@ -1,0 +1,24 @@
+**ADVANCE — round0 della nuova fase.** Tutti e cinque i criteri raggiungono ≥8. Nessun difetto concreto di prodotto bloccante rilevato; una discrepanza documentale minore.
+
+Modello effettivo: **gpt-6.1-sol**, effort **high**. Candidato **2.1.3/code24**, freeze **Glance-R0-0921d7defd15**, HEAD `34d1e1321dd2fdaf4c574f1b321619c47d496631`, baseline `169c719`.
+
+| Criterion | Score | Verification state | Evidence/reason | Issues/severity |
+|---|---:|---|---|---|
+| G1.widget | **8,5** | Ispezione diretta + esecuzioni parent archiviate | Aperto il riferimento iOS e tutti i campioni richiesti. Temperatura dominante a sinistra, condizione/min-max a destra, ore allineate e cinque barre giornaliere riprendono concretamente la gerarchia richiesta. Riduzione sensata nei formati piccoli. Codice: otto dichiarazioni responsive condividono tre bitmap, **432.960 byte** complessivi; barre senza bitmap dedicate. Selezione nativa documentata ai due bounds. | Nessun blocco osservato. Binding, ridimensionamento manuale e resa degli angoli nel launcher restano NV. |
+| G2.rapidita | **8,5** | Ispezione diretta + codice/test archiviati | Riepilogo e momenti popolati sono ora leggibili come luogo, temperatura, stato, giorno, orario, probabilità e intervallo termico. “Fonti e metodo” e pulsante informazioni sono riconoscibili; metadata inizialmente chiusi. A font1,5 le metriche vanno a capo senza tornare a blocchi di prosa. Azioni raggiungibili tramite scroll nei test. | Nessun difetto bloccante osservato nelle quattro immagini richieste. |
+| G3.coerenza | **8,5** | Verifica statica + esecuzioni parent archiviate | Null non convertiti in zero; giorni incompleti senza estremi inventati; dominio comune delle barre. Validità della previsione ed età del download rimangono distinte nei campioni stale. Conservati gate di scadenza/revisione, timestamp futuri delle routine, date overnight, offset DST e conversioni tramite formatter. L’IA seleziona ID ammessi; il testo provider non diventa previsione visualizzata. | Nessuna regressione semantica concreta individuata. Accuratezza meteorologica reale NV. |
+| G4.regressioni | **8** | Codice + immagini + inferenza circoscritta | Uso effettivo di `GlassTile`, materiale Fluid condiviso, `FluidListGroup(glass=true)`, portal e controlli glass. Foreground leggibile sui campioni aperti. Diff: home sky, modello, evaluator, affidabilità e engine invariati. Destinazioni e identità della località conservate. Il widget usa correttamente materiale rasterizzato, senza fingere backdrop live. | Contrasto dinamico su tutte le condizioni diurne e route completa dal launcher NV. |
+| G5.consegna | **9** | Controlli indipendenti eseguiti + archivio parent | Freeze integro; APK identificati; build e conteggi finali riscontrati nei log originali. Acquisizioni realmente prodotte su tablet, con limiti espliciti e coerenti con i test. | **Bassa:** una frase del contratto summary descrive un badge foreground che non esiste. |
+
+Ho eseguito personalmente, senza scritture:
+
+- Verifica iniziale e finale di **tutti i 921 file**, hash e dimensioni, sia locali sia nello ZIP. SHA256 canonico e ZIP coincidono esattamente con quelli forniti; manifest incorporato identico e CRC archivio valido.
+- Verifica dei tre APK esterni: dimensioni, SHA256 e integrità ZIP corretti.
+- Conferma di HEAD e working tree pulito; engine **3.0.5**, commit `a055257fc4b559bee54b9ce114f265bcd237adfd`, pulito. Rispetto al sorgente compilato `a359a6f`, HEAD aggiunge soltanto documentazione.
+- Apertura effettiva di **tutte le 12 immagini obbligatorie**, incluso il riferimento.
+
+Le **esecuzioni appartengono al parent**: XML ricontati, **219 risultati JVM**, zero failure/error/skip, inclusi output riutilizzati; log ricontati, **211 metodi Android distinti completati** =128+82+1. Gli82 comprendono64 popolati,6 summary,11 rain e1 metodo native con quattro casi. Il runner URI riporta davvero `OK (1 test)`, status0 e terminale−1. Non ho conteggiato fallimenti precedenti o subset come successi finali. Build e verifica crittografica della firma sono prove archiviate, non rieseguite da me.
+
+La discrepanza riproducibile è nel [contratto summary, riga40](C:/VibeCoded%20Projects/FluidWeather/docs/weather-glance-summary-contract.md:40): dichiara il badge “Samples/Campioni” visibile. Immagini, codice e test mostrano invece la precisazione nei dettagli e nella descrizione semantica. È un disallineamento documentale; **non richiede una modifica dell’interfaccia**.
+
+Restano **NV**: accuratezza sul campo, fedeltà di temporali futuri reali, altri launcher, IA/audio live, telefono reale completo e process death. I360/800dp sono viewport virtuali sul tablet; i PNG host sono catture software e non dimostrano angoli launcher difettosi. Nessuna build, test, rete, provider, dispositivo, delega o modifica eseguita durante questa review.

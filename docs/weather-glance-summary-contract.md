@@ -37,8 +37,9 @@ disclosures reset for changed context/occurrence. No user images enter the repos
 ## Quantity and disclosure rules
 
 Probability is the supplied maximum, rounded through the unit formatter. Missing
-values are omitted. Temperatures are supplied sample ranges, explicitly badged
-Samples/Campioni even with complete precipitation coverage. Partial coverage gets a
+values are omitted. Temperatures are supplied sample ranges; their sampled nature
+is exposed in the metric semantics and expandable Details, without a separate
+Samples/Campioni badge in the default card. Partial coverage gets a
 separate short badge; partial dry wording refers only to covered periods. There is
 no invented total, extrema, ETA, measured-weather assertion or dry value for unknowns.
 Full diagnostic forecast wording, sample uncertainty, exact interval, offsets, IANA
