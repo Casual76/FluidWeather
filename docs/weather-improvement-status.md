@@ -1430,7 +1430,10 @@ including all64 RemoteViews layouts and the corrected native navigation path.
 The signed release and pertinent JVM checks pass. All three correction1 reviews
 completed: P1/P2/P4/P5 each8, P3=7/8/8, so the mandatory P3 gate remains open.
 Correction2 distinguishes failed local acquisition from confirmed empty success
-at the actual NowcastUseCase boundary; three API methods and two native navigation
-methods passed on the tablet. Fresh correction2 review is required before
-publication. No field-accuracy, multi-day sensor or controlled whole-app performance
-approval follows from these checks.
+at the actual NowcastUseCase boundary. Its three critics then found the same
+unguarded ordinary Home evaluation caller; P3=6/6/6 and P4=8/8/7, so publication
+remains blocked. Correction3 adds that cancellation-preserving caller boundary.
+Four current actual-Home/API methods and two native navigation methods pass on
+the tablet; final signed build and three fresh reviews remain required.
+No field-accuracy, multi-day sensor or controlled whole-app performance approval
+follows from these checks. Correction3 is the last permitted correction round.
