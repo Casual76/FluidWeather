@@ -1,6 +1,9 @@
 package dev.pampa.fluidweather.core.ui
 
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -20,22 +23,34 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidGrabber
+import dev.antigravity.fluidengine.ui.fluid.FluidGlassIconButton
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
 import dev.antigravity.fluidengine.ui.fluid.FluidScreenDefaults
+import dev.antigravity.fluidengine.foundation.EngineSettings
+import dev.antigravity.fluidengine.ui.fluid.LocalFluidCanvasBackdrop
+import dev.antigravity.fluidengine.ui.fluid.LocalFluidCanvasIsGlass
+import dev.antigravity.fluidengine.ui.fluid.LocalFluidSurfaceSide
+import dev.antigravity.fluidengine.ui.fluid.LocalGlassBackdrop
+import dev.antigravity.fluidengine.ui.fluid.glassMaterialSource
+import dev.antigravity.fluidengine.ui.fluid.rememberGlassBackdrop
+import dev.antigravity.fluidengine.ui.theme.AccentPreset
+import dev.antigravity.fluidengine.ui.theme.fluidColorScheme
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.pampa.fluidweather.strings.R
@@ -75,9 +90,10 @@ val BlackSheetColor: Color = Color(0xFF0B0B0E)
 fun BlackSheetLazy(
   title: String,
   onDismiss: () -> Unit,
+  contentMaxWidth: Dp = FluidScreenDefaults.ContentMaxWidth,
   content: LazyListScope.() -> Unit,
 ) {
-  BlackSheetChrome(title = title, onDismiss = onDismiss) { dismiss, header ->
+  BlackSheetChrome(title = title, onDismiss = onDismiss, contentMaxWidth = contentMaxWidth) { dismiss, header ->
     LazyColumn(
       modifier = Modifier
         .fillMaxWidth()
@@ -149,6 +165,7 @@ fun BlackSheetNote(text: String) {
 private fun BlackSheetChrome(
   title: String,
   onDismiss: () -> Unit,
+  contentMaxWidth: Dp = FluidScreenDefaults.ContentMaxWidth,
   body: @Composable BoxScope.(dismiss: () -> Unit, header: @Composable (() -> Unit) -> Unit) -> Unit,
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -173,7 +190,7 @@ private fun BlackSheetChrome(
           color = Color.White,
           modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = close) {
+        FluidGlassIconButton(onClick = close) {
           Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_close), tint = Color.White)
         }
       }
@@ -186,7 +203,7 @@ private fun BlackSheetChrome(
     modifier = Modifier.fillMaxHeight(),
     // Su un tablet il foglio resta una pagina da leggere, centrata: la stessa misura delle
     // schermate dell'engine (760dp), non i 640 di default del bottom sheet ne' tutto lo schermo.
-    sheetMaxWidth = FluidScreenDefaults.ContentMaxWidth,
+    sheetMaxWidth = contentMaxWidth,
     containerColor = BlackSheetColor,
     contentColor = Color.White,
     shape = ContinuousCornerShape(topStart = FluidRadius.Sheet, topEnd = FluidRadius.Sheet),
@@ -195,8 +212,42 @@ private fun BlackSheetChrome(
   ) {
     // Il foglio vive in una finestra sua: i suggerimenti delle sue pagine hanno bisogno di un
     // padrone di casa qui dentro, o finirebbero dietro al foglio con le coordinate sbagliate.
-    TutorialSurface {
-      body(dismiss, header)
+    BlackSheetSurface {
+      TutorialSurface {
+        body(dismiss, header)
+      }
+    }
+  }
+}
+
+/**
+ * A modal is a new optical scene even though it inherits its caller's composition locals.
+ * Record only its opaque paint, in a sibling below the content: recording the content would
+ * make a chip sample itself. Both engine backdrop channels belong to this window, so neither
+ * content controls nor chrome can accidentally reopen a window onto Home's animated sky.
+ */
+@Composable
+private fun BlackSheetSurface(content: @Composable () -> Unit) {
+  val material = rememberGlassBackdrop()
+  val accent = MaterialTheme.colorScheme.primary
+  val palette = remember(accent) {
+    fluidColorScheme(
+      settings = EngineSettings(),
+      isDark = true,
+      brand = AccentPreset("sheet", "sheet", light = accent, dark = accent),
+    ).copy(background = BlackSheetColor, surface = BlackSheetColor)
+  }
+  MaterialTheme(colorScheme = palette) {
+    CompositionLocalProvider(
+      LocalFluidCanvasBackdrop provides material,
+      LocalGlassBackdrop provides material,
+      LocalFluidCanvasIsGlass provides false,
+      LocalFluidSurfaceSide provides true,
+    ) {
+      Box(Modifier.fillMaxSize()) {
+        Box(Modifier.matchParentSize().glassMaterialSource(material).background(BlackSheetColor))
+        content()
+      }
     }
   }
 }

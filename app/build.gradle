@@ -39,8 +39,8 @@ android {
     minSdk engine.minSdk
     targetSdk engine.compileSdk
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    versionCode 22
-    versionName '2.1.1'
+    versionCode 23
+    versionName '2.1.2'
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
     // La 1.1.0 promuove l'app a stable (decisione 2026-09-03): chi la installa segue stable
     // finche' non sceglie altro in Informazioni. Il canale e' compilato dentro l'APK, quindi

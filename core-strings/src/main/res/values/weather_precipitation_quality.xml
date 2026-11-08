@@ -1,0 +1,26 @@
+<resources>
+  <string name="precip_quality_probability_unknown">Probability unavailable for these hours</string>
+  <string name="precip_quality_forecast">Model forecast</string>
+  <string name="precip_quality_peak">Highest probability</string>
+  <string name="precip_quality_coverage">Available values: %1$d/%2$d</string>
+  <string name="precip_quality_sample_sum">Available amount</string>
+  <string name="precip_quality_amount_coverage">Samples: %1$d/%2$d</string>
+  <string name="precip_quality_today">Today</string>
+  <string name="precip_quality_window">%1$s–%2$s</string>
+  <string name="precip_quality_earlier">Earlier hours</string>
+  <string name="precip_quality_later">Later hours</string>
+  <string name="precip_quality_scale">Hourly probability</string>
+  <string name="precip_quality_legend">× Unavailable</string>
+  <string name="precip_quality_empty">Forecast unavailable</string>
+  <string name="precip_quality_show_hours">Hours and amounts</string>
+  <string name="precip_quality_hide_hours">Hide hourly details</string>
+  <string name="precip_quality_hour_values">%1$s · %2$s</string>
+  <string name="precip_quality_hour_columns">Probability · amount</string>
+  <string name="precip_quality_sources">Sources and method</string>
+  <string name="precip_quality_expanded">Expanded</string>
+  <string name="precip_quality_collapsed">Collapsed</string>
+  <string name="precip_quality_method">These are model forecast samples, separate from the shared assessment of rain now. Probability combines the providers that supply that variable; it does not establish when rain starts or ends.</string>
+  <string name="precip_quality_provider_list">Contributing model providers: %1$s</string>
+  <string name="precip_quality_download">Forecast cache: %1$s</string>
+  <string name="precip_quality_interval_limit">Source issue time and accumulation interval are not established here. Amounts are sums of available samples, not verified six-hour or daily totals. Gaps, duplicate timestamps and off-grid positions stay unknown. Select a day and use earlier/later hours to consult the remaining horizon.</string>
+</resources>

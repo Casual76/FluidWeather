@@ -1,0 +1,21 @@
+<resources>
+  <string name="quality_device_times">Orari della pagina nel fuso del dispositivo: %1$s</string>
+  <string name="quality_times_in">Orari: %1$s</string>
+  <string name="quality_curve_gaps">Le interruzioni indicano lacune superiori a %1$d minuti.</string>
+  <string name="quality_hourly_value">Valore previsto</string>
+  <string name="quality_daylight_twelve">Circa 12 ore di luce</string>
+  <string name="quality_method_sources">Metodo e fonti</string>
+  <string name="quality_expanded">Espanso</string>
+  <string name="quality_collapsed">Compresso</string>
+  <string name="quality_forecast_valid">Previsione · valida %1$s</string>
+  <string name="quality_forecast_sources">Previsione combinata · %1$d servizi meteo disponibili</string>
+  <string name="quality_downloaded">Cache della previsione: %1$s</string>
+  <string name="quality_time_unknown">sconosciuto</string>
+  <string name="quality_barometer_nowcast">Tendenza dal barometro</string>
+  <string name="quality_barometer_separate">Stima dal barometro locale · separata dalla previsione di pioggia.</string>
+  <string name="quality_nowcast_collecting">Raccolta della storia della pressione. Servono circa 13 ore di letture continue.</string>
+  <string name="quality_signal_history">Segnale di pressione e storico</string>
+  <string name="quality_pressure_signal">Letture grezze ed elaborazione</string>
+  <string name="quality_uv_available_peak">Picco disponibile oggi</string>
+  <string name="quality_uv_from_now">Da ora · alle %1$s · %2$s</string>
+</resources>

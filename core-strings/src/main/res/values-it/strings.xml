@@ -759,7 +759,7 @@
   <string name="pressure_points">Punti nel periodo</string>
   <string name="pressure_provider_title">Dai provider</string>
   <string name="pressure_provider_caption">al livello del mare, dalla previsione</string>
-  <string name="pressure_provider_next3h">Fra 3 ore</string>
+  <string name="pressure_provider_next3h">3 ore dopo</string>
   <string name="pressure_provider_series">I prossimi due giorni</string>
   <string name="pressure_provider_hours">Ore disponibili</string>
   <string name="pressure_provider_note">Qui non c\'è pulizia, né marea sottratta, né taratura: servono il sensore del telefono, e il sensore è dove sei tu. Questa è la pressione che i provider prevedono per questo posto, ora per ora.</string>

@@ -31,7 +31,12 @@ class HomeRainOverviewTest {
       if (conflict) listOf(WeatherEvidence("radar", WeatherEvidenceType.RADAR_ESTIMATE,
         sourceTimestampMillis = now - 300_000, downloadedAtMillis = now - 300_000, precipitationState = PrecipitationState.DRY)) else emptyList(),
     limits = if (conflict) setOf(WeatherEvidenceLimit.CONFLICTING_SIGNALS) else setOf(WeatherEvidenceLimit.MODEL_ONLY),
-  ))
+  ), timeline = listOf(PrecipitationPeriod(
+    WeatherInterval(now, now + 3_600_000L), PrecipitationState.WET,
+    amountMm = 1.0, evidence = listOf(WeatherEvidence("forecast", WeatherEvidenceType.MODEL,
+      temporalResolutionMillis = 900_000L, sourceTimestampMillis = now,
+      downloadedAtMillis = now - 60_000L)), role = PrecipitationPeriodRole.FORECAST,
+  )))
   private fun show(width: Int, scale: Float = 1f, brief: WeatherBrief? = brief()) {
     compose.setContent {
       val device = LocalDensity.current
@@ -73,22 +78,25 @@ class HomeRainOverviewTest {
   @Test fun unavailableIsAnExplicitHeading() {
     show(411, brief = null)
     val resources = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources
-    compose.onNodeWithTag("home_rain_timeline").assertContentDescriptionContains(resources.getString(dev.pampa.fluidweather.strings.R.string.home_rain_timeline_unknown), substring = true)
+    // An entirely unknown strip is not a useful graph; the explicit unknown heading remains.
+    compose.onNodeWithTag("home_rain_timeline").assertDoesNotExist()
     compose.onNodeWithTag("home_rain_headline").assertIsDisplayed()
       .assert(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Heading))
     // Expected localized wording comes from resources, and must differ from a model wet result.
     val actual = compose.onNodeWithTag("home_rain_headline").fetchSemanticsNode()
       .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
-    assertEquals(resources.getString(dev.pampa.fluidweather.strings.R.string.home_rain_unavailable), actual)
+    assertEquals(resources.getString(dev.pampa.fluidweather.strings.R.string.rain_quality_now_unknown), actual)
   }
   @Test fun conflictIsExplicitAndDoesNotOfferAnEta() {
     show(411, brief = brief(true))
     val resources = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources
     compose.onNodeWithTag("home_rain_headline").assertTextEquals(resources.getString(dev.pampa.fluidweather.strings.R.string.home_rain_conflict))
-    compose.onNodeWithText(resources.getString(dev.pampa.fluidweather.strings.R.string.home_rain_no_eta)).assertIsDisplayed()
+    compose.onNodeWithText(resources.getString(dev.pampa.fluidweather.strings.R.string.home_rain_conflict_limit)).assertIsDisplayed()
   }
   @Test fun doubledFontWrapsWithoutTruncationAndTimelineRemainsReachable() {
-    show(360, 2f)
+    // Use the genuinely long conflict heading: the shortened forecast title can
+    // now fit on one line, which is valid and is not evidence of truncation.
+    show(360, 2f, brief = brief(true))
     val results = mutableListOf<TextLayoutResult>()
     compose.onNodeWithTag("home_rain_headline").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
     assertTrue(results.isNotEmpty())

@@ -55,9 +55,6 @@ internal fun AirQualityPage(state: HomeUiState) {
     Text(stringResource(R.string.aqi_moderate), style = MaterialTheme.typography.labelSmall, color = Faint)
     Text(stringResource(R.string.aqi_extremely_poor), style = MaterialTheme.typography.labelSmall, color = Faint)
   }
-  PageNote(
-    stringResource(R.string.aq_explain),
-  )
 
   PageSection(stringResource(R.string.aq_pollutants_now))
   if (air.pollutants.isEmpty()) {
@@ -87,7 +84,6 @@ internal fun AirQualityPage(state: HomeUiState) {
         )
       }
     }
-    PageNote(stringResource(R.string.aq_averaging_note))
   }
 
   PageSection(stringResource(R.string.aq_forecast))
@@ -125,6 +121,10 @@ internal fun AirQualityPage(state: HomeUiState) {
         StatRow(name, stringResource(R.string.aq_grains, value.toInt()), pollenLevel(value))
       }
     }
+  }
+  PageDisclosure {
+    PageNote(stringResource(R.string.aq_explain))
+    PageNote(stringResource(R.string.aq_averaging_note))
     PageNote(stringResource(R.string.aq_pollen_thresholds))
   }
 }

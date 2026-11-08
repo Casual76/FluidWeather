@@ -354,7 +354,7 @@ private fun DailyTile(state: HomeUiState) {
 
 @Composable
 private fun PrecipitationTile(state: HomeUiState) {
-  SharedRainHeadline(state.weatherBrief)
+  // This tile is the next-hours forecast; rain-now evidence is already in the home summary.
   dev.pampa.fluidweather.feature.home.pages.PrecipitationForecastSamples(state, compact = true)
 
 }

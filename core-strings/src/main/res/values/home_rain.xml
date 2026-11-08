@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="home_rain_model_wet">Recent model estimate: rain</string>
-  <string name="home_rain_model_dry">Recent model estimate: no rain</string>
+  <string name="home_rain_model_wet">Rain expected</string>
+  <string name="home_rain_model_dry">No rain expected</string>
   <string name="home_rain_radar_wet">Radar detects precipitation</string>
   <string name="home_rain_radar_no_echo">No precipitation echo on radar</string>
   <string name="home_rain_wet">Rain indicated by radar and model</string>

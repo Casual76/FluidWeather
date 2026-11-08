@@ -41,8 +41,6 @@ private val PeriodHours = listOf(12, 24, 72, 168)
  * occhio (i passaggi di fronte durano ore, non minuti), e sono abbastanza punti perche' la curva
  * abbia una forma senza diventare una riga di rumore.
  */
-private const val ProviderHours = 48
-
 /**
  * La pagina della pressione: il livello adesso e le soglie classiche applicate alle ultime tre
  * ore, la serie grezza e quella pulita sul periodo scelto (dall'archivio del telefono, rigiocato
@@ -122,62 +120,68 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
       if (period == 0) stringResource(R.string.pressure_not_enough_12h) else stringResource(R.string.pressure_computing),
     )
   } else {
-    PageSection(stringResource(R.string.pressure_raw_station))
-    CurveWithLabels(
-      values = units.pressureSeries(shown.cleaned.map { it.stationPressureHpa }),
-      labels = timeLabels(shown.cleaned.map { it.timestampMillis }),
-      color = PageAmber,
-      unit = " " + units.pressureSymbol(),
-      decimals = units.pressureChartDecimals() + 1,
-    )
     if (shown.filtered.size >= 2) {
       PageSection(stringResource(R.string.pressure_clean_msl))
       CurveWithLabels(
         values = units.pressureSeries(shown.filtered.map { it.levelHpa }),
         labels = timeLabels(shown.filtered.map { it.timestampMillis }),
+        timestamps = shown.filtered.map { it.timestampMillis },
         color = PageBlue,
         unit = " " + units.pressureSymbol(),
         decimals = units.pressureChartDecimals() + 1,
       )
     }
-    StatRow(stringResource(R.string.pressure_points), "${shown.cleaned.size}", stringResource(R.string.pressure_of_aggregates, shown.cleaned.size + shown.rejected.size))
-    val altitudes = shown.cleaned.mapNotNull { it.altitudeMeters }
-    if (altitudes.isNotEmpty()) {
-      StatRow(stringResource(R.string.pressure_altitude_used), stringResource(R.string.pressure_meters, fmt0(altitudes.average())), stringResource(R.string.pressure_altitude_source))
-    }
+    PageDisclosure(title = stringResource(R.string.quality_pressure_signal)) {
+      PageSection(stringResource(R.string.pressure_raw_station))
+      CurveWithLabels(
+        values = units.pressureSeries(shown.cleaned.map { it.stationPressureHpa }),
+        labels = timeLabels(shown.cleaned.map { it.timestampMillis }),
+        timestamps = shown.cleaned.map { it.timestampMillis },
+        color = PageAmber,
+        unit = " " + units.pressureSymbol(),
+        decimals = units.pressureChartDecimals() + 1,
+      )
+      StatRow(stringResource(R.string.pressure_points), "${shown.cleaned.size}", stringResource(R.string.pressure_of_aggregates, shown.cleaned.size + shown.rejected.size))
+      val altitudes = shown.cleaned.mapNotNull { it.altitudeMeters }
+      if (altitudes.isNotEmpty()) {
+        StatRow(stringResource(R.string.pressure_altitude_used), stringResource(R.string.pressure_meters, fmt0(altitudes.average())), stringResource(R.string.pressure_altitude_source))
+      }
 
-    PageSection(stringResource(R.string.pressure_tide))
-    val tide = shown.tide
-    StatRow(stringResource(R.string.pressure_tide_model), tideSourceLabel(tide.source))
-    StatRow(stringResource(R.string.pressure_tide_amplitudes), "S1 ${units.pressure(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}", stringResource(R.string.pressure_tide_kinds))
-    if (tide.source != TideSource.NONE) {
-      StatRow(stringResource(R.string.pressure_tide_push), units.pressureDelta(tide.tideAtLatestHpa, 2), stringResource(R.string.pressure_tide_subtracted))
-    }
-    PageNote(
-      stringResource(R.string.pressure_tide_note),
-    )
+      PageSection(stringResource(R.string.pressure_tide))
+      val tide = shown.tide
+      StatRow(stringResource(R.string.pressure_tide_model), tideSourceLabel(tide.source))
+      StatRow(stringResource(R.string.pressure_tide_amplitudes), "S1 ${units.pressure(tide.s1AmplitudeHpa, 1)} · S2 ${units.pressure(tide.s2AmplitudeHpa, 1)}", stringResource(R.string.pressure_tide_kinds))
+      if (tide.source != TideSource.NONE) {
+        StatRow(stringResource(R.string.pressure_tide_push), units.pressureDelta(tide.tideAtLatestHpa, 2), stringResource(R.string.pressure_tide_subtracted))
+      }
+      PageNote(
+        stringResource(R.string.pressure_tide_note),
+      )
 
-    PageSection(stringResource(R.string.pressure_rejected_title))
-    val counts = shown.rejectionCounts()
-    if (counts.isEmpty() && shown.discardedBursts.isEmpty()) {
-      PageNote(stringResource(R.string.pressure_rejected_none))
-    } else {
-      counts.forEach { (reason, count) -> StatRow(rejectionLabel(reason), "$count") }
-      if (shown.discardedBursts.isNotEmpty()) {
-        StatRow(stringResource(R.string.pressure_rejected_variance), "${shown.discardedBursts.size}", stringResource(R.string.pressure_stage_1))
+      PageSection(stringResource(R.string.pressure_rejected_title))
+      val counts = shown.rejectionCounts()
+      if (counts.isEmpty() && shown.discardedBursts.isEmpty()) {
+        PageNote(stringResource(R.string.pressure_rejected_none))
+      } else {
+        counts.forEach { (reason, count) -> StatRow(rejectionLabel(reason), "$count") }
+        if (shown.discardedBursts.isNotEmpty()) {
+          StatRow(stringResource(R.string.pressure_rejected_variance), "${shown.discardedBursts.size}", stringResource(R.string.pressure_stage_1))
+        }
       }
     }
   }
 
-  PageSection(stringResource(R.string.pressure_thresholds))
-  PageNote(
-    stringResource(R.string.pressure_thresholds_note, fmt1(PressureTrend.SURVEILLANCE_THRESHOLD_HPA_PER_HOUR)),
-  )
+  PageDisclosure {
+    PageSection(stringResource(R.string.pressure_thresholds))
+    PageNote(
+      stringResource(R.string.pressure_thresholds_note, fmt1(PressureTrend.SURVEILLANCE_THRESHOLD_HPA_PER_HOUR)),
+    )
 
-  PageSection(stringResource(R.string.engine_calibration_title))
-  PageNote(
-    stringResource(R.string.pressure_bias_note),
-  )
+    PageSection(stringResource(R.string.engine_calibration_title))
+    PageNote(
+      stringResource(R.string.pressure_bias_note),
+    )
+  }
 }
 
 /**
@@ -188,25 +192,17 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
  * previsione — e va detto, altrimenti si legge un numero credendolo una misura.
  */
 @Composable
-private fun ProviderPressurePage(state: HomeUiState) {
+fun ProviderPressurePage(state: HomeUiState) {
   val units = rememberUnitFormatter()
   // L'ora al passo dell'ora, come nella pagina orario: `System.currentTimeMillis()` in
   // composizione cambierebbe la chiave ad ogni fotogramma e rifarebbe tutto.
   val hourStamp = remember(state.fusedHours) { System.currentTimeMillis() / 3_600_000L }
   val series = remember(state.fusedHours, hourStamp) {
-    val from = hourStamp * 3_600_000L - 3_600_000L
-    state.fusedHours
-      .asSequence()
-      .filter { it.timestampMillis >= from }
-      .mapNotNull { hour ->
-        hour.values[FusionVariables.PRESSURE_MSL]?.value?.let { hour.timestampMillis to it }
-      }
-      .take(ProviderHours)
-      .toList()
+    pressureForecastSeries(state.fusedHours, hourStamp * 3_600_000L)
   }
 
-  PageSection(stringResource(R.string.common_now))
   if (series.isEmpty()) {
+    PageSection(stringResource(R.string.quality_hourly_value))
     PageNote(stringResource(R.string.common_waiting_providers))
     PageSection(stringResource(R.string.pressure_provider_title))
     PageNote(stringResource(state.providerPressureNoteRes))
@@ -214,20 +210,22 @@ private fun ProviderPressurePage(state: HomeUiState) {
   }
 
   val (firstMillis, current) = series.first()
+  PageSection(stringResource(R.string.quality_forecast_valid,
+    dev.pampa.fluidweather.strings.TimeFormats.dayTime(firstMillis, zone(),
+      androidx.compose.ui.platform.LocalConfiguration.current.locales[0])))
   BigStat(
     units.pressureValue(current, 1),
     units.pressureSymbol(),
     stringResource(R.string.pressure_provider_caption),
   )
   Spacer(Modifier.height(8.dp))
-  // "Fra tre ore" e non "nelle ultime tre": di una previsione si legge il seguito. La stessa
-  // finestra delle soglie classiche, cosi' le due pagine si confrontano.
-  val inThree = series.firstOrNull { it.first >= firstMillis + 3 * 3_600_000L }?.second
-  val delta3h = inThree?.let { it - current }
+  // Three hours after the explicitly dated forecast sample. Missing endpoints stay unknown.
+  val outlook = threeHourPressureOutlook(series)
+  val delta3h = outlook?.changeHpa
   StatGrid(
     listOf(
-      stringResource(R.string.pressure_provider_next3h) to (inThree?.let { units.pressure(it, 1) } ?: "\u2014"),
-      stringResource(R.string.pressure_trend) to (delta3h?.let { units.pressureRate(it / 3.0, 2) } ?: "\u2014"),
+      stringResource(R.string.pressure_provider_next3h) to (outlook?.let { units.pressure(it.pressureHpa, 1) } ?: "\u2014"),
+      stringResource(R.string.pressure_trend) to (outlook?.let { units.pressureRate(it.rateHpaPerHour, 2) } ?: "\u2014"),
       stringResource(R.string.pressure_provider_hours) to "${series.size}",
     ),
   )
@@ -248,13 +246,16 @@ private fun ProviderPressurePage(state: HomeUiState) {
   CurveWithLabels(
     values = units.pressureSeries(series.map { it.second }),
     labels = timeLabels(series.map { it.first }),
+    timestamps = series.map { it.first }, maxGapMillis = 90 * 60_000L,
     color = PageBlue,
     unit = " " + units.pressureSymbol(),
     decimals = units.pressureChartDecimals() + 1,
   )
 
-  PageSection(stringResource(R.string.pressure_provider_title))
-  PageNote(stringResource(if (state.sensorAvailable) R.string.pressure_provider_note else R.string.tile_no_barometer_device))
+  PageDisclosure {
+    PageSection(stringResource(R.string.pressure_provider_title))
+    PageNote(stringResource(if (state.sensorAvailable) R.string.pressure_provider_note else R.string.tile_no_barometer_device))
+  }
 }
 
 @Composable

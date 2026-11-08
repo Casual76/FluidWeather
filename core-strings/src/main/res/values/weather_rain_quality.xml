@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="rain_quality_title">Rain</string>
+  <string name="rain_quality_now_unknown">Rain now unverified</string>
+  <string name="rain_quality_forecast_dry">No rain forecast</string>
+  <string name="rain_quality_forecast_partial_dry">No rain in covered periods</string>
+  <string name="rain_quality_forecast_wet">Rain in the next hour forecast</string>
+  <string name="rain_quality_forecast_uncertain">Next hour forecast uncertain</string>
+  <string name="rain_quality_now_and_forecast">Rain now unverified</string>
+  <string name="rain_quality_model_recent">Recent model estimate · not a local measurement</string>
+  <string name="rain_quality_radar_recent">Radar estimate · ground conditions may differ</string>
+  <string name="rain_quality_forecast_title">Next hour · forecast</string>
+  <string name="rain_quality_partial">Partial forecast</string>
+  <string name="rain_quality_resolution">Model resolution: %1$s</string>
+  <string name="rain_quality_resolution_unknown">Source resolution unspecified</string>
+  <string name="rain_quality_minutes">%1$d min</string>
+  <string name="rain_quality_hours">%1$d h</string>
+  <string name="rain_quality_seconds">%1$d s</string>
+  <string name="rain_quality_gaps">Dots: periods without a forecast</string>
+  <string name="rain_quality_amount_bars">Bars: amount per interval · max %1$s</string>
+  <string name="rain_quality_probability">Maximum forecast chance: %1$s</string>
+  <string name="rain_quality_total">Next hour total: %1$s</string>
+  <string name="rain_quality_probability_part">Chance: %1$s</string>
+  <string name="rain_quality_amount_unknown">Amount unspecified</string>
+  <string name="rain_quality_source_time">Valid times: %1$s</string>
+  <string name="rain_quality_source_time_unknown">Valid time unspecified</string>
+  <string name="rain_quality_download_time">Downloaded: %1$s</string>
+  <string name="rain_quality_download_unknown">Download time unspecified</string>
+  <string name="rain_quality_intervals">Intervals: %1$s</string>
+  <string name="rain_quality_source_resolution">Time resolution: %1$s</string>
+  <string name="rain_quality_source_space">Spatial resolution: %1$s</string>
+  <string name="rain_quality_source_age">%1$s · %2$d min ago</string>
+  <string name="rain_quality_zone">Times in %1$s</string>
+  <string name="rain_quality_forecast_notice">Model forecast. Small chart intervals do not imply equally precise rain timing.</string>
+  <string name="rain_quality_interpolated">May be interpolated</string>
+  <string name="rain_quality_coarse_time">Coarse time resolution</string>
+  <string name="rain_quality_coarse_space">Coarse spatial resolution</string>
+  <string name="rain_quality_transition_expired">Previous transition estimate expired</string>
+  <string name="rain_quality_future_divergence">Forecast and transition estimate disagree</string>
+  <string name="rain_quality_no_coordinates">Location coordinates missing</string>
+</resources>

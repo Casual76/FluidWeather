@@ -104,17 +104,22 @@ class WeatherF6AccessibilityTest(private val language: String, private val width
   private fun assertSharedWithoutHours(precipitation: Boolean, conflict: Boolean) {
     val state = state(conflict)
     show { if (precipitation) PrecipitationPage(state) else DetailsPage(state) }
+    if (!precipitation) {
+      // Wind/humidity details have their own useful empty state, without repeating the rain card.
+      compose.onNodeWithText(resources.getString(R.string.common_waiting_providers)).assertIsDisplayed()
+      compose.onNodeWithTag("home_rain_overview").assertDoesNotExist()
+      return
+    }
     compose.onNodeWithTag("home_rain_headline").assertTextEquals(resources.getString(
-      if (conflict) R.string.home_rain_conflict else R.string.home_rain_unavailable))
-    compose.onNodeWithTag("home_rain_timeline").performScrollTo().assertIsDisplayed()
-    compose.onNodeWithText(resources.getString(R.string.home_rain_current_unknown)).assertExists()
+      if (conflict) R.string.home_rain_conflict else R.string.rain_quality_now_unknown))
+    compose.onNodeWithTag("home_rain_timeline").assertDoesNotExist()
     if (conflict) {
       compose.onNodeWithTag("home_rain_sources_toggle").performScrollTo().performClick()
       compose.onNodeWithTag("home_rain_sources_details").performScrollTo().assertIsDisplayed()
     }
   }
-  @Test fun detailsRetainsConflictAndSourceActionWithoutHourlyData() = assertSharedWithoutHours(false, true)
-  @Test fun detailsRetainsUnknownWithoutHourlyData() = assertSharedWithoutHours(false, false)
+  @Test fun detailsWithoutHoursDoesNotDuplicateUnrelatedRainConflict() = assertSharedWithoutHours(false, true)
+  @Test fun detailsWithoutHoursShowsUsefulEmptyState() = assertSharedWithoutHours(false, false)
   @Test fun precipitationRetainsConflictAndSourceActionWithoutHourlyData() = assertSharedWithoutHours(true, true)
   @Test fun precipitationRetainsUnknownWithoutHourlyData() = assertSharedWithoutHours(true, false)
   @Test fun rainGraphKeepsZeroMissingAndGapClocks() {
@@ -133,10 +138,19 @@ class WeatherF6AccessibilityTest(private val language: String, private val width
     fun label(at: Long, value: String) = resources.getString(R.string.accessibility_probability_sample,
       dev.pampa.fluidweather.strings.accessibilitySampleTime(at, zone, locale), value)
     // Zero is explicitly 0%; an absent timestamp and duplicate timestamp remain unknown.
-    compose.onAllNodesWithText(label(start, "0%")).onFirst().performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag("precip_probability_chart").performScrollTo()
+      .assertContentDescriptionContains(label(start, "0%"), substring = true)
     val unknown = resources.getString(R.string.home_rain_timeline_unknown)
-    compose.onAllNodesWithText(label(start + hour, unknown)).onFirst().performScrollTo().assertIsDisplayed()
-    compose.onAllNodesWithText(label(start + 3*hour, unknown)).onFirst().performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag("precip_probability_chart")
+      .assertContentDescriptionContains(label(start + hour, unknown), substring = true)
+      .assertContentDescriptionContains(label(start + 3*hour, unknown), substring = true)
+    compose.onNodeWithTag("precip_hours_toggle").performScrollTo().performClick()
+    compose.onNodeWithTag("precip_hour_0").performScrollTo()
+      .assertContentDescriptionContains(label(start, "0%"), substring = true)
+    compose.onNodeWithTag("precip_hour_1").performScrollTo()
+      .assertContentDescriptionContains(label(start + hour, unknown), substring = true)
+    compose.onNodeWithTag("precip_hour_3").performScrollTo()
+      .assertContentDescriptionContains(label(start + 3*hour, unknown), substring = true)
   }
   @Test fun shortTimelineUsesLocalizedQualifierAndPreservesSourcePrecision() {
     val now = System.currentTimeMillis()

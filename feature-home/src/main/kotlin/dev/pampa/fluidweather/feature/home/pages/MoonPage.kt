@@ -100,7 +100,6 @@ internal fun MoonPage(state: HomeUiState) {
         stringResource(R.string.moon_sets) to (times.setMillis?.let { fmtTime(it) } ?: stringResource(R.string.moon_no_set)),
       ),
     )
-    PageNote(stringResource(R.string.moon_skip_note))
   }
 
   PageSection(stringResource(R.string.moon_next_phases))
@@ -111,9 +110,10 @@ internal fun MoonPage(state: HomeUiState) {
   val month = YearMonth.from(date)
   PageSection(stringResource(R.string.moon_calendar_of) + DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()).format(month).replaceFirstChar { it.uppercase() })
   MonthCalendar(month = month, selected = date, today = localDate(now))
-  PageNote(
-    stringResource(R.string.moon_method_note),
-  )
+  PageDisclosure {
+    PageNote(stringResource(R.string.moon_skip_note))
+    PageNote(stringResource(R.string.moon_method_note))
+  }
 }
 
 /** Le quattro fasi principali che verranno, in ordine di arrivo. */

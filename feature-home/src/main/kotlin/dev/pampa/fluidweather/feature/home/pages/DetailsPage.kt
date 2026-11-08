@@ -31,10 +31,8 @@ import androidx.compose.ui.platform.LocalContext
  * dispositivo che la taratura stima per bene.
  */
 @Composable
-fun DetailsPage(state: HomeUiState) {
-  dev.pampa.fluidweather.feature.home.HomeRainOverview(state.weatherBrief,
-    state.locationName ?: stringResource(R.string.summary_place_unknown))
-  val now = System.currentTimeMillis()
+fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTimeMillis()) {
+  val now = evaluatedAtMillis
   val units = rememberUnitFormatter()
   val context = LocalContext.current
   val current = state.fusedHours.nearestHour(now)?.first
@@ -42,18 +40,19 @@ fun DetailsPage(state: HomeUiState) {
     PageNote(stringResource(R.string.common_waiting_providers))
     return
   }
-  val zone = dev.pampa.fluidweather.core.model.WeatherZones.resolve(
-    state.weatherBrief?.precipitation?.place?.zoneId, null, java.time.ZoneId.systemDefault()).zoneId
+  val zone = java.time.ZoneId.systemDefault()
   val sampleLabel = stringResource(R.string.accessibility_model_sample,
     dev.pampa.fluidweather.strings.accessibilitySampleTime(current.timestampMillis, zone,
       androidx.compose.ui.platform.LocalConfiguration.current.locales[0]))
-  PageNote(sampleLabel)
-  val next24 = state.fusedHours.filter { it.timestampMillis >= now - 30 * 60_000L }.take(24)
+  PageNote(stringResource(R.string.quality_forecast_valid,
+    dev.pampa.fluidweather.strings.TimeFormats.dayTime(current.timestampMillis, zone)))
+  val next24 = detailForecastWindow(state.fusedHours, now)
   // Curva ed etichette si costruiscono INSIEME (vedi `curvePoints`): con le etichette prese da
   // tutte le ore e i valori filtrati, un'ora mancante ai provider spostava le etichette su ore
   // che la curva non contiene.
   fun curve(variable: String) = curvePoints(next24, variable)
-  fun value(variable: String): Double? = current.values[variable]?.value
+  fun timestamps(variable: String) = curveSamples(next24, variable).map { it.first }
+  fun value(variable: String): Double? = current.values[variable]?.value?.takeIf { it.isFinite() }
 
   // ------------------------------------------------------------------------------- vento
   PageSection(stringResource(R.string.common_wind))
@@ -82,9 +81,9 @@ fun DetailsPage(state: HomeUiState) {
   val (windCurve, windLabels) = curve(FusionVariables.WIND_SPEED)
   if (windCurve.size >= 2) {
     Spacer(Modifier.height(6.dp))
-    CurveWithLabels(units.windSeries(windCurve), windLabels, PageBlue, " " + units.windSymbol(), height = 70.dp)
+    CurveWithLabels(units.windSeries(windCurve), windLabels, PageBlue, " " + units.windSymbol(), height = 70.dp,
+      timestamps = timestamps(FusionVariables.WIND_SPEED), maxGapMillis = 90 * 60_000L)
   }
-  PageNote(stringResource(R.string.details_wind_note))
 
   // ------------------------------------------------------------------- umidita' e rugiada
   PageSection(stringResource(R.string.details_humidity_title))
@@ -107,55 +106,54 @@ fun DetailsPage(state: HomeUiState) {
   if (dewPoint != null) {
     Spacer(Modifier.height(6.dp))
     PageNote(
-      stringResource(R.string.details_dew_prefix) + when {
+      when {
         dewPoint < 10 -> stringResource(R.string.details_dew_dry)
         dewPoint < 16 -> stringResource(R.string.details_dew_comfortable)
         dewPoint < 21 -> stringResource(R.string.details_dew_humid)
         else -> stringResource(R.string.details_dew_muggy)
-      } + stringResource(R.string.details_dew_explain),
+      },
     )
   }
   val (humidityCurve, humidityLabels) = curve(FusionVariables.HUMIDITY)
   if (humidityCurve.size >= 2) {
-    CurveWithLabels(humidityCurve, humidityLabels, PageBlue, "%", height = 70.dp)
-  }
-  if (apparent != null) {
-    PageNote(stringResource(R.string.details_feels_note))
+    CurveWithLabels(humidityCurve, humidityLabels, PageBlue, "%", height = 70.dp,
+      timestamps = timestamps(FusionVariables.HUMIDITY), maxGapMillis = 90 * 60_000L)
   }
 
   // ------------------------------------------------------------------------------- UV
   PageSection(stringResource(R.string.details_uv))
-  val uv = value(FusionVariables.UV_INDEX)
-  StatRow(stringResource(R.string.accessibility_hourly_model), uv?.let { fmt0(it) } ?: "—", uv?.let { uvLabel(it) })
-  val uvPeak = next24.filter { localDate(it.timestampMillis) == localDate(now) }
-    .mapNotNull { hour -> hour.values[FusionVariables.UV_INDEX]?.value?.let { hour.timestampMillis to it } }
-    .maxByOrNull { it.second }
+  val uv = value(FusionVariables.UV_INDEX)?.takeIf { it >= 0.0 }
+  StatRow(stringResource(R.string.quality_hourly_value), uv?.let { fmt0(it) } ?: "—", uv?.let { uvLabel(it) })
+  val uvPeak = remainingUvPeak(next24, now, zone)
   if (uvPeak != null) {
-    StatRow(stringResource(R.string.details_uv_max), fmt0(uvPeak.second), stringResource(R.string.details_uv_at, fmtTime(uvPeak.first), uvLabel(uvPeak.second)))
+    StatRow(stringResource(R.string.quality_uv_available_peak), fmt0(uvPeak.second), stringResource(R.string.quality_uv_from_now, fmtTime(uvPeak.first), uvLabel(uvPeak.second)))
   }
-  val (uvCurve, uvLabels) = curve(FusionVariables.UV_INDEX)
+  val uvSamples = supportedUvSamples(next24)
+  val uvCurve = uvSamples.map { it.second }
+  val uvLabels = timeLabels(uvSamples.map { it.first })
   if (uvCurve.size >= 2) {
-    CurveWithLabels(uvCurve, uvLabels, PageAmber, "", height = 60.dp)
+    CurveWithLabels(uvCurve, uvLabels, PageAmber, "", height = 60.dp,
+      timestamps = uvSamples.map { it.first }, maxGapMillis = 90 * 60_000L)
   }
-  PageNote(stringResource(R.string.details_uv_scale))
 
   // ------------------------------------------------------------------------ visibilita'
   PageSection(stringResource(R.string.common_visibility))
   val visibility = value(FusionVariables.VISIBILITY)
   StatRow(
-    stringResource(R.string.accessibility_hourly_model),
+    stringResource(R.string.quality_hourly_value),
     visibility?.let { units.visibilityMeters(it, 1) } ?: "—",
     visibility?.let { visibilityLabel(it) },
   )
   val (visibilityCurve, visibilityLabels) = curve(FusionVariables.VISIBILITY)
   if (visibilityCurve.size >= 2) {
-    CurveWithLabels(units.distanceSeries(visibilityCurve.map { it / 1000 }), visibilityLabels, PageBlue, " " + units.distanceSymbol(), height = 60.dp)
+    CurveWithLabels(units.distanceSeries(visibilityCurve.map { it / 1000 }), visibilityLabels, PageBlue, " " + units.distanceSymbol(), height = 60.dp,
+      timestamps = timestamps(FusionVariables.VISIBILITY), maxGapMillis = 90 * 60_000L)
   }
 
   // ---------------------------------------------------------- pressione: provider vs barometro
   PageSection(stringResource(R.string.details_pressure_title))
   val fusedMsl = value(FusionVariables.PRESSURE_MSL)
-  val local = state.cleaning?.latest?.levelHpa
+  val local = state.cleaning?.latest?.levelHpa.takeIf { state.barometerApplies }
   StatRow(stringResource(R.string.details_pressure_fused), fusedMsl?.let { units.pressure(it, 1) } ?: "—")
   StatRow(stringResource(R.string.details_pressure_local), local?.let { units.pressure(it, 1) } ?: "—")
   if (fusedMsl != null && local != null) {
@@ -163,11 +161,27 @@ fun DetailsPage(state: HomeUiState) {
   }
   val (pressureCurve, pressureLabels) = curve(FusionVariables.PRESSURE_MSL)
   if (pressureCurve.size >= 2) {
-    CurveWithLabels(units.pressureSeries(pressureCurve), pressureLabels, PageAmber, " " + units.pressureSymbol(), height = 70.dp, decimals = units.pressureChartDecimals() + 1)
+    CurveWithLabels(units.pressureSeries(pressureCurve), pressureLabels, PageAmber, " " + units.pressureSymbol(), height = 70.dp, decimals = units.pressureChartDecimals() + 1,
+      timestamps = timestamps(FusionVariables.PRESSURE_MSL), maxGapMillis = 90 * 60_000L)
   }
-  PageNote(
-    stringResource(R.string.details_bias_note),
-  )
+  PageDisclosure {
+    PageNote(sampleLabel)
+    PageNote(stringResource(R.string.quality_forecast_sources, state.providersResponding))
+    val sources = current.values.values.flatMap { it.contributions }.map { it.providerId }.distinct()
+    if (sources.isNotEmpty()) PageNote(sources.joinToString(" · "))
+    PageNote(stringResource(R.string.quality_downloaded,
+      state.dataAtMillis?.let { dev.pampa.fluidweather.strings.TimeFormats.dayTime(it, zone) }
+        ?: stringResource(R.string.quality_time_unknown)))
+    PageSection(stringResource(R.string.common_wind))
+    PageNote(stringResource(R.string.details_wind_note))
+    PageSection(stringResource(R.string.details_humidity_title))
+    PageNote(stringResource(R.string.details_dew_explain).trim())
+    if (apparent != null) PageNote(stringResource(R.string.details_feels_note))
+    PageSection(stringResource(R.string.details_uv))
+    PageNote(stringResource(R.string.details_uv_scale))
+    PageSection(stringResource(R.string.details_pressure_title))
+    PageNote(stringResource(R.string.details_bias_note))
+  }
 }
 
 @Composable
