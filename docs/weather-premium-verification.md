@@ -36,8 +36,6 @@ Only `dev.pampa.fluidweather.debug` was used on Samsung SM-S931B. Its principal 
 
 Canonical JVM inventory after the first main integration: core-ui58, sensor57, home76, widget51; 242 results, zero failures/errors/skips, including reused outputs. Widget place-target tests add two later core-ui cases. A release incremental Kotlin compile initially failed to resolve an existing `sensorRuntime` extension. Root's first nonincremental retry had a PowerShell argument quoting error and never compiled. The correctly quoted full module compilation then succeeded (35s, 30 executed tasks), without changing sensor source to hide the build-state issue. Final release integration and navigation outcomes are appended below before freezing. No new review score is assigned here.
 
-## Limits kept open
-
 ## Final candidate execution
 
 - `premium-final-build.log`: Debug, Android test and signed Release succeeded in 4m15s; 1,495 tasks, 142 executed, four cached, 1,349 up-to-date. Release optimization accounts for the longer build. The Debug-only RemoteViews host is absent from the release manifest. Package `dev.pampa.fluidweather`, version2.1.2/code23, ARM64+ARMv7; ZIP integrity passes and the signing certificate matches stable2.1.1.
@@ -46,6 +44,7 @@ Canonical JVM inventory after the first main integration: core-ui58, sensor57, h
 - The tablet Wi-Fi was temporarily disabled for the offline navigation fixture and restored to its previously enabled state immediately afterward. Principal application data, permissions and appearance were not changed. No phone commands occurred after handoff.
 - Current canonical inventory: core-ui60, sensor57, home76, widget51 =244 XML results, zero failures/errors/skips, including reused outputs. These are not244 new tests in each build. The two new place-target JVM cases are included in core-ui60.
 - Final APK sizes, SHA256, certificate and source identities are frozen separately in `candidate-apks.json`. Production release inputs did not change during the later Android-test-only refinements. The reviewed commit includes those test/docs refinements; no Gradle source-commit stamp is embedded in the APK.
+- A later manual Device-panel launch of a generic `fluidweather://open/home?...` URL failed twice with Android `unable to resolve Intent`, including the requested debug diagnostic retry. The manifest declares no implicit VIEW URL filter. Widget and bridge intents set MainActivity explicitly, as did the successful Android integration test. The generic URL attempt is not counted as successful device evidence; manual Device commands stopped after that retry. No manifest filter was added merely to accommodate this optional smoke command. The preserved tablet sky/layout capture predates navigation-only changes; its painter sources remain identical.
 
 ## Remaining limits
 
