@@ -1,6 +1,6 @@
 package dev.pampa.fluidweather.core.ai.data
 
-import dev.pampa.fluidweather.core.ai.radar.RadarSampler
+import dev.pampa.fluidweather.core.weather.radar.RadarSampler
 import dev.pampa.fluidweather.core.cycle.PlaceContextResolver
 import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
@@ -63,4 +63,8 @@ class AiDataSources(
   val notificationLedger: NotificationLedgerStore,
   val manualBurst: ManualBurstController,
   val unitsStore: UnitsStore,
+  val weatherBriefService: dev.pampa.fluidweather.core.weather.WeatherBriefService,
+  val routineWindowStore: dev.pampa.fluidweather.core.data.RoutineWindowStore,
+  /** Same wipe/data epoch observed by home. */
+  val generation: () -> Long,
 )

@@ -35,4 +35,5 @@ dependencies {
   api project(':core-weather')
 
   testImplementation "junit:junit:${engine.junit}"
+  testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"
 }

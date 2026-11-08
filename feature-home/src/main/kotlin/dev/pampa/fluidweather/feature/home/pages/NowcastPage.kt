@@ -44,12 +44,14 @@ import dev.pampa.fluidweather.strings.windowLabelRes
  */
 @Composable
 internal fun NowcastPage(state: HomeUiState) {
+  dev.pampa.fluidweather.feature.home.HomeRainOverview(state.weatherBrief,
+    state.locationName ?: stringResource(R.string.summary_place_unknown))
   val verdict = state.verdict
   val units = rememberUnitFormatter()
 
   TutorialSlot(screen = TutorialScreen.WIDGET_NOWCAST)
   Box(Modifier.fluidTutorialAnchor("nowcast_readiness_card")) {
-    PageSection(stringResource(R.string.common_now))
+    PageSection(stringResource(R.string.accessibility_diagnostic))
   }
   if (verdict == null) {
     PageNote(

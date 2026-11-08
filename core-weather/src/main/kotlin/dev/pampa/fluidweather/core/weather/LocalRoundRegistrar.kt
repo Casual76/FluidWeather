@@ -12,6 +12,9 @@ import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -115,13 +118,17 @@ class LocalRoundRegistrar(
   /** Un giro alla volta: due iscrizioni intrecciate scriverebbero righe e archivio in ordine sparso. */
   private val mutex = Mutex()
 
-  suspend fun register(round: RegisteredRound): RoundRegistration? = mutex.withLock {
-    withContext(computeContext) { registerLocked(round) }
+  suspend fun register(round: RegisteredRound): RoundRegistration? {
+    // Capture before the registrar queue, preserving the explicit originating round epoch.
+    val inherited = weatherWipeEpoch(wipeGuard)
+    val generation = round.originatingWipeGeneration ?: inherited!!.observed
+    return mutex.withLock {
+      withContext(computeContext + WeatherWipeEpoch(wipeGuard, generation)) { registerLocked(round, generation) }
+    }
   }
 
-  private suspend fun registerLocked(round: RegisteredRound): RoundRegistration? {
-    // La generazione PRIMA di qualunque lavoro: una cancellazione dopo questo punto ferma le scritture.
-    val generation = wipeGuard.generation()
+  private suspend fun registerLocked(round: RegisteredRound, generation: Long): RoundRegistration? {
+    if (wipeGuard.generation() != generation) return null
     val snapshot = round.snapshot
     if (snapshot.placeKey != WeatherSnapshot.GPS_KEY) return null
     val roundId = round.roundId
@@ -129,9 +136,16 @@ class LocalRoundRegistrar(
 
     // Le coordinate a cento metri, come le vedono i provider: la verita' si scarichera' li'.
     val (latitude, longitude) = WeatherPoint.round(snapshot.latitude, snapshot.longitude)
-    val climate = runCatching { climatology(latitude, longitude) }.getOrNull()
-    val hasBarometer = runCatching { sensorAvailable() }.getOrDefault(false)
-    val evaluation = if (hasBarometer) runCatching { evaluator.evaluate(snapshot, roundId) }.getOrNull() else null
+    val climate = try { climatology(latitude, longitude) } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) { null }
+    val hasBarometer = try { sensorAvailable() } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) { false }
+    val evaluation = if (hasBarometer) try { evaluator.evaluate(snapshot, roundId) } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) { null } else null
+    currentCoroutineContext().ensureActive()
     // Il livello lo dichiara chi ha calcolato il verdetto: ricalcolarlo qui poteva dare un livello
     // diverso da quello con cui il verdetto e' stato corretto (e la riga imparerebbe sulla mappa sbagliata).
     val tier = if (hasBarometer) evaluation?.tier ?: tierOf(snapshot, roundId, hasClimatology = climate != null) else null
@@ -189,8 +203,11 @@ class LocalRoundRegistrar(
     // Tutte le scritture insieme sotto il lucchetto: se l'utente ha cancellato i dati mentre si
     // valutava, del giro non resta niente.
     val written = wipeGuard.writeIfUnchanged(generation) {
+      currentCoroutineContext().ensureActive()
       store.addPending(rows)
-      for (issue in issues) runCatching { recordIssue(issue) }
+      for (issue in issues) try { recordIssue(issue) } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) { /* Preserve best-effort archive behavior. */ }
     }
     if (written == null) return null
 

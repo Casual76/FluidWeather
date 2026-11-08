@@ -1,6 +1,9 @@
 package dev.pampa.fluidweather.core.weather
 
 import dev.antigravity.fluidengine.net.EngineHttp
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -28,7 +31,9 @@ class ProviderHttp(
   private val http: EngineHttp,
   private val cache: UrlCache,
   private val clock: () -> Long = System::currentTimeMillis,
+  private val wipeGuard: DataWipeGuard? = null,
 ) {
+  constructor(http: EngineHttp, cache: UrlCache, clock: () -> Long) : this(http, cache, clock, null)
 
   suspend fun readText(url: String, maxAgeMillis: Long, headers: Map<String, String> = emptyMap()): String =
     readTextTimed(url, maxAgeMillis, headers).value
@@ -47,9 +52,18 @@ class ProviderHttp(
     headers: Map<String, String> = emptyMap(),
     useCache: Boolean = true,
   ): Downloaded<String> {
-    if (useCache) cache.readTimed(url, maxAgeMillis)?.let { return Downloaded(it.text, it.writtenAtMillis) }
+    val epoch = weatherWipeEpoch(wipeGuard)
+    epoch?.checkCurrent()
+    if (useCache) cache.readTimed(url, maxAgeMillis)?.let {
+      currentCoroutineContext().ensureActive()
+      epoch?.checkCurrent()
+      return Downloaded(it.text, it.writtenAtMillis)
+    }
     val body = http.readText(url, headers)
-    val downloadedAt = if (useCache) cache.write(url, body) else clock()
+    currentCoroutineContext().ensureActive()
+    epoch?.checkCurrent()
+    val downloadedAt = if (!useCache) clock() else if (epoch == null) cache.write(url, body)
+      else epoch.write { cache.write(url, body) }
     return Downloaded(body, downloadedAt)
   }
 

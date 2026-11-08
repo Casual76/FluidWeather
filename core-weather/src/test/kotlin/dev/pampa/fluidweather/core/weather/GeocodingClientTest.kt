@@ -25,11 +25,19 @@ class GeocodingClientTest {
 
     assertEquals(1, results.size)
     val place = results.single()
+    assertEquals("Europe/Rome", place.zoneId)
     assertEquals(3166601L, place.id)
     assertEquals("Sesto Fiorentino", place.name)
     assertEquals("Toscana, Italia", place.region)
     assertEquals(43.83193, place.latitude, 1e-6)
     assertEquals(11.19924, place.longitude, 1e-6)
+  }
+
+  @Test
+  fun `missing and invalid zones remain unknown`() = runTest {
+    val fixture = javaClass.getResource("/geocoding.json")!!.readText()
+    assertEquals(null, client(fixture.replace("Europe/Rome", "invalid")).search("Rome").single().zoneId)
+    assertEquals(null, client(fixture.replace("\"timezone\":\"Europe/Rome\",", "")).search("Rome").single().zoneId)
   }
 
   @Test

@@ -38,11 +38,10 @@ class UnitsTool : WeatherTool() {
   )
 
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
-    val store = ctx.sources.unitsStore
     val kind = args.str("grandezza")
     val unit = args.str("unita")
     if (kind == null || unit == null) {
-      val current = store.current()
+      val current = ctx.sources.unitsStore.current()
       return ToolText.build {
         line("temperatura", current.temperature.name.lowercase())
         line("vento", current.wind.name.lowercase())
@@ -63,7 +62,9 @@ class UnitsTool : WeatherTool() {
       "distanza" -> AssistantAction.SetUnit("distanza", if (auto) null else distance(normalized) ?: return "errore: unita' di distanza sconosciuta (km, miglia)")
       else -> return "errore: grandezza sconosciuta (temperatura, vento, pressione, pioggia, distanza)"
     }
-    return outcome(ctx.actions.perform(action), "fatto: ${kind.lowercase()} ora in ${if (auto) "unita' del paese" else normalized}")
+    // Parser accepts convenient prefixes; the receipt must use the canonical enum, never the
+    // remainder of a model-supplied string such as "celsius\n<invented weather>".
+    return outcome(ctx.actions.perform(action), "fatto: ${action.kind} ora in ${action.unitName?.lowercase() ?: "unita' del paese"}")
   }
 
   private fun temperature(raw: String) = when {
@@ -116,7 +117,7 @@ class RemovePlaceTool(private val resolver: PlaceResolver) : WeatherTool() {
     if (saved.isEmpty()) return "non ci sono localita' salvate"
     val place = saved.firstOrNull { it.name.equals(query, ignoreCase = true) }
       ?: saved.firstOrNull { it.name.contains(query, ignoreCase = true) }
-      ?: return "\"$query\" non e' fra le localita' salvate: ci sono ${saved.joinToString(", ") { it.name }}"
+      ?: return ToolFailure.NOT_SAVED.text(ctx)
     return outcome(ctx.actions.perform(AssistantAction.RemovePlace(place.id, place.name)), "fatto: ${place.name} tolta dalle localita' salvate")
   }
 }
@@ -136,7 +137,7 @@ class DeleteObservationTool : WeatherTool() {
     val target = when {
       which == null || which.startsWith("ultim") -> recent.first()
       else -> recent.firstOrNull { TimeFormats.time(it.timestampMillis, ctx.zone, ctx.locale).contains(which) }
-        ?: return "nessuna osservazione a \"$which\": le ultime sono ${recent.take(5).joinToString(", ") { TimeFormats.dayTime(it.timestampMillis, ctx.zone, ctx.locale) }}"
+        ?: return ToolFailure.OBSERVATION_MISSING.text(ctx)
     }
     val label = "${TimeFormats.dayTime(target.timestampMillis, ctx.zone, ctx.locale)} · ${target.condition.name.lowercase()}"
     return outcome(ctx.actions.perform(AssistantAction.DeleteObservation(target.id, label)), "fatto: osservazione del $label cancellata")

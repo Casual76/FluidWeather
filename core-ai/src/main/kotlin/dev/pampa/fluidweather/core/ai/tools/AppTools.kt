@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.core.ai.tools
 import dev.antigravity.fluidengine.ai.tools.Schema
 import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
+import dev.pampa.fluidweather.core.ai.data.WeatherPlaceResolver
 import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.ObservedCondition
 import dev.pampa.fluidweather.core.model.Place
@@ -90,7 +91,7 @@ class RecordObservationTool : WeatherTool() {
 }
 
 /** Salva una localita' nuova (con conferma). */
-class SavePlaceTool(private val resolver: PlaceResolver) : WeatherTool() {
+class SavePlaceTool(private val resolver: WeatherPlaceResolver) : WeatherTool() {
   override val name = "salva_luogo"
   override val group = ToolGroup.APP
   override val description = "Salva una localita' fra quelle dell'utente, cercandola per nome. Chiede conferma."
@@ -98,8 +99,8 @@ class SavePlaceTool(private val resolver: PlaceResolver) : WeatherTool() {
 
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     if (!ctx.actionsEnabled) return ACTIONS_OFF
-    val query = args.str("nome") ?: return "errore: manca il nome"
-    val found = resolver.search(query, limit = 1).firstOrNull() ?: return "nessun risultato per \"$query\""
+    val query = args.str("nome") ?: return ToolFailure.MISSING_NAME.text(ctx)
+    val found = resolver.search(query, limit = 1).firstOrNull() ?: return ToolFailure.SEARCH_EMPTY.text(ctx)
     val already = ctx.sources.savedLocations.places.first().any { it.id == found.id }
     if (already) return "${found.name} e' gia' salvata"
     val outcome = ctx.actions.perform(AssistantAction.SavePlace(found))

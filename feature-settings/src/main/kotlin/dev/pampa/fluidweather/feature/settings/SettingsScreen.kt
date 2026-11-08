@@ -25,10 +25,17 @@ fun SettingsScreen(
   onOpenDiagnostics: () -> Unit,
   onOpenData: () -> Unit,
   onOpenAbout: () -> Unit,
+  onOpenRoutines: () -> Unit,
 ) {
   FluidScreen(title = stringResource(R.string.settings_title), onBack = onBack) {
     item {
       FluidListGroup {
+        FluidListRow(
+          title = stringResource(R.string.routines_title),
+          subtitle = stringResource(R.string.routines_description),
+          onClick = onOpenRoutines,
+        )
+        FluidListDivider()
         FluidListRow(
           title = stringResource(R.string.engine_title),
           subtitle = stringResource(R.string.settings_engine_desc),

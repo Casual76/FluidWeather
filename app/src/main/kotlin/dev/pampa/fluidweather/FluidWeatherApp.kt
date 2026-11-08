@@ -46,6 +46,7 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
   // --- AppWidgetRuntime: quel poco del grafo che serve a disegnare il widget di sistema. ---
 
   override val snapshotStore get() = graph.weatherSnapshotStore
+  override val cachedWeatherBriefs: dev.pampa.fluidweather.core.weather.CachedWeatherBriefSource get() = graph.weatherBriefService
   override val savedLocations get() = graph.savedLocationsRepository
   override val nowcastHistory get() = graph.nowcastHistoryStore
   override val unitPreferences get() = graph.notificationUnits
@@ -86,11 +87,12 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
     installAppWidgetUpdates(
       context = this,
       scope = graph.applicationScope,
-      snapshotUpdates = graph.weatherSnapshotStore.updates,
+      snapshotUpdates = graph.weatherSnapshotStore.changes,
       engineSettings = graph.engineSettingsStore.settings.map {
         listOf(it.themeMode, it.accentMode, it.customAccentName, it.dynamicColorEnabled, it.amoledEnabled)
       },
       unitPreferences = graph.notificationUnits,
+      cachedInputUpdates = graph.weatherBriefService.cachedInputUpdates,
     )
   }
 

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="home_rain_model_wet">Stima recente del modello: pioggia</string>
+  <string name="home_rain_model_dry">Stima recente del modello: niente pioggia</string>
+  <string name="home_rain_radar_wet">Il radar rileva precipitazioni</string>
+  <string name="home_rain_radar_no_echo">Nessun eco di pioggia sul radar</string>
+  <string name="home_rain_wet">Pioggia indicata da radar e modello</string>
+  <string name="home_rain_dry">Nessun eco radar; il modello indica assenza di pioggia</string>
+  <string name="home_rain_conflict">Pioggia incerta: le fonti discordano</string>
+  <string name="home_rain_uncertain">Pioggia non determinabile ora</string>
+  <string name="home_rain_unavailable">Dati sulla pioggia non disponibili</string>
+  <string name="home_rain_unknown_limit">Dati recenti insufficienti per valutare la pioggia qui.</string>
+  <string name="home_rain_model_limit">Stima del modello, non misura locale; risoluzione anche oraria.</string>
+  <string name="home_rain_radar_limit">Stima radar, non prova al suolo. Tempi in fasce di circa 10 minuti.</string>
+  <string name="home_rain_conflict_limit">Segnali discordanti o scaduti: arrivo e fine non attendibili.</string>
+  <string name="home_rain_arrival">Possibile arrivo circa %1$s&#8211;%2$s</string>
+  <string name="home_rain_end">Possibile fine circa %1$s&#8211;%2$s</string>
+  <string name="home_rain_no_eta">Prossima transizione sconosciuta</string>
+  <string name="home_rain_current_model">Modello attuale: %1$s &#183; %2$s</string>
+  <string name="home_rain_current">Attuale: %1$s &#183; %2$s</string>
+  <string name="home_rain_current_unknown">Condizioni attuali non disponibili</string>
+  <string name="home_rain_hour">Prossima ora &#183; tempi del modello anche orari</string>
+  <string name="home_rain_sources">Fonti e orari</string>
+  <string name="home_rain_sources_expanded">Dettagli aperti</string>
+  <string name="home_rain_sources_collapsed">Dettagli chiusi</string>
+  <string name="home_rain_source_summary">%1$s &#183; %2$s (%3$d min fa)</string>
+  <string name="home_rain_timeline_unknown">Sconosciuto</string>
+  <string name="home_rain_timeline_wet">Pioggia prevista</string>
+  <string name="home_rain_timeline_dry">Pioggia non prevista</string>
+  <string name="home_rain_timeline_uncertain">Incerto</string>
+  <string name="home_rain_timeline_part">%1$s&#8211;%2$s: %3$s</string>
+  <string name="home_rain_zone_fallback">Orari nel fuso del dispositivo: %1$s</string>
+  <string name="home_rain_source_model">Modello</string>
+  <string name="home_rain_source_radar">Stima radar</string>
+  <string name="home_rain_source_measurement">Misura</string>
+  <string name="home_rain_source_interval">%1$s &#183; accumulo recente %2$s&#8211;%3$s</string>
+  <string name="home_rain_source_time">%1$s &#183; fonte %2$s</string>
+  <string name="home_rain_source_unknown">%1$s &#183; orario della fonte sconosciuto</string>
+  <string name="home_rain_download">%1$s &#183; scaricato %2$s</string>
+  <string name="home_rain_download_unknown">%1$s &#183; orario del download sconosciuto</string>
+  <string name="home_rain_source_age">%1$s (%2$d min fa)</string>
+  <string name="home_rain_stale">Fonte scaduta</string>
+  <string name="home_rain_recent">Accumulo recente; sotto, evoluzione futura</string>
+  <string name="home_rain_radar_unavailable">Radar non disponibile</string>
+  <string name="home_rain_radar_unknown">Copertura radar sconosciuta</string>
+  <string name="home_rain_radar_outside">Fuori dalla copertura radar</string>
+</resources>

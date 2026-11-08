@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="home_rain_model_wet">Recent model estimate: rain</string>
+  <string name="home_rain_model_dry">Recent model estimate: no rain</string>
+  <string name="home_rain_radar_wet">Radar detects precipitation</string>
+  <string name="home_rain_radar_no_echo">No precipitation echo on radar</string>
+  <string name="home_rain_wet">Rain indicated by radar and model</string>
+  <string name="home_rain_dry">No radar echo; model indicates no rain</string>
+  <string name="home_rain_conflict">Rain uncertain: sources disagree</string>
+  <string name="home_rain_uncertain">Rain cannot be established now</string>
+  <string name="home_rain_unavailable">Rain data unavailable</string>
+  <string name="home_rain_unknown_limit">Not enough recent data to assess rain here.</string>
+  <string name="home_rain_model_limit">Model estimate, not a local measurement; timing may have hourly resolution.</string>
+  <string name="home_rain_radar_limit">Radar estimate, not proof at ground level. Timing in roughly 10-minute windows.</string>
+  <string name="home_rain_conflict_limit">Conflicting or expired signals: no reliable arrival or end time.</string>
+  <string name="home_rain_arrival">Possible arrival around %1$s&#8211;%2$s</string>
+  <string name="home_rain_end">Possible end around %1$s&#8211;%2$s</string>
+  <string name="home_rain_no_eta">Next transition unknown</string>
+  <string name="home_rain_current_model">Current model: %1$s &#183; %2$s</string>
+  <string name="home_rain_current">Current: %1$s &#183; %2$s</string>
+  <string name="home_rain_current_unknown">Current conditions unavailable</string>
+  <string name="home_rain_hour">Next hour &#183; model timing may be hourly</string>
+  <string name="home_rain_sources">Sources and times</string>
+  <string name="home_rain_sources_expanded">Details expanded</string>
+  <string name="home_rain_sources_collapsed">Details collapsed</string>
+  <string name="home_rain_source_summary">%1$s &#183; %2$s (%3$d min ago)</string>
+  <string name="home_rain_timeline_unknown">Unknown</string>
+  <string name="home_rain_timeline_wet">Rain forecast</string>
+  <string name="home_rain_timeline_dry">No rain forecast</string>
+  <string name="home_rain_timeline_uncertain">Uncertain</string>
+  <string name="home_rain_timeline_part">%1$s&#8211;%2$s: %3$s</string>
+  <string name="home_rain_zone_fallback">Times in device zone: %1$s</string>
+  <string name="home_rain_source_model">Model</string>
+  <string name="home_rain_source_radar">Radar estimate</string>
+  <string name="home_rain_source_measurement">Measurement</string>
+  <string name="home_rain_source_interval">%1$s &#183; recent accumulation %2$s&#8211;%3$s</string>
+  <string name="home_rain_source_time">%1$s &#183; source %2$s</string>
+  <string name="home_rain_source_unknown">%1$s &#183; source time unknown</string>
+  <string name="home_rain_download">%1$s &#183; downloaded %2$s</string>
+  <string name="home_rain_download_unknown">%1$s &#183; download time unknown</string>
+  <string name="home_rain_source_age">%1$s (%2$d min ago)</string>
+  <string name="home_rain_stale">Source expired</string>
+  <string name="home_rain_recent">Recent accumulation; future timeline below</string>
+  <string name="home_rain_radar_unavailable">Radar unavailable</string>
+  <string name="home_rain_radar_unknown">Radar coverage unknown</string>
+  <string name="home_rain_radar_outside">Outside radar coverage</string>
+</resources>

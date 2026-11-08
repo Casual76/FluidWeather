@@ -68,16 +68,17 @@ object SkyVariation {
  * la stessa da un fotogramma all'altro) e si disegna a ogni [draw] col tempo che avanza.
  */
 class SkyScenePainter(
-  private val state: SkyState,
+  state: SkyState,
   private val quality: SceneQuality,
   seed: Int,
 ) {
+  private val state = state.forRendering()
   private val random = Random(seed.toLong())
-  private val clouds = CloudLayer.forState(state, quality, Random(random.nextLong()))
+  private val clouds = CloudLayer.forState(this.state, quality, Random(random.nextLong()))
   private val stars = StarField(quality, Random(random.nextLong()))
-  private val precipitation = PrecipitationField(state.kind, quality, Random(random.nextLong()))
-  private val fog = if (state.kind == WeatherKind.FOG) FogLayer(Random(random.nextLong())) else null
-  private val lightning = if (state.kind == WeatherKind.THUNDERSTORM) LightningField(Random(random.nextLong())) else null
+  private val precipitation = PrecipitationField(this.state.kind, quality, Random(random.nextLong()))
+  private val fog = if (this.state.kind == WeatherKind.FOG) FogLayer(Random(random.nextLong())) else null
+  private val lightning = if (this.state.kind == WeatherKind.THUNDERSTORM) LightningField(Random(random.nextLong())) else null
 
   /**
    * [moon] e' la fotografia del lato visibile della luna (NASA/LRO), che chi ha delle risorse
@@ -120,7 +121,8 @@ object SkyFrame {
     /** La fotografia della luna, se chi chiama ce l'ha. */
     moon: ImageBitmap? = null,
   ) {
-    val sky = SkyPalette.sky(state.phase, state.kind, state.cloudCoverPercent)
+    val rendered = state.forRendering()
+    val sky = SkyPalette.sky(rendered)
     val body = Celestial.at(nowMillis, state.latitude, state.longitude, zone)
     SkyScenePainter(state, quality, SkyVariation.seedFor(nowMillis, zone)).draw(scope, sky, body, t, moon)
     if (scrim) ScrimPainter.draw(scope, sky)

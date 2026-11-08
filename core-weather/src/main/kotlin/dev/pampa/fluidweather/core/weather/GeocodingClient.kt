@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.core.weather
 
+import dev.pampa.fluidweather.core.model.WeatherZones
 import dev.pampa.fluidweather.core.model.Place
 import java.net.URLEncoder
 
@@ -24,7 +25,8 @@ class GeocodingClient(private val http: ProviderHttp) {
       val region = listOfNotNull(result["admin1"].string(), result["country"].string())
         .joinToString(", ")
         .ifBlank { null }
-      Place(id = id, name = name, region = region, latitude = latitude, longitude = longitude)
+      Place(id = id, name = name, region = region, latitude = latitude, longitude = longitude,
+        zoneId = WeatherZones.validId(result["timezone"].string()))
     }
   }
 }

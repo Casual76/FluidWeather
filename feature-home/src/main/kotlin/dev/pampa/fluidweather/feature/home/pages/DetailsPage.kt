@@ -31,7 +31,9 @@ import androidx.compose.ui.platform.LocalContext
  * dispositivo che la taratura stima per bene.
  */
 @Composable
-internal fun DetailsPage(state: HomeUiState) {
+fun DetailsPage(state: HomeUiState) {
+  dev.pampa.fluidweather.feature.home.HomeRainOverview(state.weatherBrief,
+    state.locationName ?: stringResource(R.string.summary_place_unknown))
   val now = System.currentTimeMillis()
   val units = rememberUnitFormatter()
   val context = LocalContext.current
@@ -40,6 +42,12 @@ internal fun DetailsPage(state: HomeUiState) {
     PageNote(stringResource(R.string.common_waiting_providers))
     return
   }
+  val zone = dev.pampa.fluidweather.core.model.WeatherZones.resolve(
+    state.weatherBrief?.precipitation?.place?.zoneId, null, java.time.ZoneId.systemDefault()).zoneId
+  val sampleLabel = stringResource(R.string.accessibility_model_sample,
+    dev.pampa.fluidweather.strings.accessibilitySampleTime(current.timestampMillis, zone,
+      androidx.compose.ui.platform.LocalConfiguration.current.locales[0]))
+  PageNote(sampleLabel)
   val next24 = state.fusedHours.filter { it.timestampMillis >= now - 30 * 60_000L }.take(24)
   // Curva ed etichette si costruiscono INSIEME (vedi `curvePoints`): con le etichette prese da
   // tutte le ore e i valori filtrati, un'ora mancante ai provider spostava le etichette su ore
@@ -82,8 +90,9 @@ internal fun DetailsPage(state: HomeUiState) {
   PageSection(stringResource(R.string.details_humidity_title))
   val humidity = value(FusionVariables.HUMIDITY)
   val dewPoint = value(FusionVariables.DEW_POINT)
-  val apparent = if (state.temperatureC != null && humidity != null && wind != null) {
-    ApparentTemperature.celsius(state.temperatureC, humidity, wind)
+  val temperature = value(FusionVariables.TEMPERATURE)
+  val apparent = if (temperature != null && humidity != null && wind != null) {
+    ApparentTemperature.celsius(temperature, humidity, wind)
   } else {
     null
   }
@@ -92,7 +101,7 @@ internal fun DetailsPage(state: HomeUiState) {
       stringResource(R.string.details_rh) to (humidity?.let { "${it.toInt()}%" } ?: "—"),
       stringResource(R.string.details_dew_point) to (dewPoint?.let { units.degrees(it) } ?: "—"),
       stringResource(R.string.common_feels_like) to (apparent?.let { units.degrees(it) } ?: "—"),
-      stringResource(R.string.common_temperature) to (state.temperatureC?.let { units.degrees(it) } ?: "—"),
+      stringResource(R.string.common_temperature) to (value(FusionVariables.TEMPERATURE)?.let { units.degrees(it) } ?: "—"),
     ),
   )
   if (dewPoint != null) {
@@ -117,7 +126,7 @@ internal fun DetailsPage(state: HomeUiState) {
   // ------------------------------------------------------------------------------- UV
   PageSection(stringResource(R.string.details_uv))
   val uv = value(FusionVariables.UV_INDEX)
-  StatRow(stringResource(R.string.common_now), uv?.let { fmt0(it) } ?: "—", uv?.let { uvLabel(it) })
+  StatRow(stringResource(R.string.accessibility_hourly_model), uv?.let { fmt0(it) } ?: "—", uv?.let { uvLabel(it) })
   val uvPeak = next24.filter { localDate(it.timestampMillis) == localDate(now) }
     .mapNotNull { hour -> hour.values[FusionVariables.UV_INDEX]?.value?.let { hour.timestampMillis to it } }
     .maxByOrNull { it.second }
@@ -134,7 +143,7 @@ internal fun DetailsPage(state: HomeUiState) {
   PageSection(stringResource(R.string.common_visibility))
   val visibility = value(FusionVariables.VISIBILITY)
   StatRow(
-    stringResource(R.string.common_now),
+    stringResource(R.string.accessibility_hourly_model),
     visibility?.let { units.visibilityMeters(it, 1) } ?: "—",
     visibility?.let { visibilityLabel(it) },
   )

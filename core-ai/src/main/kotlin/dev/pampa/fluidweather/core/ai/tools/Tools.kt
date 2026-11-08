@@ -82,7 +82,22 @@ abstract class WeatherTool : AiTool<ToolContext> {
   /** Il risultato e' testo compatto per il modello: righe `chiave: valore`, mai JSON verboso. */
   abstract suspend fun answer(args: JsonObject, ctx: ToolContext): String
 
-  final override suspend fun run(args: JsonObject, ctx: ToolContext): ToolOutput = ToolOutput(answer(args, ctx))
+  final override suspend fun run(args: JsonObject, ctx: ToolContext): ToolOutput {
+    val result = answer(args, ctx)
+    val grounding = kotlinx.coroutines.currentCoroutineContext()[dev.pampa.fluidweather.core.ai.grounding.ChatGrounding]
+      ?: return ToolOutput(result)
+    val qualified = if (name in setOf("meteo_riepilogo", "finestra_asciutta", "spiega_meteo")) result else when (group) {
+      ToolGroup.HOURLY, ToolGroup.DAILY, ToolGroup.PLACES -> if (ctx.locale.language == "it")
+        "Previsione MODELLO sui soli campioni disponibili, non misura o orario di inizio/fine. Lacune e valori mancanti restano sconosciuti.\n$result"
+        else "MODEL forecast for available samples only, not a measurement or onset/end time. Gaps and missing values remain unknown.\n$result"
+      ToolGroup.NOWCAST -> if (ctx.locale.language == "it")
+        "Diagnostica del sensore e del modello barometrico del telefono; non stabilisce pioggia attuale o ETA.\n$result"
+        else "Phone sensor and barometer model diagnostics; does not establish current rain or ETA.\n$result"
+      else -> result
+    }
+    return ToolOutput(grounding.returned(qualified, System.currentTimeMillis(),
+      name in WRITES || name in setOf("seleziona_localita", "apri", "unita_imposta")))
+  }
 
   override val isAction: Boolean get() = group == ToolGroup.APP
   override val needsConfirmation: Boolean get() = name in WRITES
@@ -100,3 +115,11 @@ val Schema.place: JsonObject
 /** Il catalogo dei tool del meteo, coi gruppi dell'app e il gruppo delle azioni che si spegne. */
 fun weatherRegistry(tools: List<WeatherTool>): ToolRegistry<ToolContext> =
   ToolRegistry(tools, groups = ToolGroup.entries, actionGroup = ToolGroup.APP)
+
+/** Preserve request capabilities while formatting a consulted place's actual zone. */
+internal fun ToolContext.atPlace(place: ResolvedPlace, snapshot: dev.pampa.fluidweather.core.weather.WeatherSnapshot): ToolContext {
+  val resolved = dev.pampa.fluidweather.core.model.WeatherZones.resolve(place.zoneId,
+    dev.pampa.fluidweather.core.ai.grounding.consultedSnapshotZone(place, snapshot), ZoneId.systemDefault())
+  return ToolContext({ sources }, { units }, { resources }, locale, resolved.zoneId,
+    System.currentTimeMillis(), selected, actionsEnabled, actions)
+}

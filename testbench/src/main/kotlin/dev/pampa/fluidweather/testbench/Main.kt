@@ -40,6 +40,9 @@ import dev.pampa.fluidweather.testbench.train.v3.V3Levers
 import dev.pampa.fluidweather.testbench.train.v3.V3RowsCommand
 import dev.pampa.fluidweather.testbench.train.v3.V3Stage
 import java.io.File
+import dev.pampa.fluidweather.testbench.validation.RainRecordingTsv
+import dev.pampa.fluidweather.testbench.validation.RainValidation
+import dev.pampa.fluidweather.testbench.validation.RainComparison
 import java.time.Instant
 import java.util.Locale
 import kotlin.system.exitProcess
@@ -102,6 +105,24 @@ import kotlin.system.exitProcess
  */
 fun main(args: Array<String>) {
   when (args.firstOrNull() ?: "all") {
+    "rain-compare" -> {
+      require(args.size == 4) { "Usage: rain-compare <targets.tsv> <baseline-records.tsv> <candidate-records.tsv>" }
+      val report = RainComparison.compareTsv(
+        File(args[1]).readText(Charsets.UTF_8),
+        File(args[2]).readText(Charsets.UTF_8),
+        File(args[3]).readText(Charsets.UTF_8),
+      )
+      println(report.render())
+    }
+    "rain-validation" -> {
+      require(args.size == 3) { "Usage: rain-validation <targets.tsv> <records.tsv>" }
+      val targets = RainRecordingTsv.readTargets(File(args[1]).readText(Charsets.UTF_8))
+      val records = RainRecordingTsv.readRecords(File(args[2]).readText(Charsets.UTF_8))
+      val report = RainValidation.evaluate(targets, records)
+      println(report)
+      println("Scored slots: ${report.scoredSlots}/${report.slots}; onset MAE: ${report.onset.meanAbsoluteMinutes}; end MAE: ${report.end.meanAbsoluteMinutes}")
+      println("Evidence: ${report.evidence}; synthetic/model results do not establish field accuracy.")
+    }
     "fetch-hf" -> fetchHistoricalForecast(args.getOrNull(1))
     "fetch-hf15" -> fetchHistoricalForecast("minutely")
     "fetch-runs" -> fetchRuns(args.drop(1))
@@ -132,7 +153,7 @@ fun main(args: Array<String>) {
       stages()
     }
     else -> println(
-      "comandi: fetch | replay | replay-ideale | stages | train | replay-oos | all | " +
+      "comandi: rain-compare <targets.tsv> <baseline-records.tsv> <candidate-records.tsv> | fetch | replay | replay-ideale | stages | train | replay-oos | all | " +
         "fetch-hf <panel|context|providers|all> | fetch-hf15 | fetch-runs [--probe] [--model <m>] | probe-stability | label-audit | " +
         "baselines <validation|test> | replay-tiers <validation|test> | recalibrate-v2r | " +
         "phone-pipeline <validation|test> [--model v3] | gate <validation|test> [--model v2|v2r|v3-candidate|v3] [--family logistica|gbm] | " +

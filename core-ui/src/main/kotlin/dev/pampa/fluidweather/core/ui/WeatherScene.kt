@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.res.imageResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.repeatOnLifecycle
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
@@ -51,20 +53,22 @@ fun WeatherScene(
   /** Falso mentre la scena e' coperta o l'app non e' davanti: il tempo si ferma dov'e'. */
   running: Boolean = true,
 ) {
-  val sky = remember(state) { SkyPalette.sky(state.phase, state.kind, state.cloudCoverPercent) }
+  val rendered = remember(state) { state.forRendering() }
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  val lifecycleState by lifecycle.currentStateAsState()
+  val animated = sceneMotionAllowed(quality, LocalFluidMotionPolicy.current.allowDecorativeMotion,
+    running, lifecycleState.isAtLeast(Lifecycle.State.RESUMED))
+  val sky = remember(rendered) { SkyPalette.sky(rendered) }
 
   // Il cielo cambia colore con calma: un fronte che arriva e' una dissolvenza, non uno scatto.
   // Si animano le cinque fermate e i tre colori delle nuvole, e il fotogramma legge quelli.
-  val stops = sky.stops.mapIndexed { index, (_, color) -> animatedSkyColor(color, "sky-$index") }
-  val cloud = animatedSkyColor(sky.cloudColor, "cloud")
-  val cloudShadow = animatedSkyColor(sky.cloudShadow, "cloud-shadow")
-  val haze = animatedSkyColor(sky.hazeColor, "haze")
+  val stops = sky.stops.mapIndexed { index, (_, color) -> animatedSkyColor(color, "sky-$index", animated) }
+  val cloud = animatedSkyColor(sky.cloudColor, "cloud", animated)
+  val cloudShadow = animatedSkyColor(sky.cloudShadow, "cloud-shadow", animated)
+  val haze = animatedSkyColor(sky.hazeColor, "haze", animated)
 
-  val reducedMotion = LocalFluidMotionPolicy.current.reducedMotion
-  val animated = quality != SceneQuality.STATIC && !reducedMotion
 
   var frameSeconds by remember { mutableFloatStateOf(0f) }
-  val lifecycle = LocalLifecycleOwner.current.lifecycle
   LaunchedEffect(animated, running, lifecycle) {
     if (!animated || !running) return@LaunchedEffect
     lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -83,9 +87,9 @@ fun WeatherScene(
   // La geometria della scena (dove stanno le nuvole, le stelle, i fiocchi) si decide una volta e
   // resta finche' non cambia il tempo. La copertura si arrotonda al 10%: un 43% che diventa 44%
   // non deve rifare le nuvole da capo.
-  val coverBucket = ((state.cloudCoverPercent ?: SkyPalette.defaultCover(state.kind)) / 10.0).roundToInt() * 10.0
-  val painter = remember(state.kind, coverBucket, quality) {
-    SkyScenePainter(state.copy(cloudCoverPercent = coverBucket), quality, SkyVariation.seedFor(System.currentTimeMillis()))
+  val coverBucket = ((rendered.cloudCoverPercent ?: SkyPalette.defaultCover(rendered.kind)) / 10.0).roundToInt() * 10.0
+  val painter = remember(rendered, coverBucket, quality) {
+    SkyScenePainter(rendered.copy(cloudCoverPercent = coverBucket), quality, SkyVariation.seedFor(System.currentTimeMillis()))
   }
   // L'astro si ricalcola a ogni minuto di orologio, non a ogni fotogramma: si sposta di un
   // quattrocentesimo di schermo al minuto, e le effemeridi non sono gratis.
@@ -105,13 +109,14 @@ fun WeatherScene(
       cloudShadow = cloudShadow.value,
       hazeColor = haze.value,
     )
-    painter.draw(this, animatedSky, body, if (animated) frameSeconds else 0f, moon)
+    painter.draw(this, animatedSky, body, frameSeconds, moon)
   }
 }
 
 @Composable
-private fun animatedSkyColor(target: Color, label: String): State<Color> =
-  animateColorAsState(target, FluidMotion.color(1200), label = label)
+private fun animatedSkyColor(target: Color, label: String, animated: Boolean): State<Color> =
+  if (animated) animateColorAsState(target, FluidMotion.color(1200), label = label)
+  else rememberUpdatedState(target)
 
 /**
  * Il passo del cielo: 30 fotogrammi al secondo. Non e' una resa piu' bassa, e' la stessa scena

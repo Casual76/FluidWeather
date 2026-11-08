@@ -86,7 +86,7 @@ class AppWidgetModelTest {
 
     assertTrue("la piccola non ha spazio per le ore", model.hours.isEmpty())
     assertNull("ne' per il verdetto", model.verdictLevel)
-    assertNotNull(model.temperatureC)
+    assertNull(model.temperatureC)
   }
 
   @Test
@@ -108,11 +108,11 @@ class AppWidgetModelTest {
   }
 
   @Test
-  fun `la temperatura e' quella dell'ora piu' vicina, come nella home`() {
-    // Stessa funzione (`nearestHour`), quindi widget e app non possono dire due numeri diversi.
+  fun `legacy fused hour is forecast and never current`() {
+    // F6: the shared current summary is required; a fused future hour cannot fill it.
     val model = AppWidgetModelBuilder.of(istantanea(), null, null, adesso, AppWidgetTier.MEDIUM)
 
-    assertEquals(19.0, model.temperatureC!!, 1e-9)
+    assertNull(model.temperatureC)
   }
 
   @Test
@@ -122,7 +122,7 @@ class AppWidgetModelTest {
     val model = AppWidgetModelBuilder.of(vecchia, null, null, adesso, AppWidgetTier.MEDIUM)
 
     assertEquals(DataFreshness.VERY_STALE, model.freshness)
-    assertNotNull("il dato c'e': si mostra e si data", model.temperatureC)
+    assertNull("F6: legacy forecast stays dated without inventing current", model.temperatureC)
     assertEquals(adesso - 9 * ora, model.dataAtMillis)
   }
 

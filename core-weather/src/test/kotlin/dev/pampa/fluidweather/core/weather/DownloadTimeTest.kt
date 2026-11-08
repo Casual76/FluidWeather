@@ -18,6 +18,25 @@ class DownloadTimeTest {
   private val t0 = 1_788_220_800_000L
 
   @Test
+  fun `auto timezone metadata leaves unixtime absolute and unknown zones null`() = runTest {
+    val body = """{"timezone":"Europe/Rome","utc_offset_seconds":7200,"hourly":{"time":[1792888200]}}"""
+    val http = RecordingHttp { body }
+    val client = OpenMeteoClient(
+      ProviderRegistry.all.first { it.id == ProviderRegistry.OPEN_METEO },
+      providerHttpOf(http) { t0 })
+    val bundle = client.fetch(43.83, 11.2, null)
+    assertTrue(http.urls.single().contains("timezone=auto"))
+    assertTrue(http.urls.single().contains("timeformat=unixtime"))
+    assertEquals("Europe/Rome", bundle.zoneId)
+    assertEquals(1_792_888_200_000L, bundle.hourly.single().timestampMillis)
+    assertEquals(t0, bundle.fetchedAtMillis)
+    val unknown = OpenMeteoClient(
+      ProviderRegistry.all.first { it.id == ProviderRegistry.OPEN_METEO },
+      providerHttpOf(RecordingHttp { body.replace("Europe/Rome", "invalid") }) { t0 })
+    assertEquals(null, unknown.fetch(43.83, 11.2, null).zoneId)
+  }
+
+  @Test
   fun `la cache restituisce il timbro con cui ha scritto`() {
     var now = t0
     val cache = UrlCache(Files.createTempDirectory("cache").toFile()) { now }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="summary_place">Weather for %1$s</string>
+  <string name="summary_place_unknown">Unknown location</string>
+  <string name="summary_zone">Times in %1$s</string>
+  <string name="summary_limits">Model and radar estimates, not local measurements. Coverage gaps remain unknown.</string>
+  <string name="summary_refresh">Recent rain evidence is missing or expired. Refresh needed.</string>
+  <string name="summary_current">Model conditions: %1$s · %2$s</string>
+  <string name="summary_unknown">unknown</string>
+  <string name="summary_interval">Represented interval %1$s–%2$s</string>
+  <string name="summary_interval_unknown">Represented interval unknown</string>
+  <string name="summary_resolution">Source time resolution: %1$s</string>
+  <string name="summary_resolution_unknown">Source time resolution unknown</string>
+  <string name="summary_sources_unknown">Source and download times unknown</string>
+  <string name="summary_more_sources">Additional source details are available in the weather details.</string>
+  <string name="summary_routine">%1$s · %2$s · %3$s</string>
+  <string name="summary_samples">Available model temperature samples: %1$s to %2$s; these are not extrema for the whole window.</string>
+  <string name="summary_more_routines">More personal windows are available in their details.</string>
+  <string name="summary_coordinates_unknown">Coordinates unknown</string>
+  <string name="summary_coarse_time">Coarse source timing</string>
+  <string name="summary_coarse_space">Coarse spatial resolution</string>
+  <string name="summary_interpolated">Possibly interpolated values</string>
+</resources>

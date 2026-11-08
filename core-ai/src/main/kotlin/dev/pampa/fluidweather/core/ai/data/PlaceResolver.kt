@@ -4,7 +4,6 @@ import dev.pampa.fluidweather.core.model.Place
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import java.util.Locale
-import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.first
 
 /** Un posto con tutto quello che un tool vuole sapere: dove, come si chiama, che istantanea usa. */
@@ -24,6 +23,7 @@ data class ResolvedPlace(
    * iscrivere previsioni "di qui" alla classifica del barometro.
    */
   val fromFreshFix: Boolean = true,
+  val zoneId: String? = null,
 ) {
   val label: String get() = if (region.isNullOrBlank()) name else "$name, $region"
 
@@ -37,7 +37,14 @@ data class ResolvedPlace(
  * loro; un posto nuovo si cerca col geocoding e si scarica al volo **senza** seminare verifiche,
  * cosi' la pagella dei provider resta quella della vita vera dell'utente.
  */
-class PlaceResolver(private val sources: AiDataSources) {
+/** Domain IO boundary shared by tools; test doubles return domain records, never provider prose. */
+interface WeatherPlaceResolver {
+  suspend fun resolve(query: String?, selected: ResolvedPlace? = null): ResolvedPlace?
+  suspend fun search(query: String, limit: Int = 5): List<Place>
+  suspend fun snapshot(place: ResolvedPlace, maxAgeMillis: Long = PlaceResolver.DEFAULT_MAX_AGE_MILLIS): WeatherSnapshot?
+}
+
+class PlaceResolver(private val sources: AiDataSources) : WeatherPlaceResolver {
 
   suspend fun selected(): ResolvedPlace? {
     val places = sources.savedLocations.places.first()
@@ -46,7 +53,7 @@ class PlaceResolver(private val sources: AiDataSources) {
     return resolvePlace(selected, isSelected = true)
   }
 
-  suspend fun resolve(query: String?, selected: ResolvedPlace? = null): ResolvedPlace? {
+  override suspend fun resolve(query: String?, selected: ResolvedPlace?): ResolvedPlace? {
     val text = query?.trim().orEmpty()
     if (text.isEmpty() || text.lowercase() in HERE_WORDS) return selected ?: selected()
     val places = sources.savedLocations.places.first()
@@ -56,7 +63,7 @@ class PlaceResolver(private val sources: AiDataSources) {
       ?.let { return resolvePlace(it, isSelected = it.id == selectedId) }
     places.firstOrNull { !it.isGps && (it.name.lowercase().contains(needle) || needle.contains(it.name.lowercase())) }
       ?.let { return resolvePlace(it, isSelected = it.id == selectedId) }
-    val found = runCatching { sources.geocodingClient.search(text, language = Locale.getDefault().language) }
+    val found = cancellableResult { sources.geocodingClient.search(text, language = Locale.getDefault().language) }
       .getOrDefault(emptyList())
       .firstOrNull() ?: return null
     return ResolvedPlace(
@@ -69,12 +76,13 @@ class PlaceResolver(private val sources: AiDataSources) {
       isSelected = false,
       isSaved = false,
       isGps = false,
+      zoneId = found.zoneId,
     )
   }
 
   /** Il geocoding grezzo, per i tool che vogliono piu' risultati (cerca_luogo, salva_luogo). */
-  suspend fun search(query: String, limit: Int = 5): List<Place> =
-    runCatching { sources.geocodingClient.search(query, language = Locale.getDefault().language) }
+  override suspend fun search(query: String, limit: Int): List<Place> =
+    cancellableResult { sources.geocodingClient.search(query, language = Locale.getDefault().language) }
       .getOrDefault(emptyList())
       .take(limit)
 
@@ -82,9 +90,16 @@ class PlaceResolver(private val sources: AiDataSources) {
    * L'istantanea del posto: quella in cache se ha meno di [maxAgeMillis], altrimenti un giro
    * nuovo. Per i posti al volo il giro non registra previsioni da verificare.
    */
-  suspend fun snapshot(place: ResolvedPlace, maxAgeMillis: Long = DEFAULT_MAX_AGE_MILLIS): WeatherSnapshot? {
+  override suspend fun snapshot(place: ResolvedPlace, maxAgeMillis: Long): WeatherSnapshot? {
+    val result = snapshotUntracked(place, maxAgeMillis)
+    kotlinx.coroutines.currentCoroutineContext()[dev.pampa.fluidweather.core.ai.grounding.ChatGrounding]
+      ?.observe(place.snapshotKey, result, place.name)
+    return result
+  }
+
+  private suspend fun snapshotUntracked(place: ResolvedPlace, maxAgeMillis: Long): WeatherSnapshot? {
     sources.snapshotRefresher.fresh(place.snapshotKey, place.latitude, place.longitude, maxAgeMillis)?.let { return it }
-    return runCatching {
+    return cancellableResult {
       sources.snapshotRefresher.refresh(
         placeKey = place.snapshotKey,
         latitude = place.latitude,
@@ -140,18 +155,31 @@ class PlaceResolver(private val sources: AiDataSources) {
       isSelected = isSelected,
       isSaved = true,
       isGps = false,
+      zoneId = place.zoneId,
     )
   }
 
   private suspend fun nameFor(latitude: Double, longitude: Double): String? =
-    runCatching { sources.placeContext.resolve(latitude, longitude)?.locality }.getOrNull()
+    cancellableResult { sources.placeContext.resolve(latitude, longitude)?.locality }.getOrNull()
 
   companion object {
     val HERE_WORDS = setOf("qui", "qua", "here", "posizione attuale", "la mia posizione", "current location", "selezionata", "selected")
     const val DEFAULT_MAX_AGE_MILLIS: Long = 30 * 60_000L
     const val STALE_MAX_AGE_MILLIS: Long = 12 * 3_600_000L
 
+    // Canonical identity from full coordinates, established BEFORE fetching. Never relabel
+    // an old ai-* snapshot, whose rounded cell may contain another consulted point.
+    fun adHocId(latitude: Double, longitude: Double): Long {
+      val digest = java.security.MessageDigest.getInstance("SHA-256")
+        .digest("${latitude.toBits()}:${longitude.toBits()}".toByteArray())
+      return java.nio.ByteBuffer.wrap(digest).long and Long.MAX_VALUE
+    }
     fun adHocKey(latitude: Double, longitude: Double): String =
-      "ai-${(latitude * 100).roundToInt()}_${(longitude * 100).roundToInt()}"
+      WeatherSnapshot.keyFor(adHocId(latitude, longitude))
   }
 }
+
+internal suspend inline fun <T> cancellableResult(block: () -> T): Result<T> = try {
+  Result.success(block())
+} catch (e: kotlinx.coroutines.CancellationException) { throw e }
+catch (e: Exception) { Result.failure(e) }

@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -230,6 +231,53 @@ class MigrationTest {
       assertEquals(1, database.verificationDao().verificationsFor("rain_event_1_3", "SHORT").size)
     } finally {
       database.close()
+    }
+  }
+
+  @Test
+  fun migration_7_8_preservesLocationsAndBackfillOnlyUpdatesMissingZone() = runBlocking {
+    helper.createDatabase(DB, 7).use { db ->
+      db.execSQL("INSERT INTO saved_locations (id, name, region, latitude, longitude, sortOrder) VALUES (42, 'Rome', NULL, 41.9, 12.5, 17)")
+    }
+    helper.runMigrationsAndValidate(DB, 8, true, MIGRATION_7_8).use { db ->
+      db.query("SELECT id, name, latitude, longitude, sortOrder, zoneId FROM saved_locations").use {
+        assertTrue(it.moveToFirst())
+        assertEquals(42L, it.getLong(0))
+        assertEquals("Rome", it.getString(1))
+        assertEquals(41.9, it.getDouble(2), 0.0)
+        assertEquals(12.5, it.getDouble(3), 0.0)
+        assertEquals(17, it.getInt(4))
+        assertTrue(it.isNull(5))
+      }
+    }
+    val database = Room.databaseBuilder(context, FluidWeatherDatabase::class.java, DB)
+      .addMigrations(*ALL_MIGRATIONS).build()
+    try {
+      val repository = SavedLocationsRepository(database.savedLocationsDao())
+      assertTrue(!repository.backfillZoneId(42, "invalid"))
+      assertTrue(!repository.backfillZoneId(99, "Europe/Rome"))
+      assertTrue(repository.backfillZoneId(42, "Europe/Rome"))
+      assertTrue(!repository.backfillZoneId(42, "Asia/Tokyo"))
+      val row = database.savedLocationsDao().all().first().single()
+      assertEquals(42L, row.id)
+      assertEquals(17, row.sortOrder)
+      assertEquals("Europe/Rome", row.zoneId)
+      assertEquals("Europe/Rome", repository.places.first().last().zoneId)
+    } finally { database.close() }
+  }
+
+  @Test
+  fun migration_6_8_usesCompleteChain() {
+    helper.createDatabase(DB, 6).use { seedV6(it) }
+    helper.runMigrationsAndValidate(DB, 8, true, *ALL_MIGRATIONS).use { db ->
+      assertEquals(3, db.count("pressure_samples"))
+      assertEquals(1, db.count("saved_locations"))
+      db.query("SELECT id, sortOrder, zoneId FROM saved_locations").use {
+        assertTrue(it.moveToFirst())
+        assertEquals(1L, it.getLong(0))
+        assertEquals(0, it.getInt(1))
+        assertTrue(it.isNull(2))
+      }
     }
   }
 

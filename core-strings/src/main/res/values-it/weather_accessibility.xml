@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="accessibility_minimum">Minima %1$s</string>
+  <string name="accessibility_maximum">Massima %1$s</string>
+  <string name="accessibility_short_interval">Meno di un minuto intorno a %1$s</string>
+  <string name="accessibility_interval">Da %1$s a %2$s</string>
+  <string name="accessibility_model_sample">Campione orario di MODELLO valido alle %1$s; previsione, non osservazione. I dettagli seguenti usano questo campione.</string>
+  <string name="accessibility_barometer_issued">Diagnostica previsionale barometrica separata. Emissione: %1$s</string>
+  <string name="accessibility_issue_unknown">sconosciuta</string>
+  <string name="accessibility_sample_sum">Somma dei campioni di MODELLO disponibili: %1$s (%2$d di %3$d posizioni). Durata degli intervalli e copertura completa non accertate; non è un totale di sei ore o giornaliero.</string>
+  <string name="accessibility_sample_unknown">Somma dei campioni di MODELLO non disponibile (%1$d posizioni). I dati mancanti non indicano tempo asciutto.</string>
+  <string name="accessibility_probability_sample">%1$s - Probabilità di MODELLO: %2$s</string>
+  <string name="accessibility_amount_sample">%1$s - Campione di accumulo di MODELLO: %2$s</string>
+  <string name="accessibility_resolution">Risoluzione temporale della fonte: %1$s</string>
+  <string name="accessibility_resolution_unknown">Risoluzione temporale della fonte sconosciuta</string>
+  <string name="accessibility_diagnostic">Diagnostica previsionale barometrica separata; emissione sconosciuta</string>
+  <string name="accessibility_hourly_model">Campione orario di MODELLO</string>
+  <string name="accessibility_available_max">Probabilità massima tra i campioni di MODELLO disponibili: %1$s (%2$d di %3$d posizioni); non indica il massimo giornaliero completo.</string>
+</resources>

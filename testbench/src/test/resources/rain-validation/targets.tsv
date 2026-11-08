@@ -1,0 +1,11 @@
+rain-targets-v1	key	site	latitude	longitude	start	end
+present	synthetic-present	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z
+arrival	synthetic-arrival	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z
+end	synthetic-end	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z
+intermittent-a	synthetic-intermittent	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z
+intermittent-b	synthetic-intermittent	44.0	11.0	2026-11-07T10:20:00Z	2026-11-07T10:35:00Z
+intermittent-c	synthetic-intermittent	44.0	11.0	2026-11-07T10:35:00Z	2026-11-07T10:50:00Z
+conflict	synthetic-conflict	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z
+stale	synthetic-stale	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z
+no-coverage	synthetic-no-coverage	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z
+dry-control	synthetic-dry-control	44.0	11.0	2026-11-07T10:05:00Z	2026-11-07T10:20:00Z

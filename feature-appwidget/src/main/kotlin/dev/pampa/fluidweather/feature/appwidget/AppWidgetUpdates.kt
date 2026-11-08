@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
@@ -28,11 +29,13 @@ fun installAppWidgetUpdates(
   snapshotUpdates: Flow<Map<String, Long>>,
   engineSettings: Flow<*>,
   unitPreferences: Flow<*>,
+  cachedInputUpdates: Flow<*>? = null,
 ) {
   scope.launch {
     merge(
       // I dati: il ciclo ha appena scritto un'istantanea nuova.
-      snapshotUpdates.drop(1).map { },
+      snapshotUpdates.map { },
+      (cachedInputUpdates ?: emptyFlow<Any>()).map { },
       // L'aspetto.
       engineSettings.distinctUntilChanged().drop(1).map { },
       // Le unita'.
@@ -41,6 +44,6 @@ fun installAppWidgetUpdates(
       // Tre sorgenti che possono muoversi insieme (un giro del ciclo mentre si cambia tema): un
       // ridisegno solo, non tre.
       .conflate()
-      .collect { runCatching { FluidWeatherAppWidget().updateAll(context) } }
+      .collect { widgetLocalRead { FluidWeatherAppWidget().updateAll(context) } }
   }
 }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="weather_summary_ui_title">Riepilogo rapido</string>
+    <string name="weather_summary_ui_request">Seleziona i punti chiave con IA</string>
+    <string name="weather_summary_ui_loading">Selezione in corso… Il riepilogo resta disponibile.</string>
+    <string name="weather_summary_ui_cancel">Annulla selezione</string>
+    <string name="weather_summary_ui_cancelled">Selezione annullata. Il riepilogo attuale resta disponibile.</string>
+    <string name="weather_summary_ui_ready">Punti chiave selezionati dai dati meteo attuali.</string>
+    <string name="weather_summary_ui_optional">L’IA è facoltativa. Il riepilogo è pronto.</string>
+    <string name="weather_summary_ui_configure_note">Configura l’IA per selezionare i punti chiave. Il riepilogo è pronto.</string>
+    <string name="weather_summary_ui_settings">Apri impostazioni IA</string>
+    <string name="weather_summary_ui_failed">Selezione non riuscita. Il riepilogo attuale resta disponibile.</string>
+    <string name="weather_summary_ui_invalidated">Il contesto meteo è cambiato. Il riepilogo è stato aggiornato.</string>
+    <string name="weather_summary_ui_retry">Riprova</string>
+    <string name="weather_summary_ui_close">Chiudi</string>
+</resources>

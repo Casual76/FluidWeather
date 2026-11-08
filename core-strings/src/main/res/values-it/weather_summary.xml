@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="summary_place">Meteo per %1$s</string>
+  <string name="summary_place_unknown">Località sconosciuta</string>
+  <string name="summary_zone">Orari in %1$s</string>
+  <string name="summary_limits">Stime da modello e radar, non misure locali. La copertura mancante resta sconosciuta.</string>
+  <string name="summary_refresh">Dati recenti sulla pioggia mancanti o scaduti. Serve un aggiornamento.</string>
+  <string name="summary_current">Condizioni da modello: %1$s · %2$s</string>
+  <string name="summary_unknown">sconosciuto</string>
+  <string name="summary_interval">Intervallo rappresentato %1$s–%2$s</string>
+  <string name="summary_interval_unknown">Intervallo rappresentato sconosciuto</string>
+  <string name="summary_resolution">Risoluzione temporale della fonte: %1$s</string>
+  <string name="summary_resolution_unknown">Risoluzione temporale della fonte sconosciuta</string>
+  <string name="summary_sources_unknown">Fonte e orari di download sconosciuti</string>
+  <string name="summary_more_sources">Altre informazioni sulle fonti sono disponibili nei dettagli meteo.</string>
+  <string name="summary_routine">%1$s · %2$s · %3$s</string>
+  <string name="summary_samples">Campioni di temperatura del modello disponibili: da %1$s a %2$s; non sono gli estremi dell’intera finestra.</string>
+  <string name="summary_more_routines">Altre finestre personali sono disponibili nei relativi dettagli.</string>
+  <string name="summary_coordinates_unknown">Coordinate sconosciute</string>
+  <string name="summary_coarse_time">Tempi della fonte a bassa risoluzione</string>
+  <string name="summary_coarse_space">Bassa risoluzione spaziale</string>
+  <string name="summary_interpolated">Valori possibilmente interpolati</string>
+</resources>

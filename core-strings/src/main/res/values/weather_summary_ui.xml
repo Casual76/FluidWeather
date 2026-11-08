@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="weather_summary_ui_title">Quick summary</string>
+    <string name="weather_summary_ui_request">Select highlights with AI</string>
+    <string name="weather_summary_ui_loading">Selecting highlights… Your summary stays available.</string>
+    <string name="weather_summary_ui_cancel">Cancel selection</string>
+    <string name="weather_summary_ui_cancelled">Selection cancelled. Your current summary is below.</string>
+    <string name="weather_summary_ui_ready">AI highlights selected from the current weather facts.</string>
+    <string name="weather_summary_ui_optional">AI is optional. Your summary is ready.</string>
+    <string name="weather_summary_ui_configure_note">Set up AI to select highlights. Your summary is ready.</string>
+    <string name="weather_summary_ui_settings">Open AI settings</string>
+    <string name="weather_summary_ui_failed">Could not select highlights. Your current summary is still available.</string>
+    <string name="weather_summary_ui_invalidated">The weather context changed. Your summary has been refreshed.</string>
+    <string name="weather_summary_ui_retry">Try again</string>
+    <string name="weather_summary_ui_close">Close</string>
+</resources>

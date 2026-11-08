@@ -42,20 +42,55 @@ data class HourlyPoint(
   val kind: WeatherKind? = null,
 )
 
-/**
- * Un quarto d'ora di precipitazione: la risoluzione a cui "sta piovendo adesso" e' una domanda
- * con risposta. L'ora, per quella domanda, e' un'eternita'.
- */
+/** Model precipitation over the preceding quarter, ending at timestampMillis; not a measurement. */
 data class MinutePoint(
   val timestampMillis: Long,
   val precipitationMm: Double? = null,
   val precipitationProbabilityPercent: Double? = null,
 )
 
+/** How the accumulation is positioned relative to the point timestamp. */
+enum class AccumulationAnchor { PRECEDING, FOLLOWING, UNKNOWN }
+
+data class PrecipitationAccumulation(
+  val durationMillis: Long? = null,
+  val anchor: AccumulationAnchor = AccumulationAnchor.UNKNOWN,
+) {
+  init { require(durationMillis == null || durationMillis > 0) }
+}
+
+/** Provider model current. Instantaneous temperature/kind at time; rain over preceding interval. */
+data class ProviderCurrent(
+  val timestampMillis: Long,
+  val temperatureC: Double? = null,
+  val kind: WeatherKind? = null,
+  val precipitationMm: Double? = null,
+  val accumulationIntervalMillis: Long? = null,
+  val downloadedAtMillis: Long? = null,
+  val possiblyInterpolated: Boolean? = null,
+) {
+  init {
+    require(temperatureC == null || temperatureC.isFinite())
+    require(precipitationMm == null || precipitationMm.isFinite() && precipitationMm >= 0)
+    require(accumulationIntervalMillis == null || accumulationIntervalMillis > 0)
+    require(accumulationIntervalMillis == null || timestampMillis >= Long.MIN_VALUE + accumulationIntervalMillis)
+  }
+  val evidenceType: WeatherEvidenceType get() = WeatherEvidenceType.MODEL
+  val precipitationInterval: WeatherInterval? get() = accumulationIntervalMillis?.let {
+    WeatherInterval(timestampMillis - it, timestampMillis)
+  }
+}
+
+/** Amount only over this actual covered interval; no prorating of boundary quarters. */
+data class RainAccumulation(val amountMm: Double, val interval: WeatherInterval) {
+  init { require(amountMm.isFinite() && amountMm >= 0) }
+}
+
 /**
  * La risposta di un provider per un punto, gia' normalizzata. [hourly] puo' includere ore
  * passate (analisi): servono al contesto del nowcast (pioggia recente, rotazione del vento).
  * [minutely] e' la stessa cosa a quindici minuti, quando il provider la offre.
+ * La cadenza della serie non prova una risoluzione nativa; consultare i metadata.
  */
 data class ForecastBundle(
   val providerId: String,
@@ -64,50 +99,73 @@ data class ForecastBundle(
   val longitude: Double,
   val hourly: List<HourlyPoint>,
   val minutely: List<MinutePoint> = emptyList(),
+  /** Provider's IANA zone; unixtime points remain absolute UTC instants. */
+  val zoneId: String? = null,
+  val current: ProviderCurrent? = null,
+  val hourlyPrecipitation: PrecipitationAccumulation? = null,
+  val minutelyPrecipitation: PrecipitationAccumulation? = null,
+  /** True means native sub-hourly resolution is NOT established; null means unknown. */
+  val minutelyPossiblyInterpolated: Boolean? = null,
 ) {
 
   fun at(timestampMillis: Long): HourlyPoint? =
     hourly.minByOrNull { kotlin.math.abs(it.timestampMillis - timestampMillis) }
       ?.takeIf { kotlin.math.abs(it.timestampMillis - timestampMillis) <= 90 * 60_000L }
 
-  /**
-   * Quanta pioggia e' caduta nell'ultimo quarto d'ora, secondo il quarto d'ora appena concluso.
-   *
-   * Open-Meteo dichiara la precipitazione come somma dell'intervallo *precedente* al timestamp:
-   * il punto delle 15:15 copre 15:00-15:15. Si prende quindi il primo punto il cui intervallo si
-   * e' gia' chiuso, e lo si accetta solo se e' recente — un dato di due ore fa non e' "adesso".
-   */
-  fun rainNowMm(nowMillis: Long, maxAgeMillis: Long = 45 * 60_000L): Double? = minutely
-    .filter { it.timestampMillis <= nowMillis && nowMillis - it.timestampMillis <= maxAgeMillis }
-    .maxByOrNull { it.timestampMillis }
-    ?.precipitationMm
+  /** Latest unique closed model quarter, with finite/nonnegative amount and explicit age gate. */
+  fun rainNowMm(nowMillis: Long, maxAgeMillis: Long = 45 * 60_000L): Double? =
+    rainNow(nowMillis, maxAgeMillis)?.amountMm
 
-  /**
-   * La pioggia dell'ultima ora vera, sommando i quarti d'ora appena conclusi.
-   *
-   * Non e' la stessa cosa di [rainNowMm] moltiplicato per quattro, ed e' importante che non lo
-   * sia: il modello e' addestrato su *accumuli orari*, e un rovescio da mezzo millimetro in un
-   * quarto d'ora vale 2 mm/h come tasso ma 0,5 mm come ora. Passare il tasso al posto
-   * dell'accumulo gonfierebbe la feature col peso piu' alto di tutte.
-   *
-   * Null se i quarti d'ora non coprono l'ora: meglio la riga oraria del provider che una somma
-   * di pezzi mancanti.
-   */
-  fun rainLastHourMm(nowMillis: Long): Double? {
-    val window = minutely.filter { it.timestampMillis > nowMillis - 3_600_000L && it.timestampMillis <= nowMillis }
-    if (window.size < QUARTERS_IN_HOUR) return null
-    return window.sumOf { it.precipitationMm ?: return null }
+  fun rainNow(nowMillis: Long, maxAgeMillis: Long = 45 * 60_000L): RainAccumulation? {
+    if (!quarterProduct() || maxAgeMillis < 0) return null
+    val end = minutely.filter { it.timestampMillis <= nowMillis }.maxOfOrNull { it.timestampMillis } ?: return null
+    if (nowMillis - end > maxAgeMillis || Math.floorMod(end, QUARTER) != 0L) return null
+    return quarters(end - QUARTER, end)
   }
 
-  /** La pioggia attesa da adesso a [withinMillis]: il nowcast sub-orario del provider. */
-  fun rainSoonMm(nowMillis: Long, withinMillis: Long): Double? = minutely
-    .filter { it.timestampMillis > nowMillis && it.timestampMillis <= nowMillis + withinMillis }
-    .takeIf { it.isNotEmpty() }
-    ?.sumOf { it.precipitationMm ?: 0.0 }
+  /** One complete hour ending at the latest actually available closed quarter, age <= maxAgeMillis. */
+  fun rainLastHourMm(nowMillis: Long, maxAgeMillis: Long = 45 * 60_000L): Double? =
+    rainLastHour(nowMillis, maxAgeMillis)?.amountMm
+
+  fun rainLastHour(nowMillis: Long, maxAgeMillis: Long = 45 * 60_000L): RainAccumulation? {
+    val last = rainNow(nowMillis, maxAgeMillis) ?: return null
+    return quarters(last.interval.endMillis - 3_600_000L, last.interval.endMillis)
+  }
+
+  /** Only whole quarters inside the requested future window. Actual coverage is returned explicitly. */
+  fun rainSoon(nowMillis: Long, withinMillis: Long): RainAccumulation? {
+    if (!quarterProduct() || withinMillis <= 0 || nowMillis > Long.MAX_VALUE - withinMillis) return null
+    val remainder = Math.floorMod(nowMillis, QUARTER)
+    val start = if (remainder == 0L) nowMillis else nowMillis + QUARTER - remainder
+    val requestedEnd = nowMillis + withinMillis
+    val end = requestedEnd - Math.floorMod(requestedEnd, QUARTER)
+    return quarters(start, end)
+  }
+
+  /** Compatibility API: a numeric total is returned only for exact coverage of now..now+horizon. */
+  fun rainSoonMm(nowMillis: Long, withinMillis: Long): Double? = rainSoon(nowMillis, withinMillis)
+    ?.takeIf { it.interval.startMillis == nowMillis && it.interval.endMillis == nowMillis + withinMillis }
+    ?.amountMm
+
+  private fun quarterProduct(): Boolean = minutelyPrecipitation == null ||
+    (minutelyPrecipitation.durationMillis == QUARTER && minutelyPrecipitation.anchor == AccumulationAnchor.PRECEDING)
+
+  private fun quarters(start: Long, end: Long): RainAccumulation? {
+    if (!quarterProduct() || end <= start || (end - start) % QUARTER != 0L) return null
+    val points = minutely.filter { it.timestampMillis > start && it.timestampMillis <= end }.sortedBy { it.timestampMillis }
+    if (points.size.toLong() != (end - start) / QUARTER) return null
+    var total = 0.0
+    points.forEachIndexed { i, point ->
+      if (point.timestampMillis != start + (i + 1L) * QUARTER) return null
+      val mm = point.precipitationMm?.takeIf { it.isFinite() && it >= 0 } ?: return null
+      total += mm
+    }
+    return total.takeIf { it.isFinite() }?.let { RainAccumulation(it, WeatherInterval(start, end)) }
+  }
 
   val horizonMillis: Long get() = hourly.lastOrNull()?.timestampMillis ?: 0L
 
   private companion object {
-    const val QUARTERS_IN_HOUR = 4
+    const val QUARTER = 900_000L
   }
 }

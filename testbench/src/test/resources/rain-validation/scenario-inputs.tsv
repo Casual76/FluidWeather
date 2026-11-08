@@ -1,0 +1,8 @@
+scenario	evidence	evaluationTime	quarterEnd	quarterMm	radarFrame	pointDbz	coverage	legacy	futureIntent
+present	SYNTHETIC	2026-11-07T10:00:00Z	2026-11-07T10:00:00Z	0.25	2026-11-07T09:50:00Z	20	1.0	merge-rain	current-rain-with-age
+arrival	SYNTHETIC	2026-11-07T10:00:00Z	2026-11-07T10:00:00Z	0.0	2026-11-07T09:50:00Z	0	1.0	eta-arrival-10-from-motion	arrival-window-with-confidence
+end	SYNTHETIC	2026-11-07T10:00:00Z	2026-11-07T10:00:00Z	0.25	2026-11-07T09:50:00Z	20	1.0	eta-end-15-from-motion	end-window-with-confidence
+intermittent	SYNTHETIC	2026-11-07T10:00:00Z	2026-11-07T10:00:00Z	0.0	2026-11-07T09:50:00Z	0	1.0	first-arrival-only	multiple-episodes-no-single-exact-end
+conflict	SYNTHETIC	2026-11-07T10:00:00Z	2026-11-07T10:00:00Z	0.0	2026-11-07T09:50:00Z	20	1.0	merge-rain-wins	explicit-conflict-and-provenance
+stale	SYNTHETIC	2026-11-07T10:00:00Z	2026-11-07T09:00:00Z	0.25	2026-11-07T09:00:00Z	20	1.0	quarter-null-radar-age-penalty-only	explicit-stale-not-current-proof
+no-coverage	SYNTHETIC	2026-11-07T10:00:00Z	-	-	2026-11-07T09:50:00Z	0	0.0	zero-echo-ambiguous-coverage-note	unknown-not-dry

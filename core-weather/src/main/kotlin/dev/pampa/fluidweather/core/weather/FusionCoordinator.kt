@@ -1,6 +1,9 @@
 package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.data.FusionSettingsStore
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import dev.pampa.fluidweather.core.model.FusedForecast
 
 /** L'esito completo di un giro: le opinioni, il fuso, e chi ha pesato quanto. */
@@ -43,24 +46,33 @@ class FusionCoordinator(
   private val fusion: ForecastFusion,
   private val fusionSettings: FusionSettingsStore,
   private val clock: () -> Long = System::currentTimeMillis,
+  private val wipeGuard: DataWipeGuard? = null,
 ) : RoundSource {
+  constructor(repository: WeatherRepository, verifier: ForecastVerifier, fusion: ForecastFusion,
+    fusionSettings: FusionSettingsStore, clock: () -> Long) :
+    this(repository, verifier, fusion, fusionSettings, clock, null)
 
   /**
    * [registerPredictions] false = si giudica ma non si semina: il ciclo in background gira
    * ogni quarto d'ora e seminare quattro volte le stesse previsioni gonfierebbe le tabelle
    * senza aggiungere informazione (gli orizzonti sono a ore intere).
    */
-  override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
-    val fetches = repository.fetchAll(latitude, longitude)
-    verifier.settle(fetches)
-    if (registerPredictions) verifier.registerPending(fetches)
-    val fused = fusion.fuse(
-      fetches = fetches,
-      latitude = latitude,
-      longitude = longitude,
-      nowMillis = clock(),
-      onlyProviderId = fusionSettings.currentOnlyProviderId(),
-    )
-    return WeatherRound(fetches, fused)
-  }
+  override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound =
+    withWeatherWipeEpoch(wipeGuard) { epoch ->
+      val fetches = repository.fetchAll(latitude, longitude)
+      currentCoroutineContext().ensureActive()
+      epoch?.checkCurrent()
+      verifier.settle(fetches)
+      if (registerPredictions) verifier.registerPending(fetches)
+      val fused = fusion.fuse(
+        fetches = fetches,
+        latitude = latitude,
+        longitude = longitude,
+        nowMillis = clock(),
+        onlyProviderId = fusionSettings.currentOnlyProviderId(),
+      )
+      currentCoroutineContext().ensureActive()
+      epoch?.checkCurrent()
+      WeatherRound(fetches, fused)
+    }
 }

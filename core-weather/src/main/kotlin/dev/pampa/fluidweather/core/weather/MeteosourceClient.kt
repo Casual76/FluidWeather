@@ -1,6 +1,6 @@
 package dev.pampa.fluidweather.core.weather
 
-import dev.pampa.fluidweather.core.model.ForecastBundle
+import dev.pampa.fluidweather.core.model.*
 import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.WeatherKind
 import java.time.LocalDateTime
@@ -25,14 +25,19 @@ class MeteosourceClient(
       "?lat=$lat&lon=$lon&sections=hourly&units=metric&key=$apiKey"
     val (root, downloadedAt) = http.readJsonTimed(url, FORECAST_TTL_MILLIS)
 
-    val zone = ZoneId.of(root["timezone"].string() ?: "UTC")
+    val zoneId = WeatherZones.validId(root["timezone"].string())
+    val zone = zoneId?.let(ZoneId::of)
     val points = root["hourly"]["data"].asArray().mapNotNull { entry ->
       val date = entry["date"].string() ?: return@mapNotNull null
+      val local = runCatching { LocalDateTime.parse(date) }.getOrNull() ?: return@mapNotNull null
+      // Reject unknown zones and DST gaps/overlaps rather than manufacture an absolute instant.
+      val offsets = zone?.rules?.getValidOffsets(local) ?: return@mapNotNull null
+      if (offsets.size != 1) return@mapNotNull null
       HourlyPoint(
-        timestampMillis = LocalDateTime.parse(date).atZone(zone).toInstant().toEpochMilli(),
+        timestampMillis = local.toInstant(offsets.single()).toEpochMilli(),
         temperatureC = entry["temperature"].double(),
         cloudCoverPercent = entry["cloud_cover"]["total"].double(),
-        precipitationMm = entry["precipitation"]["total"].double(),
+        precipitationMm = entry["precipitation"]["total"].double()?.takeIf { it.isFinite() && it >= 0 },
         windSpeedKmh = entry["wind"]["speed"].double()?.metersPerSecondToKmh(),
         windDirectionDeg = entry["wind"]["angle"].double(),
         kind = entry["weather"].string()?.let { iconKind(it) },
@@ -45,6 +50,9 @@ class MeteosourceClient(
       latitude = latitude,
       longitude = longitude,
       hourly = points,
+      zoneId = zoneId,
+      // Cadence alone does not establish the accumulation duration/anchor.
+      hourlyPrecipitation = PrecipitationAccumulation(),
     )
   }
 

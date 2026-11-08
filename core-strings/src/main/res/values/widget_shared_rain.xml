@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="widget_shared_assessed">Assessed %1$s | %2$s</string>
+  <string name="widget_shared_source">%1$s | source %2$s | downloaded %3$s</string>
+  <string name="widget_shared_forecast">Model forecast</string>
+  <string name="widget_shared_bundle">Forecast cache %1$s</string>
+  <string name="widget_shared_history">Barometer forecast issued %1$s | %2$s: %3$s%% | %4$s</string>
+  <string name="widget_shared_point">Point %1$s, %2$s</string>
+  <string name="widget_shared_history_location">Historical diagnostic; original location not recorded.</string>
+</resources>

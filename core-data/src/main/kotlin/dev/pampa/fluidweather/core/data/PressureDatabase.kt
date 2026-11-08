@@ -88,7 +88,7 @@ interface PressureDao {
     RainEventPendingEntity::class,
     RainEventVerificationEntity::class,
   ],
-  version = 7,
+  version = 8,
   exportSchema = true,
 )
 abstract class FluidWeatherDatabase : RoomDatabase() {

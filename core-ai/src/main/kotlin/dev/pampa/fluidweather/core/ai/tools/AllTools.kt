@@ -7,6 +7,7 @@ import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 object AllTools {
   fun registry(resolver: PlaceResolver): ToolRegistry<ToolContext> = weatherRegistry(
     listOf(
+      WeatherExplanationTool(),
       SearchPlaceTool(resolver),
       SavedPlacesTool(),
       ComparePlacesTool(resolver),

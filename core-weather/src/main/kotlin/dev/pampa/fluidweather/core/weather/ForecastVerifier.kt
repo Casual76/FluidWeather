@@ -8,6 +8,9 @@ import dev.pampa.fluidweather.core.model.PendingPrediction
 import dev.pampa.fluidweather.core.model.RainBoardIds
 import dev.pampa.fluidweather.core.model.VerificationStore
 import kotlin.math.abs
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * L'evento "piove?" nelle tabelle generali delle verifiche: **legacy**.
@@ -44,13 +47,18 @@ class ForecastVerifier(
   private val store: VerificationStore,
   private val minTruthOpinions: Int = 3,
   private val clock: () -> Long = System::currentTimeMillis,
+  private val wipeGuard: DataWipeGuard? = null,
 ) {
+  constructor(store: VerificationStore, minTruthOpinions: Int = 3, clock: () -> Long) :
+    this(store, minTruthOpinions, clock, null)
 
   /**
    * Le previsioni dei bundle appena arrivati entrano in attesa di giudizio, col punto del bundle:
    * chi le giudichera' usera' solo bundle di li'.
    */
   suspend fun registerPending(fetches: List<ProviderFetch>) {
+    val epoch = weatherWipeEpoch(wipeGuard)
+    epoch?.checkCurrent()
     val now = clock()
     val pending = mutableListOf<PendingPrediction>()
     for (fetch in fetches) {
@@ -72,7 +80,8 @@ class ForecastVerifier(
         }
       }
     }
-    store.addPending(pending)
+    currentCoroutineContext().ensureActive()
+    if (epoch == null) store.addPending(pending) else epoch.write { store.addPending(pending) }
   }
 
   /**
@@ -87,8 +96,12 @@ class ForecastVerifier(
    * altrove.
    */
   suspend fun settle(fetches: List<ProviderFetch>) {
+    val epoch = weatherWipeEpoch(wipeGuard)
+    epoch?.checkCurrent()
     val now = clock()
     val due = store.duePending(now)
+    currentCoroutineContext().ensureActive()
+    epoch?.checkCurrent()
     if (due.isEmpty()) return
 
     val bundles = fetches.mapNotNull { it.bundle }
@@ -118,8 +131,12 @@ class ForecastVerifier(
       settled += prediction
     }
 
-    store.addVerifications(verifications)
-    store.removePending(settled)
+    currentCoroutineContext().ensureActive()
+    suspend fun commit() {
+      store.addVerifications(verifications)
+      store.removePending(settled)
+    }
+    if (epoch == null) commit() else epoch.write { commit() }
   }
 
   private fun medianTruth(bundles: List<ForecastBundle>, variable: String, timestampMillis: Long): Double? {

@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.core.ui
 
+import dev.pampa.fluidweather.core.model.PrecipitationState
 import dev.pampa.fluidweather.core.model.DayPhase
 import dev.pampa.fluidweather.core.model.WeatherKind
 
@@ -24,4 +25,22 @@ data class SkyState(
    */
   val latitude: Double? = null,
   val longitude: Double? = null,
+  /** Shared present assessment, never a forecast arrival. Defaults preserve widget/preview callers. */
+  val precipitation: PrecipitationState? = null,
+  val assessmentKnown: Boolean = false,
 )
+
+/** Unknown/conflicting input keeps atmosphere but cannot animate a certain rain shower. */
+fun SkyState.forRendering(): SkyState {
+  if (!assessmentKnown) return this
+  val wetKinds = setOf(WeatherKind.RAIN, WeatherKind.HEAVY_RAIN, WeatherKind.DRIZZLE, WeatherKind.SLEET, WeatherKind.SNOW, WeatherKind.HEAVY_SNOW, WeatherKind.THUNDERSTORM)
+  val renderedKind = when {
+    precipitation == PrecipitationState.WET -> kind?.takeIf { it in wetKinds } ?: WeatherKind.RAIN
+    kind in wetKinds -> WeatherKind.CLOUDY
+    else -> kind ?: WeatherKind.CLOUDY
+  }
+  return copy(kind = renderedKind, cloudCoverPercent = cloudCoverPercent ?: 65.0)
+}
+
+fun sceneMotionAllowed(quality: SceneQuality, decorative: Boolean, running: Boolean, resumed: Boolean): Boolean =
+  quality != SceneQuality.STATIC && decorative && running && resumed

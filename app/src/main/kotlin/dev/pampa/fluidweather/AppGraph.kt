@@ -15,8 +15,12 @@ import dev.pampa.fluidweather.core.cycle.InAppAlertBus
 import dev.pampa.fluidweather.core.cycle.PlaceContextResolver
 import dev.pampa.fluidweather.core.cycle.SystemNotifier
 import dev.pampa.fluidweather.core.ai.AiAssistant
+import dev.pampa.fluidweather.core.ai.summary.AiWeatherSummaryService
+import dev.antigravity.fluidengine.ai.provider.ProviderFactory
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
-import dev.pampa.fluidweather.core.ai.radar.RadarObservations
+import dev.pampa.fluidweather.core.weather.radar.RadarObservations
+import dev.pampa.fluidweather.core.weather.radar.RadarSampler
+import dev.pampa.fluidweather.core.weather.radar.RadarTileStore
 import dev.pampa.fluidweather.core.data.LastFixStore
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.LearningRepository
@@ -90,9 +94,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.delay
+import java.io.IOException
 import kotlin.math.abs
 import dev.pampa.fluidweather.core.cycle.ResourceNotificationTexts
 import dev.pampa.fluidweather.core.data.UnitsStore
+import dev.pampa.fluidweather.core.data.RoutineWindowStore
 import dev.pampa.fluidweather.strings.UnitFormatter
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -188,6 +199,7 @@ class AppGraph(context: Context) {
   private val providerHttp = ProviderHttp(
     http = engineHttp,
     cache = UrlCache(File(context.cacheDir, "providers")),
+    wipeGuard = wipeGuard,
   )
   val weatherRepository = WeatherRepository(
     clients = buildWeatherClients(providerHttp),
@@ -200,6 +212,20 @@ class AppGraph(context: Context) {
 
   // Radar (fase 12): i fotogrammi RainViewer e il "adesso" dei pin in una chiamata sola.
   val rainViewerClient = RainViewerClient(providerHttp)
+  val radarTiles = RadarTileStore(File(appContext.cacheDir, "radar-tiles"), engineHttp, wipeGuard = wipeGuard)
+  val radarSampler = RadarSampler(
+    frames = { rainViewerClient.frames() },
+    tiles = radarTiles,
+    prune = { radarTiles.prune() },
+  )
+  val radarAssessmentCache = dev.pampa.fluidweather.core.weather.RadarAssessmentCache(
+    File(appContext.cacheDir, "radar-assessment-inputs"), wipeGuard)
+  val weatherBriefService = dev.pampa.fluidweather.core.weather.WeatherBriefService(
+    scope = applicationScope,
+    radarLoader = { latitude, longitude -> radarSampler.sample(latitude, longitude) },
+    radarCache = radarAssessmentCache,
+    wipeGuard = wipeGuard,
+  )
   val pointWeatherClient = PointWeatherClient(providerHttp)
 
   // Fusione e punteggi (fase 7): verifiche in Room, pesi in cascata, override dell'utente.
@@ -208,9 +234,10 @@ class AppGraph(context: Context) {
   val fusionCoordinator = FusionCoordinator(
     repository = weatherRepository,
     // La pioggia non passa piu' di qui: la iscrive il registratore dei giri e la giudica il pannello.
-    verifier = ForecastVerifier(store = verificationStore),
+    verifier = ForecastVerifier(store = verificationStore, wipeGuard = wipeGuard),
     fusion = ForecastFusion(ProviderScoreboard(verificationStore)),
     fusionSettings = fusionSettingsStore,
+    wipeGuard = wipeGuard,
   )
 
   /** Stadi 1-2 del nowcast: puro JVM, gli stessi bit che girano nel banco di prova. */
@@ -231,10 +258,9 @@ class AppGraph(context: Context) {
     // Niente analoghi: somiglianze misurate su feature barometriche senza abilita' trascinerebbero
     // ogni verdetto verso il tasso base dell'archivio.
     engine = NowcastEngine.trained(analogPolicy = AnalogPolicy.OFF),
-    // Il campionatore del radar nasce dentro l'assistente, che si costruisce piu' in basso: la
-    // lambda lo raggiunge quando serve, cioe' sempre dopo che il grafo e' finito di nascere.
+    // Lo stesso campionatore dell'assistente, gia' costruito prima del nowcast.
     radarObservation = { latitude, longitude ->
-      RadarObservations.of(aiAssistant.radarSampler, latitude, longitude)
+      RadarObservations.of(weatherBriefService.radarSample(latitude, longitude))
     },
     sensorAvailable = { barometer.isAvailable },
     // Il livello di contesto (NONE contro NONE_NOCLIMA) chiede solo se la cella e' su disco: niente rete.
@@ -321,6 +347,7 @@ class AppGraph(context: Context) {
   val homeLayoutStore = HomeLayoutStore(context)
   // Le unita' scelte (fase 17): le legge la UI, e le notifiche quando devono scrivere un numero.
   val unitsStore = UnitsStore(context)
+  val routineWindowStore = RoutineWindowStore(context)
   val weatherAccent = MutableStateFlow<AccentPreset?>(null)
 
   // Localita' (fase 10): salvate su Room, selezione persistita, ricerca keyless.
@@ -330,11 +357,12 @@ class AppGraph(context: Context) {
 
   // Ciclo in background e notifiche (fase 11): l'istantanea che la home legge subito, i
   // quattro canali, la memoria di cio' che e' gia' stato detto.
-  val weatherSnapshotStore = WeatherSnapshotStore(File(context.filesDir, "snapshots"))
+  val weatherSnapshotStore = WeatherSnapshotStore(File(context.filesDir, "snapshots"), wipeGuard = wipeGuard)
   val snapshotRefresher = WeatherSnapshotRefresher(
     coordinator = fusionCoordinator,
     store = weatherSnapshotStore,
     onGpsRoundRegistered = { round -> localRoundRegistrar.register(round) },
+    wipeGuard = wipeGuard,
   )
 
   /** Giudizio e climatologia della pioggia, al piu' una volta l'ora: dal ciclo e all'apertura dell'app. */
@@ -442,11 +470,10 @@ class AppGraph(context: Context) {
   val aiAssistant: AiAssistant = AiAssistant(
     context = appContext,
     scope = applicationScope,
-    engineHttp = engineHttp,
     userAgent = Release.userAgent,
     referer = Release.REPOSITORY_URL,
     appTitle = "FluidWeather",
-    rainViewer = rainViewerClient,
+    radarSampler = radarSampler,
     remoteConfig = remoteConfig,
     reportError = { error, label -> crashLog.record(error, label) },
     sources = { radarSampler ->
@@ -479,15 +506,38 @@ class AppGraph(context: Context) {
         notificationLedger = notificationLedgerStore,
         manualBurst = manualBurstController,
         unitsStore = unitsStore,
+        weatherBriefService = weatherBriefService,
+        routineWindowStore = routineWindowStore,
+        generation = wipeGuard::generation,
       )
     },
   )
+
+  /** Explicit-request selection only, independent from the assistant conversation. */
+  val weatherSummaryService = AiWeatherSummaryService(
+    providers = { aiAssistant.providers.ordered(ProviderFactory.Kind.CHAT) },
+    enabled = { aiAssistant.enabled.first() },
+  )
+
+  init {
+    applicationScope.launch {
+      // Metadata only: key edits emit here without reading or retaining plaintext credentials.
+      combine(aiAssistant.keys.states, aiAssistant.settings.settings, aiAssistant.remoteEnabled) { _, _, _ -> Unit }
+        .retryWhen { cause, _ ->
+          weatherSummaryService.clear()
+          if (cause is IOException) { delay(30_000L); true } else false
+        }
+        .collect { weatherSummaryService.clear() }
+    }
+  }
 
   /** Dati e privacy: via tutto l'archivio locale; le impostazioni restano. */
   suspend fun wipeAllData() {
     // Sotto il guardiano: chi sta scrivendo in background (ristima, giudice, registratore) o finisce
     // prima o, se aveva letto prima della cancellazione, si accorge che e' passata e non scrive.
     wipeGuard.wipe {
+      weatherSummaryService.clear()
+      weatherBriefService.clear()
       pressureRepository.clear()
       verificationStore.clear()
       nowcastHistoryStore.clear()
@@ -504,7 +554,7 @@ class AppGraph(context: Context) {
       notificationLedgerStore.update { NotificationLedger() }
       weatherSnapshotStore.clear()
       File(appContext.cacheDir, "providers").deleteRecursively()
-      File(appContext.cacheDir, "radar-tiles").deleteRecursively()
+      radarTiles.clear()
       aiAssistant.diagnostics.clear()
     }
     // La cache dell'apprendimento da un'ora teneva in vita le mappe appena cancellate.

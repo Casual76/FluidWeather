@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
  * ciclo ha gia' scritto su disco.
  */
 interface AppWidgetRuntime {
+  val cachedWeatherBriefs: dev.pampa.fluidweather.core.weather.CachedWeatherBriefSource
   val snapshotStore: WeatherSnapshotStore
   val savedLocations: SavedLocationsRepository
   val nowcastHistory: NowcastHistoryStore

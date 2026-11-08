@@ -5,6 +5,7 @@ plugins {
 }
 
 apply from: "${rootDir}/engine/versions.gradle"
+apply from: "${rootDir}/versions-app.gradle"
 
 // local.properties (fuori da git) porta la firma di release. La chiave Google Maps che c'era
 // (maps.apiKey) non si legge piu': il radar e' su MapLibre e OpenFreeMap, che non ne chiedono.
@@ -37,8 +38,9 @@ android {
     applicationId 'dev.pampa.fluidweather'
     minSdk engine.minSdk
     targetSdk engine.compileSdk
-    versionCode 20
-    versionName '2.0.2'
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    versionCode 21
+    versionName '2.1.0'
     buildConfigField 'String', 'MANIFEST_URL', "\"${manifestUrl}\""
     // La 1.1.0 promuove l'app a stable (decisione 2026-09-03): chi la installa segue stable
     // finche' non sceglie altro in Informazioni. Il canale e' compilato dentro l'APK, quindi
@@ -133,4 +135,14 @@ dependencies {
   implementation "androidx.activity:activity-compose:${engine.activityCompose}"
   implementation "androidx.navigation:navigation-compose:${engine.navigation}"
   implementation "androidx.lifecycle:lifecycle-runtime-compose:${engine.lifecycle}"
+
+  androidTestImplementation platform("androidx.compose:compose-bom:${engine.composeBom}")
+  androidTestImplementation "androidx.compose.ui:ui-test-junit4"
+  androidTestImplementation "androidx.test.espresso:espresso-core:${appVersions.espressoCore}"
+  debugImplementation platform("androidx.compose:compose-bom:${engine.composeBom}")
+  debugImplementation "androidx.compose.ui:ui-test-manifest"
+  androidTestImplementation "androidx.test.ext:junit:${appVersions.androidxTestExtJunit}"
+  androidTestImplementation "androidx.test:runner:${appVersions.androidxTestRunner}"
+  androidTestImplementation "androidx.test:core:${appVersions.androidxTestRunner}"
+  androidTestImplementation "junit:junit:${engine.junit}"
 }

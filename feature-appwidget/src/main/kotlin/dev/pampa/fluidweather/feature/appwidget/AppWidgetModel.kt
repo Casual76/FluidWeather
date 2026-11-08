@@ -9,11 +9,11 @@ import dev.pampa.fluidweather.core.model.DataFreshness
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.WeatherKind
-import dev.pampa.fluidweather.core.model.nearestHour
+import dev.pampa.fluidweather.core.model.*
+import dev.pampa.fluidweather.strings.WidgetSharedRainFormatter
 import dev.pampa.fluidweather.core.model.rainProbabilityPercent
 import dev.pampa.fluidweather.core.model.todayRange
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
-import dev.pampa.fluidweather.nowcast.learning.RainObservation
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.core.model.NowcastVerdictRecord
 import java.time.ZoneId
@@ -59,43 +59,34 @@ data class AppWidgetModel(
   val verdictLevel: AlertLevel?,
   val verdictProbabilityPercent: Int?,
   val verdictWindow: String?,
-  /**
-   * Sta piovendo *adesso*, secondo il quarto d'ora dell'istantanea. Il widget lo dice al posto
-   * della finestra piu' probabile: con la pioggia in corso, "fra 1 e 3 ore" e' l'unica frase che
-   * non si puo' leggere senza arrabbiarsi.
-   */
-  val rainingNow: Boolean,
+  val headline: BriefRainHeadline,
+  val brief: WeatherBrief?,
+  val assessedAtMillis: Long,
+  val zone: ZoneId,
+  val zoneFallback: Boolean,
+  val verdictAtMillis: Long?,
   /** Minima e massima di oggi, e la pioggia piu' probabile in vista: la riga in fondo al compatto. */
   val minC: Double?,
   val maxC: Double?,
   val rainProbabilityPercent: Int?,
   val hours: List<AppWidgetHour>,
 ) {
+  /** Precipitation atmosphere requires a shared known wet state, even when current kind is rainy. */
+  val skyKind: WeatherKind? get() {
+    val wetKinds = setOf(WeatherKind.DRIZZLE, WeatherKind.RAIN, WeatherKind.HEAVY_RAIN,
+      WeatherKind.SNOW, WeatherKind.HEAVY_SNOW, WeatherKind.SLEET, WeatherKind.THUNDERSTORM)
+    return if (headline in setOf(BriefRainHeadline.WET, BriefRainHeadline.MODEL_WET, BriefRainHeadline.RADAR_WET))
+      kind?.takeIf { it in wetKinds } ?: WeatherKind.RAIN
+    else if (kind in wetKinds) WeatherKind.CLOUDY else kind
+  }
+
   /** Niente istantanea: il widget dice che non c'e' ancora niente e al tocco apre l'app. */
-  val isEmpty: Boolean get() = temperatureC == null && hours.isEmpty() && dataAtMillis == null
+  val isEmpty: Boolean get() = temperatureC == null && hours.isEmpty() && dataAtMillis == null && brief == null
 }
 
-/**
- * Il modello dal disco, senza toccare rete ne' GPS.
- *
- * Il widget mostra quello che il ciclo ha gia' scritto: l'istantanea porta dentro le proprie
- * coordinate, quindi non serve chiedere una posizione (che costerebbe fino a quindici secondi
- * proprio mentre il launcher aspetta un disegno). E l'ora corrente esce da `nearestHour`, la
- * stessa funzione della home: cosi' il widget e l'app non possono dire due temperature diverse.
- */
+/** Cache-only presentation; fused hours are forecast details, never current observations. */
 object AppWidgetModelBuilder {
-
-  /** Quante ore mostra la taglia grande: quattro colonne stanno in una riga senza stringersi. */
   const val STRIP_HOURS = 4
-
-  /**
-   * Il widget non ha rete: legge l'istantanea che il ciclo ha gia' scritto. Da quando
-   * l'istantanea porta anche il quarto d'ora, sa rispondere anche alla domanda del presente.
-   */
-  private fun rainingNow(snapshot: WeatherSnapshot?, nowMillis: Long): Boolean {
-    val quarter = snapshot?.context?.rainNowMm(nowMillis) ?: return false
-    return quarter * 4.0 >= RainObservation.RAINING_FROM_MM_PER_HOUR
-  }
 
   fun of(
     snapshot: WeatherSnapshot?,
@@ -104,16 +95,18 @@ object AppWidgetModelBuilder {
     nowMillis: Long,
     tier: AppWidgetTier,
     zone: ZoneId = ZoneId.systemDefault(),
+    brief: WeatherBrief? = null,
+    zoneFallback: Boolean = true,
   ): AppWidgetModel {
-    val current = snapshot?.fused?.hours?.nearestHour(nowMillis)?.first
+    val current = WidgetSharedRainFormatter.current(brief, nowMillis)
     val kind = current?.kind
-    val range = snapshot?.fused?.hours?.todayRange(nowMillis) ?: (null to null)
+    val range = snapshot?.fused?.hours?.todayRange(nowMillis, zone) ?: (null to null)
     val phase = SkyScene.phaseOf(snapshot?.latitude, snapshot?.longitude, nowMillis, zone)
     return AppWidgetModel(
       placeName = placeName,
-      temperatureC = current?.values?.get(FusionVariables.TEMPERATURE)?.value,
+      temperatureC = current?.temperatureC,
       kind = kind,
-      cloudCover = current?.values?.get(FusionVariables.CLOUD_COVER)?.value,
+      cloudCover = null,
       iconRes = kind.appWidgetIconRes(phase),
       latitude = snapshot?.latitude,
       longitude = snapshot?.longitude,
@@ -126,7 +119,12 @@ object AppWidgetModelBuilder {
       verdictProbabilityPercent = verdict?.strongest()?.let { (it.second * 100).toInt() }
         ?.takeIf { tier != AppWidgetTier.SMALL },
       verdictWindow = verdict?.strongest()?.first?.takeIf { tier != AppWidgetTier.SMALL },
-      rainingNow = tier != AppWidgetTier.SMALL && rainingNow(snapshot, nowMillis),
+      headline = WidgetSharedRainFormatter.headline(brief, nowMillis),
+      brief = brief,
+      assessedAtMillis = brief?.precipitation?.evaluatedAtMillis ?: nowMillis,
+      zone = zone,
+      zoneFallback = zoneFallback,
+      verdictAtMillis = verdict?.timestampMillis?.takeIf { tier != AppWidgetTier.SMALL },
       // Massima, minima e pioggia riempiono lo spazio che restava in fondo alle due taglie
       // compatte. Nella grande no: li' sotto ci sono gia' le prossime ore, che dicono di piu'.
       minC = if (tier == AppWidgetTier.LARGE) null else range.first,

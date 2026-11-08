@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.core.weather
 
+import dev.pampa.fluidweather.core.model.*
 import dev.pampa.fluidweather.core.model.Contribution
 import dev.pampa.fluidweather.core.model.ForecastBundle
 import dev.pampa.fluidweather.core.model.FusedForecast
@@ -9,6 +10,16 @@ import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.MinutePoint
 import dev.pampa.fluidweather.core.model.WeatherKind
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.concurrent.atomic.AtomicLong
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.asin
 import kotlin.math.cos
@@ -21,6 +32,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -63,6 +76,8 @@ data class WeatherSnapshot(
   val contextCarriedFromMillis: Long? = null,
   /** L'ultima volta che questo giro ha seminato previsioni da verificare (vedi il refresher). */
   val predictionsRegisteredAtMillis: Long? = null,
+  /** Optional IANA zone, independent of the round/download timestamps. */
+  val zoneId: String? = null,
 ) {
   val providersResponding: Int get() = fetches.count { it.ok }
 
@@ -87,13 +102,14 @@ data class WeatherSnapshot(
           ProviderFetchSummary(it.descriptor.id, it.bundle?.hourly?.size ?: 0, it.error)
         },
         fused = round.fused,
+        zoneId = round.fetches.firstNotNullOfOrNull { WeatherZones.validId(it.bundle?.zoneId) },
         // Il contesto e' il bundle GREZZO con le ore passate (analisi), da cui il nowcast prende
         // 7 delle 16 feature. Prima veniva solo da `open-meteo`: se falliva quello, il contesto
         // spariva anche con altre cinque varianti Open-Meteo che avevano risposto. Passano tutte
         // dallo stesso client, con lo stesso `past_hours=6` e le stesse variabili — cambia solo
         // il modello — quindi una vale l'altra.
         context = round.fetches.firstOrNull { it.descriptor.id == ProviderRegistry.OPEN_METEO }?.bundle
-          ?: round.fetches.firstOrNull { it.descriptor.id.startsWith(ProviderRegistry.OPEN_METEO) }?.bundle,
+          ?: round.fetches.firstOrNull { it.descriptor.id.startsWith(ProviderRegistry.OPEN_METEO) && it.bundle != null }?.bundle,
       )
   }
 }
@@ -122,6 +138,7 @@ object WeatherSnapshotCodec {
     put("latitude", snapshot.latitude)
     put("longitude", snapshot.longitude)
     put("fetchedAtMillis", snapshot.fetchedAtMillis)
+    WeatherZones.validId(snapshot.zoneId)?.let { put("zoneId", it) }
     snapshot.predictionsRegisteredAtMillis?.let { put("predictionsRegisteredAtMillis", it) }
     put(
       "fetches",
@@ -177,6 +194,7 @@ object WeatherSnapshotCodec {
       context = root["context"]?.let { decodeBundle(it) },
       contextCarriedFromMillis = root["contextCarriedFromMillis"].double()?.toLong(),
       predictionsRegisteredAtMillis = root["predictionsRegisteredAtMillis"].double()?.toLong(),
+      zoneId = WeatherZones.validId(root["zoneId"].string()),
     )
   }
 
@@ -240,6 +258,22 @@ object WeatherSnapshotCodec {
 
   private fun encodeBundle(bundle: ForecastBundle): JsonObject = buildJsonObject {
     put("providerId", bundle.providerId)
+    bundle.current?.let { c ->
+      put("current", buildJsonObject {
+        put("t", c.timestampMillis)
+        putNullable("temp", c.temperatureC)
+        c.kind?.let { put("kind", it.name) }
+        putNullable("pr", c.precipitationMm)
+        c.accumulationIntervalMillis?.let { put("intervalMillis", it) }
+        c.downloadedAtMillis?.let { put("downloadedAtMillis", it) }
+        c.possiblyInterpolated?.let { put("possiblyInterpolated", it) }
+      })
+    }
+    bundle.hourlyPrecipitation?.let { put("hourlyPrecipitation", encodeAccumulation(it)) }
+    bundle.minutelyPrecipitation?.let { put("minutelyPrecipitation", encodeAccumulation(it)) }
+    bundle.minutelyPossiblyInterpolated?.let { put("minutelyPossiblyInterpolated", it) }
+
+    WeatherZones.validId(bundle.zoneId)?.let { put("zoneId", it) }
     put("fetchedAtMillis", bundle.fetchedAtMillis)
     put("latitude", bundle.latitude)
     put("longitude", bundle.longitude)
@@ -299,7 +333,7 @@ object WeatherSnapshotCodec {
         relativeHumidityPercent = p["rh"].double(),
         dewPointC = p["dew"].double(),
         pressureMslHpa = p["msl"].double(),
-        precipitationMm = p["pr"].double(),
+        precipitationMm = p["pr"].double()?.takeIf { it.isFinite() && it >= 0 },
         precipitationProbabilityPercent = p["pop"].double(),
         cloudCoverPercent = p["cc"].double(),
         windSpeedKmh = p["ws"].double(),
@@ -314,18 +348,53 @@ object WeatherSnapshotCodec {
     val minutes = element["minutely"].asArray().mapNotNull { m ->
       MinutePoint(
         timestampMillis = m["t"].double()?.toLong() ?: return@mapNotNull null,
-        precipitationMm = m["pr"].double(),
+        precipitationMm = m["pr"].double()?.takeIf { it.isFinite() && it >= 0 },
         precipitationProbabilityPercent = m["pop"].double(),
       )
     }
     return ForecastBundle(
       providerId = providerId,
-      fetchedAtMillis = element["fetchedAtMillis"].double()?.toLong() ?: 0L,
-      latitude = element["latitude"].double() ?: 0.0,
-      longitude = element["longitude"].double() ?: 0.0,
+      fetchedAtMillis = element["fetchedAtMillis"].double()?.toLong() ?: return null,
+      latitude = element["latitude"].double() ?: return null,
+      longitude = element["longitude"].double() ?: return null,
       hourly = points,
       minutely = minutes,
+      zoneId = WeatherZones.validId(element["zoneId"].string()),
+      current = decodeCurrent(element["current"]),
+      hourlyPrecipitation = decodeAccumulation(element["hourlyPrecipitation"]),
+      minutelyPrecipitation = decodeAccumulation(element["minutelyPrecipitation"]),
+      minutelyPossiblyInterpolated = (element["minutelyPossiblyInterpolated"] as? JsonPrimitive)?.booleanOrNull,
     )
+  }
+
+  private fun encodeAccumulation(value: PrecipitationAccumulation): JsonObject = buildJsonObject {
+    value.durationMillis?.let { put("durationMillis", it) }
+    put("anchor", value.anchor.name)
+  }
+
+  private fun decodeAccumulation(element: JsonElement?): PrecipitationAccumulation? {
+    if (element !is JsonObject) return null
+    return PrecipitationAccumulation(
+      (element["durationMillis"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 },
+      AccumulationAnchor.entries.firstOrNull { it.name == element["anchor"].string() } ?: AccumulationAnchor.UNKNOWN,
+    )
+  }
+
+  private fun decodeCurrent(element: JsonElement?): ProviderCurrent? {
+    val timestamp = (element["t"] as? JsonPrimitive)?.longOrNull ?: return null
+    val temperature = element["temp"].double()?.takeIf { it.isFinite() }
+    val kind = WeatherKind.entries.firstOrNull { it.name == element["kind"].string() }
+    val rain = element["pr"].double()?.takeIf { it.isFinite() && it >= 0 }
+    if (temperature == null && kind == null && rain == null) return null
+    return runCatching { ProviderCurrent(
+      timestampMillis = timestamp,
+      temperatureC = temperature,
+      kind = kind,
+      precipitationMm = rain,
+      accumulationIntervalMillis = (element["intervalMillis"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 },
+      downloadedAtMillis = (element["downloadedAtMillis"] as? JsonPrimitive)?.longOrNull,
+      possiblyInterpolated = (element["possiblyInterpolated"] as? JsonPrimitive)?.booleanOrNull,
+    ) }.getOrNull()
   }
 
   private fun kotlinx.serialization.json.JsonObjectBuilder.putNullable(key: String, value: Double?) {
@@ -337,48 +406,90 @@ object WeatherSnapshotCodec {
  * Un file per posto nella cartella dei dati dell'app, piu' una copia in memoria: chi legge
  * spesso (la home) non paga il disco, chi osserva ([updates]) sa quando un posto e' cambiato.
  */
-class WeatherSnapshotStore(private val directory: File) {
+class WeatherSnapshotStore(
+  private val directory: File,
+  private val wipeGuard: DataWipeGuard? = null,
+  private val ioContext: CoroutineContext = Dispatchers.IO,
+) {
 
   private val memory = mutableMapOf<String, WeatherSnapshot>()
-  private val lock = Any()
+  private val lock = Mutex()
+  private val clearEpoch = AtomicLong()
+  private var diskReadable = true
+  private var revision = 0L
   private val updatesState = MutableStateFlow<Map<String, Long>>(emptyMap())
+  private val changesState = MutableStateFlow<Map<String, Long>>(emptyMap())
+  /** Content revision tokens; independent of source/download timestamps. */
+  val changes: StateFlow<Map<String, Long>> = changesState
 
   /** placeKey -> fetchedAtMillis dell'ultima istantanea scritta, per chi vuole reagire. */
   val updates: StateFlow<Map<String, Long>> = updatesState
 
   suspend fun read(placeKey: String): WeatherSnapshot? {
-    synchronized(lock) { memory[placeKey] }?.let { return it }
-    return withContext(Dispatchers.IO) {
-      val file = fileFor(placeKey)
-      if (!file.exists()) return@withContext null
-      val decoded = runCatching { WeatherSnapshotCodec.decode(file.readText()) }.getOrNull()
-      if (decoded != null) synchronized(lock) { memory[placeKey] = decoded }
-      decoded
+    val epoch = clearEpoch.get()
+    val generation = weatherWipeEpoch(wipeGuard)
+    return withContext(ioContext) {
+      val decoded = lock.withLock {
+        if (epoch != clearEpoch.get() || !diskReadable) return@withLock null
+        generation?.checkCurrent()
+        memory[placeKey] ?: runCatching {
+          WeatherSnapshotCodec.decode(fileFor(placeKey).readText())
+        }.getOrNull()?.takeIf { it.placeKey == placeKey }
+      }
+      // Wait for an in-progress wipe only AFTER disk IO, without holding the store lock.
+      suspend fun publish(): WeatherSnapshot? = lock.withLock {
+        currentCoroutineContext().ensureActive()
+        if (epoch != clearEpoch.get() || !diskReadable) return@withLock null
+        if (decoded != null) memory[placeKey] = decoded
+        decoded
+      }
+      if (generation == null) publish() else generation.guard.writeIfUnchanged(generation.observed) { publish() }
     }
   }
 
   suspend fun write(snapshot: WeatherSnapshot) {
-    synchronized(lock) { memory[snapshot.placeKey] = snapshot }
-    withContext(Dispatchers.IO) {
-      runCatching {
+    val epoch = clearEpoch.get()
+    val generation = weatherWipeEpoch(wipeGuard)
+    val encoded = WeatherSnapshotCodec.encode(snapshot)
+    withContext(ioContext) {
+      suspend fun commit() = lock.withLock {
+        currentCoroutineContext().ensureActive()
+        if (epoch != clearEpoch.get()) throw CancellationException("Snapshot store cleared")
+        check(diskReadable) { "Snapshot clear failed; refusing to repopulate" }
         directory.mkdirs()
         val target = fileFor(snapshot.placeKey)
-        val temp = File(directory, target.name + ".tmp")
-        temp.writeText(WeatherSnapshotCodec.encode(snapshot))
-        if (!temp.renameTo(target)) {
-          target.writeText(WeatherSnapshotCodec.encode(snapshot))
+        val temp = File.createTempFile(target.name, ".tmp", directory)
+        try {
+          temp.writeText(encoded)
+          currentCoroutineContext().ensureActive()
+          // Never truncate the last valid file when replacement fails.
+          Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+          memory[snapshot.placeKey] = snapshot
+          updatesState.value = updatesState.value + (snapshot.placeKey to snapshot.fetchedAtMillis)
+          changesState.value = changesState.value + (snapshot.placeKey to ++revision)
+        } finally {
           temp.delete()
         }
       }
+      if (generation == null) commit() else generation.write { commit() }
     }
-    updatesState.value = updatesState.value + (snapshot.placeKey to snapshot.fetchedAtMillis)
   }
 
   /** Dati e privacy: memoria e file, e chi osserva vede il vuoto. */
   suspend fun clear() {
-    synchronized(lock) { memory.clear() }
-    withContext(Dispatchers.IO) { runCatching { directory.deleteRecursively() } }
-    updatesState.value = emptyMap()
+    clearEpoch.incrementAndGet()
+    // Once invalidated, finish the local deletion even if the wipe caller is cancelled.
+    withContext(ioContext + NonCancellable) {
+      lock.withLock {
+        memory.clear()
+        updatesState.value = emptyMap()
+        changesState.value = emptyMap()
+        diskReadable = false
+        check(directory.deleteRecursively()) { "Could not clear snapshot directory" }
+        diskReadable = true
+      }
+    }
+    currentCoroutineContext().ensureActive()
   }
 
   private fun fileFor(placeKey: String): File = File(directory, "$placeKey.json")
@@ -409,6 +520,8 @@ data class RegisteredRound(
   val snapshot: WeatherSnapshot,
   /** I bundle grezzi del giro, con le PoP orarie che l'istantanea non conserva. */
   val fetches: List<ProviderFetch>,
+  /** Epoch of the originating refresh, captured before waiting or fetching. */
+  val originatingWipeGeneration: Long? = null,
 )
 
 class WeatherSnapshotRefresher(
@@ -422,7 +535,14 @@ class WeatherSnapshotRefresher(
    */
   private val onGpsRoundRegistered: suspend (RegisteredRound) -> Unit = {},
   private val clock: () -> Long = System::currentTimeMillis,
+  private val wipeGuard: DataWipeGuard? = null,
 ) {
+  // Preserve historical trailing-clock lambda call sites.
+  constructor(coordinator: RoundSource, store: WeatherSnapshotStore, clock: () -> Long) :
+    this(coordinator, store, {}, clock, null)
+  constructor(coordinator: RoundSource, store: WeatherSnapshotStore,
+    onGpsRoundRegistered: suspend (RegisteredRound) -> Unit, clock: () -> Long) :
+    this(coordinator, store, onGpsRoundRegistered, clock, null)
 
   /**
    * Un lucchetto per posto. La home e il ciclo in background possono chiedere lo stesso posto
@@ -466,26 +586,38 @@ class WeatherSnapshotRefresher(
     latitude: Double,
     longitude: Double,
     registerPredictions: Boolean? = null,
-  ): WeatherSnapshot = locks.computeIfAbsent(placeKey) { Mutex() }.withLock {
-    val now = clock()
-    val previous = store.read(placeKey)
-    val lastRegistration = previous?.predictionsRegisteredAtMillis
-    val register = registerPredictions ?: (lastRegistration == null || now - lastRegistration >= REGISTRATION_INTERVAL_MILLIS)
-    val round = coordinator.refresh(latitude, longitude, registerPredictions = register)
-    val fresh = WeatherSnapshot.from(placeKey, latitude, longitude, round, now).copy(
-      predictionsRegisteredAtMillis = if (register) now else lastRegistration,
-    )
-    // Niente risposte, niente scrittura: l'istantanea salvata resta quella buona. Si lancia invece
-    // di restituire null perche' i chiamanti sono gia' scritti per il fallimento, e perche' cosi'
-    // nemmeno `predictionsRegisteredAtMillis` avanza — su zero fetch non si e' seminato niente.
-    // (E il gancio del registratore non parte: un giro a vuoto non si iscrive.)
-    if (!round.producedAnything) throw EmptyRoundException(fresh.fetches)
-    val snapshot = fresh.carryingContextFrom(previous, now)
-    store.write(snapshot)
-    if (register && placeKey == WeatherSnapshot.GPS_KEY) {
-      runCatching { onGpsRoundRegistered(RegisteredRound(now, snapshot, round.fetches)) }
+  ): WeatherSnapshot = withWeatherWipeEpoch(wipeGuard) { generation ->
+    locks.computeIfAbsent(placeKey) { Mutex() }.withLock {
+      generation?.checkCurrent()
+      val now = clock()
+      val previous = store.read(placeKey)
+      val lastRegistration = previous?.predictionsRegisteredAtMillis
+      val register = registerPredictions ?: (lastRegistration == null || now - lastRegistration >= REGISTRATION_INTERVAL_MILLIS)
+      val round = coordinator.refresh(latitude, longitude, registerPredictions = register)
+      currentCoroutineContext().ensureActive()
+      generation?.checkCurrent()
+      val fresh = WeatherSnapshot.from(placeKey, latitude, longitude, round, now).copy(
+        predictionsRegisteredAtMillis = if (register) now else lastRegistration,
+      )
+      // Niente risposte, niente scrittura: l'istantanea salvata resta quella buona. Si lancia invece
+      // di restituire null perche' i chiamanti sono gia' scritti per il fallimento, e perche' cosi'
+      // nemmeno `predictionsRegisteredAtMillis` avanza — su zero fetch non si e' seminato niente.
+      // (E il gancio del registratore non parte: un giro a vuoto non si iscrive.)
+      if (!round.producedAnything) throw EmptyRoundException(fresh.fetches)
+      val snapshot = fresh.carryingContextFrom(previous, now)
+      store.write(snapshot)
+      if (register && placeKey == WeatherSnapshot.GPS_KEY) {
+        try {
+          generation?.checkCurrent()
+          // Outside the wipe mutex: registrar obtains it only for its final writes.
+          onGpsRoundRegistered(RegisteredRound(now, snapshot, round.fetches, generation?.observed))
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) { /* Registration failure must not discard a valid snapshot. */ }
+      }
+      generation?.checkCurrent()
+      snapshot
     }
-    snapshot
   }
 
   /**
@@ -523,4 +655,35 @@ class WeatherSnapshotRefresher(
      */
     const val CONTEXT_CARRY_MAX_AGE_MILLIS: Long = 3 * 3_600_000L
   }
+}
+
+/** Inherited by nested stages and repository async children; never renew an originating epoch. */
+internal class WeatherWipeEpoch(val guard: DataWipeGuard, val observed: Long) :
+  AbstractCoroutineContextElement(Key) {
+  companion object Key : CoroutineContext.Key<WeatherWipeEpoch>
+  fun checkCurrent() {
+    if (guard.generation() != observed) throw CancellationException("Weather request invalidated by data wipe")
+  }
+  suspend fun <T : Any> write(block: suspend () -> T): T {
+    currentCoroutineContext().ensureActive()
+    return guard.writeIfUnchanged(observed) {
+      currentCoroutineContext().ensureActive()
+      block()
+    } ?: throw CancellationException("Weather request invalidated by data wipe")
+  }
+}
+
+internal suspend fun weatherWipeEpoch(guard: DataWipeGuard?): WeatherWipeEpoch? {
+  val inherited = currentCoroutineContext()[WeatherWipeEpoch]
+  if (inherited != null) {
+    require(guard == null || inherited.guard === guard) { "Weather stages must share DataWipeGuard" }
+    return inherited
+  }
+  return guard?.let { WeatherWipeEpoch(it, it.generation()) }
+}
+
+internal suspend fun <T> withWeatherWipeEpoch(guard: DataWipeGuard?, block: suspend (WeatherWipeEpoch?) -> T): T {
+  val epoch = weatherWipeEpoch(guard)
+  epoch?.checkCurrent()
+  return if (epoch == null) block(null) else withContext(epoch) { block(epoch) }
 }

@@ -1,5 +1,7 @@
 package dev.pampa.fluidweather.feature.home
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -47,7 +49,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -56,18 +57,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.antigravity.fluidengine.foundation.ThemeMode
@@ -86,6 +82,7 @@ import dev.antigravity.fluidengine.ui.fluid.LocalFluidGlassModalHostState
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import dev.antigravity.fluidengine.ui.fluid.fluidGlassQualityScrollConnection
 import dev.antigravity.fluidengine.ui.fluid.rememberFluidGlassModalHostState
+import dev.antigravity.fluidengine.ui.fluid.fluidGlassModalObscured
 import dev.antigravity.fluidengine.ui.haptics.FluidHapticEvent
 import dev.antigravity.fluidengine.ui.haptics.rememberFluidHaptics
 import dev.antigravity.fluidengine.ui.tutorial.fluidTutorialAnchor
@@ -104,7 +101,6 @@ import dev.pampa.fluidweather.core.model.GlassLevel
 import dev.pampa.fluidweather.core.model.GlassPolicy
 import dev.pampa.fluidweather.core.model.Place
 import dev.pampa.fluidweather.core.model.PlaceCycle
-import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.ui.GlassTile
 import dev.pampa.fluidweather.core.ui.GridReorder
 import dev.pampa.fluidweather.core.ui.HomeWidget
@@ -119,17 +115,14 @@ import dev.pampa.fluidweather.core.ui.toGlassCeiling
 import dev.pampa.fluidweather.core.ui.toSceneQuality
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
-import dev.pampa.fluidweather.strings.dataAgeLabel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import dev.pampa.fluidweather.strings.R
 import androidx.compose.ui.res.stringResource
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
-import dev.pampa.fluidweather.strings.labelRes
 import dev.pampa.fluidweather.strings.windowLabelRes
 
 /**
- * La home: cielo a tutto schermo, testata gigante che collassa con parallasse, griglia di
+ * La home: cielo a tutto schermo, testata compatta con risposta immediata, griglia di
  * tessere in vetro riordinabile a pressione lunga, barra flottante a tre isole. Qui comanda
  * il cielo: il sottoalbero e' sempre in tema scuro, qualunque cosa dica il sistema.
  */
@@ -140,6 +133,8 @@ fun HomeScreen(
   onOpenBenchmark: () -> Unit,
   onOpenSettings: () -> Unit,
   onOpenReport: () -> Unit,
+  onOpenRoutines: () -> Unit,
+  onOpenAiSettings: () -> Unit,
   /** Il tasto dell'assistente nella barra (fase 19); null = niente tasto. */
   assistant: HomeAssistantBar? = null,
   /** Una pagina nera di widget chiesta da fuori (l'assistente, un chip): si apre e si consuma. */
@@ -164,7 +159,7 @@ fun HomeScreen(
   val selectedId by deps.selectedPlaceStore.selectedId.collectAsState(initial = Place.GPS_ID)
   val selectedPlace = places.firstOrNull { it.id == selectedId } ?: Place.gps()
 
-  val home = rememberHomeState(deps, selectedPlace)
+  val home = rememberHomeState(deps, selectedPlace, active = !coveredByPage)
   val state by home.state
   val haptics = rememberFluidHaptics()
 
@@ -183,7 +178,7 @@ fun HomeScreen(
 
   FluidTheme(
     settings = remember { EngineSettings(themeMode = ThemeMode.DARK, dynamicColorEnabled = false) },
-    brand = WeatherAccent.presetFor(state.kind, state.phase),
+    brand = WeatherAccent.presetFor(state.weatherBrief?.current?.kind, state.phase),
   ) {
     HomeShell(
       state = state,
@@ -195,6 +190,8 @@ fun HomeScreen(
       onOpenBenchmark = onOpenBenchmark,
       onOpenSettings = onOpenSettings,
       onOpenReport = onOpenReport,
+      onOpenRoutines = onOpenRoutines,
+      onOpenAiSettings = onOpenAiSettings,
       assistant = assistant,
       onRefresh = home.refresh,
       requestedWidget = requestedWidget,
@@ -216,6 +213,8 @@ private fun HomeShell(
   onOpenBenchmark: () -> Unit,
   onOpenSettings: () -> Unit,
   onOpenReport: () -> Unit,
+  onOpenRoutines: () -> Unit,
+  onOpenAiSettings: () -> Unit,
   assistant: HomeAssistantBar?,
   onRefresh: () -> Unit,
   requestedWidget: HomeWidget?,
@@ -257,22 +256,9 @@ private fun HomeShell(
     if (!state.refreshing) overscroll.endRefresh()
   }
 
-  // La testata ha due case e nessun indirizzo in mezzo: il fling finisce sempre il viaggio.
+  // Free scrolling keeps every line reachable at 200% font scale.
   val collapse = remember { HeaderCollapseState() }
   val platformFling = ScrollableDefaults.flingBehavior()
-  val snapFling = remember(platformFling, reducedMotion, gridState, collapse) {
-    HeaderSnapFlingBehavior(
-      delegate = platformFling,
-      animated = !reducedMotion,
-      snapDeltaPx = {
-        HeaderCollapse.snapDelta(
-          firstVisibleIndex = gridState.firstVisibleItemIndex,
-          scrolledPx = gridState.firstVisibleItemScrollOffset.toFloat(),
-          travelPx = collapse.travelPx,
-        )
-      },
-    )
-  }
 
   // L'ordine: quello salvato, con le modifiche in corso sopra; si persiste al rilascio.
   val storedOrder by deps.layoutStore.order.collectAsState(initial = emptyList())
@@ -290,6 +276,7 @@ private fun HomeShell(
 
   // La pillola e il suo pannello: il pannello nasce dal rettangolo della pillola.
   var locationOpen by remember { mutableStateOf(false) }
+  var summaryOpen by remember { mutableStateOf(false) }
   var pillBounds by remember { mutableStateOf<Rect?>(null) }
   val modalHost = rememberFluidGlassModalHostState()
 
@@ -306,9 +293,12 @@ private fun HomeShell(
 
   Box(Modifier.fillMaxSize()) {
     WeatherScene(
-      state = SkyState(state.phase, state.kind, state.cloudCover, state.latitude, state.longitude),
+      state = SkyState(
+        state.phase, state.weatherBrief?.current?.kind, state.cloudCover, state.latitude, state.longitude,
+        precipitation = state.weatherBrief?.precipitation?.state, assessmentKnown = true,
+      ),
       quality = glassLevel.toSceneQuality(),
-      running = !covered,
+      running = !covered && gridState.firstVisibleItemIndex == 0,
       modifier = Modifier
         .fillMaxSize()
         .glassBackdropSource(canvasBackdrop, frozen = scrolling),
@@ -321,10 +311,12 @@ private fun HomeShell(
     ) {
       HomeGrid(
         state = state,
+        onOpenRoutines = onOpenRoutines,
+        onOpenSummary = { summaryOpen = true },
         gridState = gridState,
         overscroll = overscroll,
         collapse = collapse,
-        flingBehavior = snapFling,
+        flingBehavior = platformFling,
         order = order,
         quality = glassQuality,
         drag = drag,
@@ -339,6 +331,7 @@ private fun HomeShell(
         onOpenWidget = { selectedWidget = it },
         modifier = Modifier
           .fillMaxSize()
+          .fluidGlassModalObscured()
           .glassBackdropSource(contentBackdrop, frozen = scrolling),
       )
 
@@ -347,9 +340,21 @@ private fun HomeShell(
         gridState = gridState,
         collapse = collapse,
         backdrop = chromeBackdrop,
-        onTap = { scope.launch { gridState.animateScrollToItem(0) } },
+        onTap = { scope.launch { if (reducedMotion) gridState.scrollToItem(0) else gridState.animateScrollToItem(0) } },
         hidden = assistant?.active == true,
-        modifier = Modifier.align(Alignment.TopCenter),
+        modifier = Modifier.align(Alignment.TopCenter).fluidGlassModalObscured(),
+      )
+
+      HomeSummarySheet(
+        visible = summaryOpen,
+        brief = state.weatherBrief?.takeIf { it.precipitation.place?.id == selectedPlace.id },
+        placeLabel = if (selectedPlace.isGps) state.locationName ?: stringResource(R.string.place_my_location) else selectedPlace.name,
+        gateway = deps.weatherSummaryGateway,
+        configured = assistant?.enabled == true,
+        generation = deps.dataGeneration,
+        onDismiss = { summaryOpen = false },
+        onOpenAiSettings = onOpenAiSettings,
+        active = !coveredByPage && selectedWidget == null && !locationOpen && assistant?.active != true,
       )
 
       WidgetSheetHost(
@@ -382,6 +387,7 @@ private fun HomeShell(
         },
         modifier = Modifier
           .align(Alignment.BottomCenter)
+          .fluidGlassModalObscured()
           .navigationBarsPadding()
           .padding(bottom = 10.dp),
       )
@@ -446,10 +452,13 @@ private fun HomeShell(
 
 private const val HEADER_KEY = "header"
 private const val ALERT_KEY = "alert"
+private const val ROUTINES_KEY = "routines"
 
 @Composable
 private fun HomeGrid(
   state: HomeUiState,
+  onOpenRoutines: () -> Unit,
+  onOpenSummary: () -> Unit,
   gridState: LazyGridState,
   collapse: HeaderCollapseState,
   flingBehavior: FlingBehavior,
@@ -524,7 +533,10 @@ private fun HomeGrid(
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     item(key = HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) {
-      HomeHeader(state = state, gridState = gridState, collapse = collapse)
+      HomeHeader(state = state, gridState = gridState, collapse = collapse, onOpenSummary = onOpenSummary)
+    }
+    item(key = ROUTINES_KEY, span = { GridItemSpan(maxLineSpan) }) {
+      HomeRoutineWindows(state.weatherBrief?.routines.orEmpty(), state.routineReadError, onOpenRoutines)
     }
 
     val verdict = state.verdict.takeIf { state.barometerApplies }
@@ -548,7 +560,7 @@ private fun HomeGrid(
         onClickLabel = stringResource(R.string.a11y_open_widget, stringResource(widget.titleRes)),
         modifier = anchor
           .zIndex(if (dragging) 1f else 0f)
-          .then(if (dragging) Modifier else Modifier.animateItem())
+          .then(if (dragging || LocalFluidMotionPolicy.current.reducedMotion) Modifier else Modifier.animateItem())
           .graphicsLayer {
             if (dragging) {
               val bounds = drag.boundsOf(id)
@@ -599,78 +611,14 @@ private fun widgetIcon(widget: HomeWidget) = when (widget) {
 // ------------------------------------------------------------------------------------ testata
 
 @Composable
-private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: HeaderCollapseState) {
-  val shadow = Shadow(color = Color.Black.copy(alpha = 0.35f), blurRadius = 14f)
-  // In orizzontale (tablet, 2026-09-26) l'altezza e' poca e la testata da telefono ne prendeva
-  // quasi meta': un po' meno aria sopra e una temperatura un filo piu' piccola, e le tessere
-  // cominciano dove l'occhio le cerca.
-  val window = LocalWindowInfo.current.containerSize
-  val landscape = window.width > window.height
-  Column(
-    horizontalAlignment = Alignment.CenterHorizontally,
-    modifier = Modifier
-      .fillMaxWidth()
-      .statusBarsPadding()
-      .padding(top = if (landscape) 14.dp else 34.dp, bottom = 18.dp)
-      // La testata misura da sola il proprio viaggio: e' la sua altezza.
-      .onSizeChanged { collapse.travelPx = it.height.toFloat() }
-      .graphicsLayer {
-        // Parallasse: la testata scorre a meta' velocita' della pagina e sfuma prima di
-        // toccare la barra compatta. Legge lo stato QUI, cosi' invalida solo il disegno.
-        val travel = collapse.travelPx
-        val offset = minOf(collapse.scrolledPx(gridState), travel)
-        val progress = HeaderCollapse.progress(offset, travel)
-        translationY = offset * 0.45f
-        alpha = 1f - progress * 1.15f
-      },
-  ) {
-    val units = rememberUnitFormatter()
-    Text(
-      text = state.locationName ?: if (state.hasLocation) stringResource(R.string.place_my_location) else stringResource(R.string.place_unknown),
-      style = MaterialTheme.typography.titleLarge.copy(shadow = shadow),
-      color = Color.White,
-    )
-    Text(
-      text = state.temperatureC?.let { units.degrees(it) } ?: "—",
-      fontSize = if (landscape) 88.sp else 108.sp,
-      fontWeight = FontWeight.ExtraLight,
-      style = MaterialTheme.typography.displayLarge.copy(shadow = shadow),
-      color = Color.White,
-    )
-    Text(
-      text = kindLabel(state.kind) ?: if (state.loading) "…" else "",
-      style = MaterialTheme.typography.titleMedium.copy(shadow = shadow),
-      color = Color.White.copy(alpha = 0.92f),
-      textAlign = TextAlign.Center,
-    )
-    if (state.maxC != null && state.minC != null) {
-      Text(
-        text = stringResource(R.string.home_max_min, units.degrees(state.maxC), units.degrees(state.minC)),
-        style = MaterialTheme.typography.titleSmall.copy(shadow = shadow),
-        color = Color.White.copy(alpha = 0.9f),
-        modifier = Modifier.padding(top = 2.dp),
-      )
-    }
-    // L'eta' dei dati, una riga sola e solo qui: le tessere non si marcano (decisione dell'utente).
-    // `dataAtMillis` e' fisso ma "adesso" no, quindi senza un orologio la riga si congelerebbe su
-    // "aggiornato 2 h fa" per sempre. Il battito e' della testata: esce di composizione con lei.
-    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-      while (true) {
-        delay(60_000L)
-        nowMillis = System.currentTimeMillis()
-      }
-    }
-    val age = dataAgeLabel(LocalContext.current.resources, state.dataAtMillis, nowMillis, state.loading)
-    if (age != null) {
-      Text(
-        text = age,
-        style = MaterialTheme.typography.titleSmall.copy(shadow = shadow),
-        color = Color.White.copy(alpha = 0.75f),
-        modifier = Modifier.padding(top = 6.dp),
-      )
-    }
-  }
+private fun HomeHeader(state: HomeUiState, gridState: LazyGridState, collapse: HeaderCollapseState, onOpenSummary: () -> Unit) {
+  HomeRainOverview(
+    brief = state.weatherBrief,
+    onOpenSummary = onOpenSummary,
+    locationName = state.locationName ?: stringResource(if (state.hasLocation) R.string.place_my_location else R.string.place_unknown),
+    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(top = 12.dp, bottom = 6.dp)
+      .onSizeChanged { collapse.travelPx = it.height.toFloat() },
+  )
 }
 
 /**
@@ -695,8 +643,8 @@ private fun CompactHeader(
   Box(modifier = modifier.statusBarsPadding().padding(top = 6.dp)) {
     AnimatedVisibility(
       visible = collapsed && !hidden,
-      enter = fadeIn() + slideInVertically { -it / 2 },
-      exit = fadeOut() + slideOutVertically { -it / 2 },
+      enter = if (LocalFluidMotionPolicy.current.reducedMotion) EnterTransition.None else fadeIn() + slideInVertically { -it / 2 },
+      exit = if (LocalFluidMotionPolicy.current.reducedMotion) ExitTransition.None else fadeOut() + slideOutVertically { -it / 2 },
     ) {
       val units = rememberUnitFormatter()
       FluidGlassButton(
@@ -704,7 +652,7 @@ private fun CompactHeader(
         // Fahrenheit selezionato mostrava i Celsius e tagliava i decimali verso lo zero.
         text = buildString {
           append(state.locationName ?: stringResource(R.string.place_my_location))
-          state.temperatureC?.let { append("  ·  ${units.degrees(it)}") }
+          state.weatherBrief?.current?.temperatureC?.let { append("  ·  ${units.degrees(it)}") }
         },
         onClick = onTap,
         backdrop = backdrop,
@@ -746,9 +694,6 @@ private fun BarometerAlertRow(verdict: NowcastVerdict) {
   }
 }
 
-@Composable
-private fun kindLabel(kind: WeatherKind?): String? = kind?.labelRes()?.let { stringResource(it) }
-
 // ------------------------------------------------------------------------------ trascinamento
 
 /** Il guscio dei gesti attorno a [GridReorder]: pointer nello spazio della griglia. */
@@ -762,7 +707,7 @@ private class GridDragController(private val gridState: LazyGridState) {
   private fun widgetCells(): List<GridReorder.CellBounds> =
     gridState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
       val key = info.key as? String ?: return@mapNotNull null
-      if (key == HEADER_KEY || key == ALERT_KEY) return@mapNotNull null
+      if (key == HEADER_KEY || key == ALERT_KEY || key == ROUTINES_KEY) return@mapNotNull null
       GridReorder.CellBounds(
         key = key,
         left = info.offset.x.toFloat(),

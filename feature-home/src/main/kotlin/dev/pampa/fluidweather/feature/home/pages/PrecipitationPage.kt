@@ -1,133 +1,123 @@
 package dev.pampa.fluidweather.feature.home.pages
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import dev.pampa.fluidweather.core.model.FusionVariables
-import dev.pampa.fluidweather.core.ui.Charts
-import dev.pampa.fluidweather.core.ui.PageCharts
-import dev.pampa.fluidweather.feature.home.HomeUiState
-import java.time.format.DateTimeFormatter
-import java.util.Locale
-import dev.pampa.fluidweather.strings.R
-import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import dev.pampa.fluidweather.core.model.WeatherZones
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
+import dev.pampa.fluidweather.feature.home.*
+import dev.pampa.fluidweather.strings.R
+import dev.pampa.fluidweather.strings.accessibilitySampleTime
+import java.time.Instant
+import java.time.ZoneId
 
-private val HourColumn = 26.dp
-
-/**
- * La pagina delle precipitazioni: le prossime sei ore (col barometro accanto ai provider), la
- * probabilita' ora per ora su tutto l'orizzonte in una striscia scorrevole, e l'accumulo atteso
- * giorno per giorno.
- */
+/** Shared present evidence remains reachable even when hourly forecast details are absent. */
 @Composable
-internal fun PrecipitationPage(state: HomeUiState) {
+fun PrecipitationPage(state: HomeUiState) {
+  HomeRainOverview(state.weatherBrief, state.locationName ?: stringResource(R.string.summary_place_unknown))
+  PrecipitationForecastSamples(state)
+}
+
+@Composable
+internal fun PrecipitationForecastSamples(state: HomeUiState, compact: Boolean = false) {
   val now = System.currentTimeMillis()
-  val units = rememberUnitFormatter()
-  val upcoming = state.fusedHours.filter { it.timestampMillis >= now }
+  val start = now - Math.floorMod(now, ForecastRainSamples.HOUR) + ForecastRainSamples.HOUR
+  val upcoming = state.fusedHours.filter { it.timestampMillis >= start }
+  val zone = WeatherZones.resolve(state.weatherBrief?.precipitation?.place?.zoneId, null, ZoneId.systemDefault()).zoneId
+  val locale = LocalConfiguration.current.locales[0]
+  val next6 = ForecastRainSamples.slots(upcoming, start, start + 6 * ForecastRainSamples.HOUR)
+  PageSection(stringResource(R.string.precip_next_6h))
+  SampleSum(next6)
+  SampleGraph(next6, zone)
+  if (compact) return
+
+  // Diagnostics retain the original model probabilities; never substitute them for shared rain.
+  state.verdict?.let { verdict ->
+    PageSection(stringResource(R.string.accessibility_diagnostic))
+    verdict.windows.forEach { window ->
+      StatRow(windowLabel(window.window), "${(window.probability * 100).toInt()}%",
+        stringResource(R.string.precip_local_barometer))
+    }
+    PageNote(stringResource(R.string.precip_windows_note))
+  }
   if (upcoming.isEmpty()) {
     PageNote(stringResource(R.string.common_waiting_providers))
     return
   }
-
-  PageSection(stringResource(R.string.precip_next_6h))
-  val next6 = upcoming.take(6)
-  val pops6 = next6.map { it.values[FusionVariables.PRECIP_PROBABILITY]?.value ?: 0.0 }
-  val mm6 = next6.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 }
-  BigStat(if (mm6 >= 0.1) "~" + units.precipitationValue(mm6) else "0", units.precipitationSymbol(), stringResource(R.string.precip_expected_6h))
-  Spacer(Modifier.height(8.dp))
-  Charts.ProbabilityBars(
-    percentages = pops6,
-    color = PageBlue,
-    modifier = Modifier
-      .fillMaxWidth()
-      .height(60.dp),
-  )
-  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-    next6.forEach { hour ->
-      Text(fmtHour(hour.timestampMillis), style = MaterialTheme.typography.labelSmall, color = Faint)
-    }
-  }
-  val verdict = state.verdict
-  if (verdict != null) {
-    Spacer(Modifier.height(6.dp))
-    verdict.windows.forEach { window ->
-      StatRow(windowLabel(window.window), "${(window.probability * 100).toInt()}%", stringResource(R.string.precip_local_barometer))
-    }
-    PageNote(stringResource(R.string.precip_windows_note))
-  }
-
+  val end = upcoming.maxOf { it.timestampMillis } + ForecastRainSamples.HOUR
+  val all = ForecastRainSamples.slots(upcoming, start, end)
   PageSection(stringResource(R.string.precip_hourly_title))
-  val pops = upcoming.map { it.values[FusionVariables.PRECIP_PROBABILITY]?.value ?: 0.0 }
-  val dayFormatter = DateTimeFormatter.ofPattern("EEE d", Locale.getDefault())
-  Column(Modifier.horizontalScroll(rememberScrollState())) {
-    PageCharts.Bars(
-      values = pops,
-      color = PageBlue,
-      maxValue = 100.0,
-      modifier = Modifier
-        .width(HourColumn * upcoming.size)
-        .height(70.dp),
-    )
-    Row {
-      upcoming.forEach { hour ->
-        Column(Modifier.width(HourColumn), horizontalAlignment = Alignment.CenterHorizontally) {
-          Text(
-            if (hourOfDay(hour.timestampMillis) % 3 == 0) fmtHour(hour.timestampMillis) else " ",
-            style = MaterialTheme.typography.labelSmall,
-            color = Faint,
-          )
-        }
-      }
-    }
-    Row {
-      upcoming.forEach { hour ->
-        Column(Modifier.width(HourColumn)) {
-          if (hourOfDay(hour.timestampMillis) == 0 || hour === upcoming.first()) {
-            Text(
-              dayFormatter.format(localDate(hour.timestampMillis)).replaceFirstChar { it.uppercase() },
-              style = MaterialTheme.typography.labelSmall,
-              color = Dim,
-              maxLines = 1,
-              softWrap = false,
-            )
-          }
-        }
-      }
-    }
+  SampleGraph(all, zone)
+  val units = rememberUnitFormatter()
+  all.forEach { slot ->
+    Text(stringResource(R.string.accessibility_amount_sample,
+      accessibilitySampleTime(slot.at, zone, locale),
+      slot.amount?.let { units.precipitation(it) } ?: stringResource(R.string.home_rain_timeline_unknown)),
+      style = MaterialTheme.typography.bodySmall)
   }
-  Text(
-    stringResource(R.string.precip_scroll_note, upcoming.size),
-    style = MaterialTheme.typography.bodySmall,
-    color = Faint,
-  )
-
   PageSection(stringResource(R.string.precip_daily_title))
-  val byDay = upcoming.groupBy { localDate(it.timestampMillis) }.toSortedMap()
-  var total = 0.0
-  byDay.forEach { (date, hours) ->
-    val mm = hours.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 }
-    val popMax = hours.mapNotNull { it.values[FusionVariables.PRECIP_PROBABILITY]?.value }.maxOrNull()
-    total += mm
-    StatRow(
-      fmtDate(date),
-      if (mm >= 0.05) units.precipitation(mm) else "—",
-      popMax?.let { stringResource(R.string.precip_max_pct, it.toInt()) },
-    )
+  all.groupBy { Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate() }.toSortedMap().forEach { (day, slots) ->
+    Text(dev.pampa.fluidweather.strings.TimeFormats.longDate(day, locale), style = MaterialTheme.typography.titleSmall)
+    SampleSum(slots)
+    val available = slots.mapNotNull { it.probability }
+    Text(stringResource(R.string.accessibility_available_max,
+      available.maxOrNull()?.let { "${it.toInt()}%" } ?: stringResource(R.string.home_rain_timeline_unknown),
+      available.size, slots.size), style = MaterialTheme.typography.bodySmall)
   }
-  StatRow(stringResource(R.string.precip_total), units.precipitation(total), pluralStringResource(R.plurals.common_days_count, byDay.size, byDay.size))
+  PageSection(stringResource(R.string.precip_total))
+  SampleSum(all)
   PageNote(stringResource(R.string.precip_method_note))
+}
+
+@Composable
+private fun SampleSum(slots: List<ForecastRainSlot>) {
+  val sum = ForecastRainSamples.sum(slots)
+  val units = rememberUnitFormatter()
+  val value = sum.value
+  PageNote(if (value == null) stringResource(R.string.accessibility_sample_unknown, sum.positions)
+    else stringResource(R.string.accessibility_sample_sum, units.precipitation(value), sum.available, sum.positions))
+}
+
+/** Elapsed-time x positions; unknown slots are crossed, true zero has a baseline mark. */
+@Composable
+private fun SampleGraph(slots: List<ForecastRainSlot>, zone: ZoneId) {
+  if (slots.isEmpty()) return
+  val locale = LocalConfiguration.current.locales[0]
+  val unknown = stringResource(R.string.home_rain_timeline_unknown)
+  val labels = slots.map { slot -> stringResource(R.string.accessibility_probability_sample,
+    accessibilitySampleTime(slot.at, zone, locale), slot.probability?.let { "${it.toInt()}%" } ?: unknown) }
+  val colors = MaterialTheme.colorScheme
+  val width = 80.dp * LocalDensity.current.fontScale *
+    ((slots.last().at - slots.first().at).toFloat() / ForecastRainSamples.HOUR + 1f)
+  Column(Modifier.horizontalScroll(rememberScrollState())) {
+    Canvas(Modifier.width(width).height(70.dp).semantics { contentDescription = labels.joinToString("; ") }) {
+      val span = (slots.last().at - slots.first().at + ForecastRainSamples.HOUR).toFloat()
+      val cell = ForecastRainSamples.HOUR / span * size.width
+      slots.forEach { slot ->
+        val x = (slot.at - slots.first().at) / span * size.width
+        val p = slot.probability
+        if (p == null) {
+          drawLine(colors.onSurfaceVariant, Offset(x, size.height), Offset(x + cell * 0.6f, 0f), 2.dp.toPx())
+        } else {
+          val height = (size.height * p.toFloat() / 100f).coerceAtLeast(2.dp.toPx())
+          drawRect(colors.primary, Offset(x, size.height - height), Size(cell * 0.6f, height))
+        }
+      }
+    }
+  }
+  // Text gives each slot its exact clock, units and unknown/zero distinction without tiny columns.
+  labels.forEach { Text(it, style = MaterialTheme.typography.labelSmall) }
 }

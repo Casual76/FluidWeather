@@ -56,6 +56,7 @@ import dev.pampa.fluidweather.feature.settings.OnboardingScreen
 import dev.pampa.fluidweather.feature.settings.ProvidersDependencies
 import dev.pampa.fluidweather.feature.settings.ProvidersScreen
 import dev.pampa.fluidweather.feature.settings.SettingsScreen
+import dev.pampa.fluidweather.feature.settings.RoutineWindowsScreen
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalLocale
@@ -74,6 +75,7 @@ private object Routes {
   const val Home = "home"
   const val Radar = "radar"
   const val Settings = "settings"
+  const val Routines = "settings/routines"
   const val Engine = "settings/engine"
   const val Providers = "settings/providers"
   const val Ai = "settings/ai"
@@ -175,6 +177,10 @@ private fun FluidWeatherRoutes(
         HomeDependencies(
           snapshotRefresher = graph.snapshotRefresher,
           snapshotStore = graph.weatherSnapshotStore,
+          weatherBriefService = graph.weatherBriefService,
+          weatherSummaryGateway = graph.weatherSummaryService,
+          routineWindowStore = graph.routineWindowStore,
+          dataGeneration = graph.wipeGuard::generation,
           samplingSettings = graph.samplingSettingsStore,
           locationProvider = graph.locationProvider,
           pressureRepository = graph.pressureRepository,
@@ -253,6 +259,8 @@ private fun FluidWeatherRoutes(
         onOpenRadar = { navController.navigate(Routes.Radar) },
         onOpenBenchmark = { benchmarkOpen = true },
         onOpenSettings = { navController.navigate(Routes.Settings) },
+        onOpenRoutines = { navController.navigate(Routes.Routines) },
+        onOpenAiSettings = { navController.navigate(Routes.Ai) },
         onOpenReport = { reportOpen = true },
         assistant = HomeAssistantBar(
           enabled = assistantEnabled,
@@ -306,6 +314,7 @@ private fun FluidWeatherRoutes(
     composable(Routes.Settings) {
       SettingsScreen(
         onBack = { navController.popBackStack() },
+        onOpenRoutines = { navController.navigate(Routes.Routines) },
         onOpenEngine = { navController.navigate(Routes.Engine) },
         onOpenProviders = { navController.navigate(Routes.Providers) },
         onOpenAi = { navController.navigate(Routes.Ai) },
@@ -316,6 +325,9 @@ private fun FluidWeatherRoutes(
         onOpenData = { navController.navigate(Routes.Data) },
         onOpenAbout = { navController.navigate(Routes.About) },
       )
+    }
+    composable(Routes.Routines) {
+      RoutineWindowsScreen(store = graph.routineWindowStore, onBack = { navController.popBackStack() })
     }
     composable(Routes.Engine) {
       val deps = remember(graph) {

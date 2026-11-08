@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="accessibility_minimum">Minimum %1$s</string>
+  <string name="accessibility_maximum">Maximum %1$s</string>
+  <string name="accessibility_short_interval">Less than one minute around %1$s</string>
+  <string name="accessibility_interval">%1$s to %2$s</string>
+  <string name="accessibility_model_sample">Hourly MODEL sample valid at %1$s; forecast, not an observation. Following details use this sample.</string>
+  <string name="accessibility_barometer_issued">Separate barometer forecast diagnostic. Issue time: %1$s</string>
+  <string name="accessibility_issue_unknown">unknown</string>
+  <string name="accessibility_sample_sum">Available MODEL sample sum: %1$s (%2$d of %3$d positions). Interval duration and complete coverage are not established; not a six-hour or daily total.</string>
+  <string name="accessibility_sample_unknown">MODEL sample sum unavailable (%1$d positions). Missing values do not establish dry weather.</string>
+  <string name="accessibility_probability_sample">%1$s - MODEL probability: %2$s</string>
+  <string name="accessibility_amount_sample">%1$s - MODEL amount sample: %2$s</string>
+  <string name="accessibility_resolution">Source time resolution: %1$s</string>
+  <string name="accessibility_resolution_unknown">Source time resolution unknown</string>
+  <string name="accessibility_diagnostic">Separate barometer forecast diagnostic; issue time unknown</string>
+  <string name="accessibility_hourly_model">Hourly MODEL sample</string>
+  <string name="accessibility_available_max">Highest available MODEL probability sample: %1$s (%2$d of %3$d positions); not a complete daily maximum.</string>
+</resources>

@@ -8,7 +8,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -51,7 +51,6 @@ import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
-import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.learning.NowcastExplanation
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
@@ -59,7 +58,16 @@ import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 import java.util.Locale
-import kotlin.math.abs
+import dev.pampa.fluidweather.core.model.GeoPoint
+import dev.pampa.fluidweather.core.model.WeatherBrief
+import dev.pampa.fluidweather.core.data.RoutineWindowStore
+import kotlinx.coroutines.flow.combine
+import dev.pampa.fluidweather.core.weather.WeatherBriefService
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -94,6 +102,10 @@ class HomeDependencies(
    * home fa come fuori casa — niente nowcast, la pressione dai provider.
    */
   val barometerAvailable: Boolean = true,
+  val weatherBriefService: WeatherBriefService,
+  val weatherSummaryGateway: dev.pampa.fluidweather.core.model.WeatherSummaryGateway,
+  val dataGeneration: () -> Long,
+  val routineWindowStore: RoutineWindowStore,
 )
 
 data class HomeUiState(
@@ -151,6 +163,8 @@ data class HomeUiState(
   val nowcastExplanation: NowcastExplanation? = null,
   val dayLengthTodayMillis: Long? = null,
   val dayLengthYesterdayMillis: Long? = null,
+  val weatherBrief: WeatherBrief? = null,
+  val routineReadError: Boolean = false,
 )
 
 /**
@@ -168,9 +182,6 @@ private const val SILENT_FIX_TIMEOUT_MILLIS = 5_000L
 /** La cadenza di ripiego quando le impostazioni non rispondono: la bilanciata. */
 private const val DEFAULT_CADENCE_MILLIS = 15 * 60_000L
 
-/** Oltre questa distanza l'istantanea non parla piu' di dove sei: e' la stessa del refresher. */
-private const val NEARBY_KM = 3.0
-
 /**
  * Il caricamento della home: posizione -> l'ISTANTANEA del ciclo in background, subito -> il
  * giro dei provider solo se l'istantanea e' piu' vecchia della cadenza del barometro -> verdetto
@@ -187,192 +198,291 @@ class HomeStateHandle(
 )
 
 @Composable
-fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
+fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = true): HomeStateHandle {
   val context = LocalContext.current
-  // Uno stato che **sopravvive** al cambio di localita'. Con `produceState` il valore iniziale
-  // veniva riapplicato a ogni cambio di chiave: la home si svuotava — testata "—", tessere in
-  // attesa — per tutto il caricamento, che col GPS puo' durare dieci secondi. Tenendo i dati di
-  // prima e dicendo solo "sto caricando", il cambio di posto e' immediato.
-  val holder = remember { mutableStateOf(HomeUiState(
-      phase = phaseFromClock(),
-      sensorAvailable = deps.barometerAvailable,
-      // Anche prima del primo caricamento, e quando la posizione non arriva mai: senza sensore la
-      // tessera del nowcast non deve comparire nemmeno per un fotogramma.
-      barometerApplies = deps.barometerAvailable,
-    )) }
+  // Different locations have different holders: no frame can pair a new name with old weather.
+  val holder = remember(deps, place) { mutableStateOf(HomeUiState(
+    phase = phaseFromClock(), locationName = place.name.takeIf { it.isNotBlank() },
+    latitude = homePoint(place.latitude, place.longitude)?.latitude,
+    longitude = homePoint(place.latitude, place.longitude)?.longitude,
+    sensorAvailable = deps.barometerAvailable,
+    barometerApplies = place.isGps && deps.barometerAvailable,
+  )) }
+  var briefSnapshot by remember(deps, place) { mutableStateOf<WeatherSnapshot?>(null) }
+  var invalidatedBefore by remember(deps) { mutableStateOf<Long?>(null) }
+  var wiped by remember(deps, place) { mutableStateOf(false) }
+  val key = if (place.isGps) WeatherSnapshot.GPS_KEY else WeatherSnapshot.keyFor(place.id)
   val lifecycle = LocalLifecycleOwner.current.lifecycle
   // Cresce a ogni pull to refresh, ed e' la chiave che fa ripartire il caricamento da capo.
   var reloads by remember { mutableIntStateOf(0) }
 
-  LaunchedEffect(place.id, reloads) {
-    // Il corpo qui sotto scrive in `value` come prima: e' lo stesso caricamento, spostato.
-    var value by holder
-    value = value.copy(loading = true, refreshing = reloads > 0)
-    val now = System.currentTimeMillis()
-    val key = if (place.isGps) WeatherSnapshot.GPS_KEY else WeatherSnapshot.keyFor(place.id)
+  LaunchedEffect(deps, place, reloads, active, lifecycle, wiped) {
+    if (!active || wiped) return@LaunchedEffect
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      coroutineScope {
+        // Il corpo qui sotto scrive in `value` come prima: e' lo stesso caricamento, spostato.
+        val loadGeneration = deps.dataGeneration()
+        var value by GenerationHomeState(holder, deps.dataGeneration, loadGeneration)
+        value = value.copy(loading = true, refreshing = reloads > 0)
+        val now = System.currentTimeMillis()
+        val key = if (place.isGps) WeatherSnapshot.GPS_KEY else WeatherSnapshot.keyFor(place.id)
 
-    // 0) Quello che si sa gia', PRIMA di chiedere qualcosa a chiunque — GPS compreso.
-    //
-    // Era il difetto piu' grosso dell'offline, e si vedeva anche online: la posizione si risolveva
-    // per prima, e con un fix lento erano fino a dieci secondi di testata a "—" con un'istantanea
-    // perfetta sul disco. Senza fix del tutto (al chiuso, permesso negato, modalita' aereo) si
-    // usciva subito e la schermata restava **vuota**. Ma l'istantanea porta dentro di se' le
-    // proprie coordinate: per dipingere il cielo e sapere che ore sono non serve il GPS.
-    //
-    // E si legge con `lastKnown`, senza limite di distanza: cosa vale la pena mostrare lo decide
-    // l'eta' dichiarata in testata, non un taglio muto a tre chilometri.
-    val known = runCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
-      ?.takeIf { it.ageMillis(now) <= DataAge.SHOWABLE_AGE_MILLIS }
-    if (known != null) {
-      value = value.copy(
-        hasLocation = true,
-        latitude = known.latitude,
-        longitude = known.longitude,
-        phase = SolarEphemeris.phaseAt(now, known.latitude, known.longitude),
-      ).applySnapshot(known, now, deps)
-    }
-
-    // 1) GPS o localita' scelta: da qui in poi il caricamento non sa la differenza.
-    // Il fix puo' essere l'ultima posizione nota, di ore fa: il meteo si aggiorna li' lo stesso, ma
-    // il giro non si iscrive alla classifica come "dov'e' il telefono" (null = la regola di sempre).
-    var registerHere: Boolean? = null
-    val resolved: Triple<Double, Double, String?>? = if (place.isGps) {
-      runCatching { deps.locationProvider.snapshot() }.getOrNull()
-        ?.let { fix ->
-          if (!fix.isFreshAt(System.currentTimeMillis())) registerHere = false
-          Triple(fix.latitude, fix.longitude, null)
+        // 0) Quello che si sa gia', PRIMA di chiedere qualcosa a chiunque — GPS compreso.
+        //
+        // Era il difetto piu' grosso dell'offline, e si vedeva anche online: la posizione si risolveva
+        // per prima, e con un fix lento erano fino a dieci secondi di testata a "—" con un'istantanea
+        // perfetta sul disco. Senza fix del tutto (al chiuso, permesso negato, modalita' aereo) si
+        // usciva subito e la schermata restava **vuota**. Ma l'istantanea porta dentro di se' le
+        // proprie coordinate: per dipingere il cielo e sapere che ore sono non serve il GPS.
+        //
+        // E si legge con `lastKnown`, senza limite di distanza: cosa vale la pena mostrare lo decide
+        // l'eta' dichiarata in testata, non un taglio muto a tre chilometri.
+        val known = homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
+          ?.takeIf { homeSnapshotMatches(place, homePoint(if (place.isGps) it.latitude else place.latitude, if (place.isGps) it.longitude else place.longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) && it.ageMillis(now) <= DataAge.SHOWABLE_AGE_MILLIS }
+        if (!place.isGps && known != null) deps.savedLocations.backfillZoneId(place.id, known.zoneId)
+        if (deps.dataGeneration() == loadGeneration) briefSnapshot = known
+        if (known != null) {
+          value = value.copy(
+            hasLocation = true,
+            latitude = known.latitude,
+            longitude = known.longitude,
+            phase = SolarEphemeris.phaseAt(now, known.latitude, known.longitude),
+          ).applySnapshot(known, now, deps)
         }
-    } else {
-      Triple(place.latitude, place.longitude, place.name)
+
+        // 1) GPS o localita' scelta: da qui in poi il caricamento non sa la differenza.
+        // Il fix puo' essere l'ultima posizione nota, di ore fa: il meteo si aggiorna li' lo stesso, ma
+        // il giro non si iscrive alla classifica come "dov'e' il telefono" (null = la regola di sempre).
+        var registerHere: Boolean? = null
+        val resolved: Triple<Double, Double, String?>? = if (place.isGps) {
+          homeCatching { deps.locationProvider.snapshot() }.getOrNull()
+            ?.let { fix ->
+              if (!fix.isFreshAt(System.currentTimeMillis())) registerHere = false
+              Triple(fix.latitude, fix.longitude, null)
+            }
+        } else {
+          Triple(place.latitude, place.longitude, place.name)
+        }
+        val validResolved = resolved?.takeIf { homePoint(it.first, it.second) != null }
+        val latitude: Double
+        val longitude: Double
+        val presetName: String?
+        // Senza fix ma con un'istantanea si continua con le coordinate di quella — **ma senza rifare
+        // il giro**. Aggiornare la posizione di ieri e chiamarla "dove sei" sarebbe il meteo di un
+        // altro posto con l'etichetta giusta: meglio un dato vecchio, dichiarato.
+        var canRefresh = true
+        when {
+          validResolved != null -> {
+            latitude = validResolved.first
+            longitude = validResolved.second
+            presetName = validResolved.third
+          }
+          known != null -> {
+            latitude = known.latitude
+            longitude = known.longitude
+            presetName = null
+            canRefresh = false
+          }
+          else -> {
+            value = value.copy(loading = false, refreshing = false, hasLocation = false)
+            return@coroutineScope
+          }
+        }
+        if (presetName != null) value = value.copy(locationName = presetName)
+
+        val phase = SolarEphemeris.phaseAt(now, latitude, longitude)
+        value = value.copy(phase = phase, latitude = latitude, longitude = longitude, hasLocation = true)
+
+        // 2) Il giro di rete si rifa' solo se serve: istantanea piu' vecchia della cadenza del
+        //    barometro, o presa troppo lontano da qui.
+        val cadenceMillis = homeCatching { deps.samplingSettings.current().mode.cadenceMinutes * 60_000L }
+          .getOrDefault(DEFAULT_CADENCE_MILLIS)
+        val cached = known?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
+        if (known != null && cached == null) {
+          value = HomeUiState(locationName = presetName, latitude = latitude, longitude = longitude,
+            phase = phase, sensorAvailable = deps.barometerAvailable,
+            barometerApplies = place.isGps && deps.barometerAvailable)
+          briefSnapshot = null
+        }
+        val snapshotCandidate = if (canRefresh && (cached == null || cached.ageMillis(now) > cadenceMillis)) {
+          homeCatching { deps.snapshotRefresher.refresh(key, latitude, longitude, registerPredictions = registerHere) }.getOrNull()
+            ?: cached
+        } else {
+          cached
+        }
+        val snapshot = homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
+          ?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
+          ?: snapshotCandidate?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
+        if (deps.dataGeneration() == loadGeneration) briefSnapshot = snapshot
+        if (!place.isGps && snapshot != null) deps.savedLocations.backfillZoneId(place.id, snapshot.zoneId)
+        if (snapshot != null && snapshot !== known) value = value.applySnapshot(snapshot, now, deps)
+
+        // Sole: oggi e ieri, per il "piu' corto/lungo di ieri" del widget.
+        val zone = ZoneId.systemDefault()
+        val todayStartUtc = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+          .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+        val sunToday = SunTimes.forDay(todayStartUtc, latitude, longitude)
+        val sunYesterday = SunTimes.forDay(todayStartUtc - 86_400_000L, latitude, longitude)
+        value = value.copy(
+          sunTimesToday = sunToday,
+          dayLengthTodayMillis = sunToday.lengthMillis(),
+          dayLengthYesterdayMillis = sunYesterday.lengthMillis(),
+        )
+
+        // Il verdetto locale (stadi 1-5) dal caso d'uso condiviso col ciclo in background (fase 19):
+        // barometro pulito + contesto dell'opinione piu' completa (dall'istantanea), registrato nello
+        // storico. **Solo dove sei**: su una citta' lontana questo sensore non ha niente da dire, e
+        // registrarne il verdetto sporcherebbe anche lo storico con previsioni di un altro posto.
+        if (place.isGps && deps.barometerAvailable) {
+          val nowcast = withContext(Dispatchers.Default) { deps.nowcast.evaluate(
+            snapshot = snapshot,
+            nowMillis = now,
+            calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
+            record = true,
+            pointLatitude = latitude,
+            pointLongitude = longitude,
+          ) }
+          val history = homeCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
+          value = value.copy(
+            barometerApplies = true,
+            verdict = nowcast.verdict,
+            cleaning = nowcast.cleaning,
+            latestRawPressureHpa = nowcast.latestRawPressureHpa,
+            verdictHistory = history,
+            nowcastExplanation = nowcast.explanation,
+            readiness = nowcast.readiness,
+            loading = false,
+          )
+        } else {
+          value = value.copy(
+            barometerApplies = false,
+            verdict = null,
+            cleaning = null,
+            latestRawPressureHpa = null,
+            verdictHistory = emptyList(),
+            nowcastExplanation = null,
+            readiness = null,
+            loading = false,
+          )
+        }
+
+        val air = homeCatching { deps.airQualityClient.now(latitude, longitude) }.getOrNull()
+        if (air != null) value = value.copy(airQuality = air)
+
+        if (presetName == null) {
+          val name = reverseGeocode(context, latitude, longitude)
+          if (name != null) value = value.copy(locationName = name)
+        }
+
+        // La raffica di taratura, se gira, muove la barra in tempo reale.
+        launch {
+          deps.calibrationController.progress.collect { progress ->
+            val current = value.readiness ?: return@collect
+            val calibrated = current.calibrated || (progress == null && homeCatching { deps.calibrationStore.current() }.getOrNull() != null)
+            value = value.copy(
+              readiness = current.copy(
+                calibrationRunning = progress != null,
+                calibrationCompletedSeconds = progress?.completedSeconds ?: 0,
+                calibrationTotalSeconds = progress?.totalSeconds ?: CalibrationBurst.DURATION_SECONDS,
+                calibrationWaiting = progress?.waitingForStillness == true,
+                calibrated = calibrated,
+              ),
+            )
+          }
+        }
+
+        // Il giro e' finito: la rotella dell'aggiornamento si spegne qui, non alla fine dell'effetto,
+        // che non finisce mai perche' resta in ascolto del ciclo.
+        value = value.copy(loading = false, refreshing = false)
+
+      }
     }
-    val latitude: Double
-    val longitude: Double
-    val presetName: String?
-    // Senza fix ma con un'istantanea si continua con le coordinate di quella — **ma senza rifare
-    // il giro**. Aggiornare la posizione di ieri e chiamarla "dove sei" sarebbe il meteo di un
-    // altro posto con l'etichetta giusta: meglio un dato vecchio, dichiarato.
-    var canRefresh = true
-    when {
-      resolved != null -> {
-        latitude = resolved.first
-        longitude = resolved.second
-        presetName = resolved.third
-      }
-      known != null -> {
-        latitude = known.latitude
-        longitude = known.longitude
-        presetName = null
-        canRefresh = false
-      }
-      else -> {
-        value = value.copy(loading = false, refreshing = false, hasLocation = false)
+  }
+
+  // Observe invalidation even while covered/paused. A wipe cannot resurrect in-flight inputs.
+  LaunchedEffect(deps, place, reloads) {
+    val observed = deps.dataGeneration()
+    while (true) {
+      if (deps.dataGeneration() != observed) {
+        invalidatedBefore = System.currentTimeMillis()
+        wiped = true
+        briefSnapshot = null
+        holder.value = HomeUiState(loading = false,
+          locationName = place.name.takeIf { it.isNotBlank() },
+          sensorAvailable = deps.barometerAvailable, barometerApplies = place.isGps && deps.barometerAvailable)
         return@LaunchedEffect
       }
+      delay(1_000L)
     }
-    if (presetName != null) value = value.copy(locationName = presetName)
-
-    val phase = SolarEphemeris.phaseAt(now, latitude, longitude)
-    value = value.copy(phase = phase, latitude = latitude, longitude = longitude, hasLocation = true)
-
-    // 2) Il giro di rete si rifa' solo se serve: istantanea piu' vecchia della cadenza del
-    //    barometro, o presa troppo lontano da qui.
-    val cadenceMillis = runCatching { deps.samplingSettings.current().mode.cadenceMinutes * 60_000L }
-      .getOrDefault(DEFAULT_CADENCE_MILLIS)
-    val cached = known?.takeIf { it.distanceKmTo(latitude, longitude) <= NEARBY_KM }
-    val snapshot = if (canRefresh && (cached == null || cached.ageMillis(now) > cadenceMillis)) {
-      runCatching { deps.snapshotRefresher.refresh(key, latitude, longitude, registerPredictions = registerHere) }.getOrNull()
-        ?: known
-    } else {
-      cached
-    }
-    if (snapshot != null && snapshot !== known) value = value.applySnapshot(snapshot, now, deps)
-
-    // Sole: oggi e ieri, per il "piu' corto/lungo di ieri" del widget.
-    val zone = ZoneId.systemDefault()
-    val todayStartUtc = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-      .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
-    val sunToday = SunTimes.forDay(todayStartUtc, latitude, longitude)
-    val sunYesterday = SunTimes.forDay(todayStartUtc - 86_400_000L, latitude, longitude)
-    value = value.copy(
-      sunTimesToday = sunToday,
-      dayLengthTodayMillis = sunToday.lengthMillis(),
-      dayLengthYesterdayMillis = sunYesterday.lengthMillis(),
-    )
-
-    // Il verdetto locale (stadi 1-5) dal caso d'uso condiviso col ciclo in background (fase 19):
-    // barometro pulito + contesto dell'opinione piu' completa (dall'istantanea), registrato nello
-    // storico. **Solo dove sei**: su una citta' lontana questo sensore non ha niente da dire, e
-    // registrarne il verdetto sporcherebbe anche lo storico con previsioni di un altro posto.
-    if (place.isGps && deps.barometerAvailable) {
-      val nowcast = deps.nowcast.evaluate(
-        snapshot = snapshot,
-        nowMillis = now,
-        calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
-        record = true,
-        pointLatitude = latitude,
-        pointLongitude = longitude,
-      )
-      val history = runCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrDefault(emptyList())
-      value = value.copy(
-        barometerApplies = true,
-        verdict = nowcast.verdict,
-        cleaning = nowcast.cleaning,
-        latestRawPressureHpa = nowcast.latestRawPressureHpa,
-        verdictHistory = history,
-        nowcastExplanation = nowcast.explanation,
-        readiness = nowcast.readiness,
-        loading = false,
-      )
-    } else {
-      value = value.copy(
-        barometerApplies = false,
-        verdict = null,
-        cleaning = null,
-        latestRawPressureHpa = null,
-        verdictHistory = emptyList(),
-        nowcastExplanation = null,
-        readiness = null,
-        loading = false,
-      )
-    }
-
-    val air = runCatching { deps.airQualityClient.now(latitude, longitude) }.getOrNull()
-    if (air != null) value = value.copy(airQuality = air)
-
-    if (presetName == null) {
-      val name = reverseGeocode(context, latitude, longitude)
-      if (name != null) value = value.copy(locationName = name)
-    }
-
-    // La raffica di taratura, se gira, muove la barra in tempo reale.
-    launch {
-      deps.calibrationController.progress.collect { progress ->
-        val current = value.readiness ?: return@collect
-        val calibrated = current.calibrated || (progress == null && runCatching { deps.calibrationStore.current() }.getOrNull() != null)
-        value = value.copy(
-          readiness = current.copy(
-            calibrationRunning = progress != null,
-            calibrationCompletedSeconds = progress?.completedSeconds ?: 0,
-            calibrationTotalSeconds = progress?.totalSeconds ?: CalibrationBurst.DURATION_SECONDS,
-            calibrationWaiting = progress?.waitingForStillness == true,
-            calibrated = calibrated,
-          ),
-        )
+  }
+  LaunchedEffect(deps, place, reloads) {
+    var hadStoredData = deps.snapshotStore.changes.value.isNotEmpty()
+    var observed = deps.dataGeneration()
+    deps.snapshotStore.changes.collect { updates ->
+      val readGeneration = deps.dataGeneration()
+      // StateFlow may conflate the empty map with a new post-wipe write. The epoch
+      // change still invalidates the old holder before reading any replacement.
+      if ((updates.isEmpty() && hadStoredData) || readGeneration != observed) {
+        invalidatedBefore = System.currentTimeMillis()
+        wiped = true
+        briefSnapshot = null
+        holder.value = HomeUiState(loading = false, locationName = place.name.takeIf { it.isNotBlank() },
+          latitude = homePoint(place.latitude, place.longitude)?.latitude,
+          longitude = homePoint(place.latitude, place.longitude)?.longitude,
+          sensorAvailable = deps.barometerAvailable, barometerApplies = place.isGps && deps.barometerAvailable)
+      }
+      observed = readGeneration
+      hadStoredData = updates.isNotEmpty()
+      if (updates[key] == null) return@collect
+      val fresh = try {
+        homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
+      } catch (cancelled: CancellationException) {
+        // A store read invalidated by clear is cancelled independently of its observer.
+        // A cancelled composition must still propagate cancellation immediately.
+        currentCoroutineContext().ensureActive()
+        return@collect
+      } ?: return@collect
+      currentCoroutineContext().ensureActive()
+      if (deps.dataGeneration() != readGeneration) return@collect
+      val recovering = wiped
+      val point = if (recovering) {
+        if (place.isGps) homePoint(fresh.latitude, fresh.longitude) else homePoint(place.latitude, place.longitude)
+      } else homePoint(holder.value.latitude, holder.value.longitude)
+      if (!recovering && invalidatedBefore != null && fresh.fetchedAtMillis <= invalidatedBefore!!) return@collect
+      if (!homeSnapshotMatches(place, point, fresh)) return@collect
+      if (!place.isGps) deps.savedLocations.backfillZoneId(place.id, fresh.zoneId)
+      currentCoroutineContext().ensureActive()
+      if (deps.dataGeneration() != readGeneration) return@collect
+      briefSnapshot = fresh
+      holder.value = holder.value.applySnapshot(fresh, System.currentTimeMillis(), deps)
+      if (recovering) {
+        // The guarded store read is from the current epoch; old pre-wipe commits are
+        // rejected upstream. Re-arm consumers without extending any source clock.
+        invalidatedBefore = null
+        wiped = false
+        reloads++
       }
     }
+  }
 
-    // Il giro e' finito: la rotella dell'aggiornamento si spegne qui, non alla fine dell'effetto,
-    // che non finisce mai perche' resta in ascolto del ciclo.
-    value = value.copy(loading = false, refreshing = false)
-
-    // 3) Il ciclo in background continua a scrivere: finche' la home e' aperta, lo segue.
-    var applied = snapshot?.fetchedAtMillis ?: 0L
-    deps.snapshotStore.updates.collect { updates ->
-      val at = updates[key] ?: return@collect
-      if (at <= applied) return@collect
-      val fresh = runCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull() ?: return@collect
-      applied = at
-      value = value.applySnapshot(fresh, System.currentTimeMillis(), deps)
+  val briefController = remember(deps) { HomeBriefController(deps.weatherBriefService::brief, generation = deps.dataGeneration) }
+  LaunchedEffect(deps, place, lifecycle, active, wiped) {
+    if (!active || wiped) return@LaunchedEffect
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      snapshotFlow { HomeBriefInput(place, homePoint(holder.value.latitude, holder.value.longitude), briefSnapshot) }
+        .combine(deps.routineWindowStore.windows.recoverHomeRoutines { failed ->
+          holder.value = holder.value.copy(routineReadError = failed)
+        }) { input, windows -> input.copy(windows = windows) }
+        .collectLatest { input ->
+          briefController.consume(input, latestSnapshot = {
+            // Store notifications conflate equal fetch timestamps; read content at each consumption.
+            deps.snapshotRefresher.lastKnown(key)?.takeIf { invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!! }
+          }, latestWindows = {
+            readLatestHomeRoutines(deps.routineWindowStore::current) { failed ->
+              holder.value = holder.value.copy(routineReadError = failed)
+            }
+          }) { brief -> holder.value = holder.value.copy(weatherBrief = brief) }
+        }
     }
   }
 
@@ -382,9 +492,10 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
   // `applySnapshot` non la sfiora, e il collettore della taratura muove solo la parte della
   // raffica. Chi apriva la home subito dopo l'onboarding vedeva "0 ore di 13" e restava li' a
   // guardarla finche' non tirava giu' per aggiornare — che e' precisamente il baco raccontato.
-  LaunchedEffect(place.id, lifecycle) {
-    if (!place.isGps || !deps.barometerAvailable) return@LaunchedEffect
+  LaunchedEffect(deps, place, lifecycle, active, wiped) {
+    if (!active || wiped || !place.isGps || !deps.barometerAvailable) return@LaunchedEffect
     lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      val observed = deps.dataGeneration()
       while (true) {
         // Prima si calcola, poi si aspetta: senza un fix GPS il caricamento esce subito e la
         // readiness non la calcola nessuno, quindi per un minuto intero la tessera diceva solo
@@ -393,7 +504,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
         // Fuori dal thread della UI: rileggere ventiquattro ore di campioni e rifarci passare la
         // pipeline di pulizia e' lavoro vero, e qui succede ogni minuto per tutto il tempo che la
         // home resta aperta.
-        val readiness = runCatching {
+        val readiness = homeCatching {
           withContext(Dispatchers.Default) {
             deps.nowcast.readiness(
               nowMillis = System.currentTimeMillis(),
@@ -402,65 +513,13 @@ fun rememberHomeState(deps: HomeDependencies, place: Place): HomeStateHandle {
             )
           }
         }.getOrNull()
-        if (readiness != null) holder.value = holder.value.copy(readiness = readiness)
+        if (readiness != null && deps.dataGeneration() == observed) holder.value = holder.value.copy(readiness = readiness)
         delay(READINESS_REFRESH_MILLIS)
       }
     }
   }
 
-  // Il giro all'apertura, e a ogni ritorno sulla home.
-  //
-  // Non esisteva: a processo vivo l'unico modo di aggiornare era il ciclo in background (che in
-  // Doze puo' saltare le sue passate) o il gesto di pull to refresh. Da li' "certe volte i dati
-  // non sono disponibili fino a un refresh manuale".
-  //
-  // **Silenzioso di proposito**: nessuna rotella, nessuno svuotamento. I dati in scena restano
-  // quelli finche' non arriva il giro nuovo. La rotella e' la risposta a un gesto, e un
-  // aggiornamento che l'utente non ha chiesto non deve far lampeggiare niente.
-  LaunchedEffect(place.id, lifecycle) {
-    // La prima ripresa e' l'apertura, e di quella si occupa gia' il caricamento qui sopra: farla
-    // anche qui vorrebbe dire due giri di rete uguali nello stesso secondo.
-    var firstResume = true
-    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-      if (firstResume) {
-        firstResume = false
-        return@repeatOnLifecycle
-      }
-      val state = holder.value
-      if (state.loading || state.refreshing) return@repeatOnLifecycle
-      val now = System.currentTimeMillis()
-      val cadenceMillis = runCatching { deps.samplingSettings.current().mode.cadenceMinutes * 60_000L }
-        .getOrDefault(DEFAULT_CADENCE_MILLIS)
-      val age = DataAge.ageMillis(state.dataAtMillis, now)
-      if (age != null && age <= cadenceMillis) return@repeatOnLifecycle
-      val key = if (place.isGps) WeatherSnapshot.GPS_KEY else WeatherSnapshot.keyFor(place.id)
-      // Un fix corto, non i dieci secondi del caricamento: se il telefono ne ha uno in tasca lo
-      // da' subito, e se non ce l'ha si aggiorna dove si era, che e' comunque meglio di niente.
-      val here = if (place.isGps) {
-        runCatching { deps.locationProvider.snapshot(timeoutMillis = SILENT_FIX_TIMEOUT_MILLIS) }.getOrNull()
-      } else {
-        null
-      }
-      val latitude = here?.latitude ?: state.latitude ?: return@repeatOnLifecycle
-      val longitude = here?.longitude ?: state.longitude ?: return@repeatOnLifecycle
-      // Senza un fix di adesso le coordinate sono quelle di prima, e non si sa di quanto: aggiornare
-      // il meteo li' va bene, ma non deve iscrivere previsioni alla classifica come "dove e' il
-      // telefono". E "di adesso" vuol dire fresco davvero: il fix puo' essere l'ultima posizione
-      // nota, di ore fa. Solo per il posto del telefono: per una localita' scelta vale la regola di sempre.
-      val freshFix = here?.isFreshAt(System.currentTimeMillis()) == true
-      val fresh = runCatching {
-        deps.snapshotRefresher.refresh(
-          key,
-          latitude,
-          longitude,
-          registerPredictions = if (place.isGps && !freshFix) false else null,
-        )
-      }.getOrNull() ?: return@repeatOnLifecycle
-      holder.value = holder.value.applySnapshot(fresh, System.currentTimeMillis(), deps)
-    }
-  }
-
-  return remember(holder) { HomeStateHandle(state = holder, refresh = { reloads++ }) }
+  return remember(holder) { HomeStateHandle(state = holder, refresh = { wiped = false; reloads++ }) }
 }
 
 /** Le ore fuse dell'istantanea dentro lo stato: testata, cielo, dispensa dei widget, accento. */
@@ -531,7 +590,7 @@ private fun phaseFromClock(): DayPhase {
 
 private suspend fun reverseGeocode(context: Context, latitude: Double, longitude: Double): String? =
   withContext(Dispatchers.IO) {
-    runCatching {
+    homeCatching {
       @Suppress("DEPRECATION")
       Geocoder(context, Locale.getDefault())
         .getFromLocation(latitude, longitude, 1)
@@ -539,3 +598,24 @@ private suspend fun reverseGeocode(context: Context, latitude: Double, longitude
         ?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
     }.getOrNull()
   }
+
+/** Ordinary failures may degrade gracefully; structured cancellation must always propagate. */
+private inline fun <T> homeCatching(block: () -> T): Result<T> = try {
+  Result.success(block())
+} catch (cancelled: CancellationException) {
+  throw cancelled
+} catch (failure: Exception) {
+  Result.failure(failure)
+}
+
+/** Protect legacy async writes against wipe as well as coroutine cancellation. */
+private class GenerationHomeState(
+  private val holder: androidx.compose.runtime.MutableState<HomeUiState>,
+  private val generation: () -> Long,
+  private val observed: Long,
+) {
+  operator fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>): HomeUiState = holder.value
+  operator fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: HomeUiState) {
+    if (generation() == observed) holder.value = value
+  }
+}

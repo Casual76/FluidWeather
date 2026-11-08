@@ -49,7 +49,8 @@ class MinutelyRainTest {
   fun `la pioggia in arrivo si somma solo sul futuro`() {
     val b = bundle(-quarter to 3.0, quarter to 0.4, 2 * quarter to 0.6)
 
-    assertEquals(1.0, b.rainSoonMm(now, 3_600_000L)!!, 1e-9)
+    assertNull(b.rainSoonMm(now, 3_600_000L))
+    assertEquals(1.0, b.rainSoonMm(now, 2 * quarter)!!, 1e-9)
   }
 
   @Test

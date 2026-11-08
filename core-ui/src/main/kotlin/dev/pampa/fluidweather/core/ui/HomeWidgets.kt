@@ -59,7 +59,7 @@ enum class HomeWidget(
      */
     fun ordered(storedIds: List<String>): List<HomeWidget> {
       val byId = entries.associateBy { it.id }
-      val stored = storedIds.mapNotNull { byId[it] }
+      val stored = storedIds.mapNotNull { byId[it] }.distinct()
       val missing = defaultOrder.filter { it !in stored }
       return stored + missing
     }

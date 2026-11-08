@@ -10,6 +10,8 @@ data class Place(
   val region: String?,
   val latitude: Double,
   val longitude: Double,
+  /** IANA zone from the provider, null for legacy/unknown places. */
+  val zoneId: String? = null,
 ) {
   val isGps: Boolean get() = id == GPS_ID
 

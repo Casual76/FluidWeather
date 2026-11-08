@@ -54,6 +54,25 @@ object SkyPalette {
   val MoonMaria: Color = Color(0xFF8E97AD)
   val MoonHalo: Color = Color(0xFFCAD5F2)
 
+  /** Atmospheric depth follows present shared evidence, using the existing paint pass. */
+  fun sky(state: SkyState): Sky {
+    val rendered = state.forRendering()
+    val base = sky(rendered.phase, rendered.kind, rendered.cloudCoverPercent)
+    if (!rendered.assessmentKnown) return base
+    return when (rendered.precipitation) {
+      dev.pampa.fluidweather.core.model.PrecipitationState.WET -> base.copy(
+        cloudShadow = lerp(base.cloudShadow, base.gradient.first(), 0.16f),
+        hazeColor = lerp(base.hazeColor, base.cloudColor, 0.18f),
+      )
+      null, dev.pampa.fluidweather.core.model.PrecipitationState.UNAVAILABLE,
+      dev.pampa.fluidweather.core.model.PrecipitationState.UNCERTAIN -> base.copy(
+        cloudColor = lerp(base.cloudColor, base.hazeColor, 0.18f),
+        cloudShadow = lerp(base.cloudShadow, base.hazeColor, 0.12f),
+      )
+      else -> base
+    }
+  }
+
   fun sky(phase: DayPhase, kind: WeatherKind?, cloudCoverPercent: Double?): Sky {
     val base = baseStops(phase)
     val gloom = gloomOf(kind, cloudCoverPercent)

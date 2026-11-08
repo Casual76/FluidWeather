@@ -61,5 +61,12 @@ val MIGRATION_6_7: Migration = object : Migration(6, 7) {
   }
 }
 
+/** 7 -> 8: optional place timezone; all existing data and sortOrder remain untouched. */
+val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("ALTER TABLE `saved_locations` ADD COLUMN `zoneId` TEXT")
+  }
+}
+
 /** Tutte le migrazioni, nell'ordine: e' quello che `FluidWeatherDatabase.build` passa a Room. */
-val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_6_7)
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_6_7, MIGRATION_7_8)

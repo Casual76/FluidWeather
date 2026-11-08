@@ -97,6 +97,7 @@ internal fun WidgetTileContent(widget: HomeWidget, state: HomeUiState) {
 
 @Composable
 private fun NowcastTile(state: HomeUiState) {
+  SharedRainHeadline(state.weatherBrief)
   val verdict = state.verdict
   if (verdict == null) {
     val readiness = state.readiness
@@ -122,23 +123,14 @@ private fun NowcastTile(state: HomeUiState) {
     )
     return
   }
-  // Quello che si vede batte quello che si prevede. Con la pioggia in corso, la tessera lo dice
-  // e basta: il verdetto resta sotto, nelle tre finestre, dove serve a sapere quanto durera'.
-  val observation = state.nowcastExplanation?.observation?.takeIf { it.rainingNow }
-  val rate = observation?.intensityMmPerHour
-  Text(
-    text = when {
-      observation == null -> when (verdict.level) {
-        AlertLevel.QUIETE -> stringResource(R.string.tile_level_quiet)
-        AlertLevel.SORVEGLIANZA -> stringResource(R.string.tile_level_watch)
-        AlertLevel.ALLERTA -> stringResource(R.string.tile_level_alert)
-      }
-      rate != null -> stringResource(R.string.nowcast_raining_now_rate, String.format(Locale.getDefault(), "%.1f", rate))
-      else -> stringResource(R.string.nowcast_raining_now)
-    },
-    style = MaterialTheme.typography.bodyMedium,
-    color = MaterialTheme.colorScheme.onSurface,
-  )
+  Text(stringResource(R.string.accessibility_barometer_issued,
+    stringResource(R.string.accessibility_issue_unknown)),
+    style = MaterialTheme.typography.bodySmall)
+  Text(stringResource(when (verdict.level) {
+    AlertLevel.QUIETE -> R.string.tile_level_quiet
+    AlertLevel.SORVEGLIANZA -> R.string.tile_level_watch
+    AlertLevel.ALLERTA -> R.string.tile_level_alert
+  }), style = MaterialTheme.typography.bodyMedium)
   Spacer(Modifier.height(10.dp))
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     verdict.windows.forEach { window ->
@@ -166,20 +158,9 @@ private fun NowcastTile(state: HomeUiState) {
     }
   }
   val topFactor = verdict.windows.firstOrNull { it.window == "1-3h" }?.topFactors?.firstOrNull()
-  if (observation != null) {
-    Spacer(Modifier.height(8.dp))
-    Text(
-      text = stringResource(R.string.nowcast_seen_by, observation.source),
-      style = MaterialTheme.typography.labelSmall,
-      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-    )
-  } else if (topFactor != null) {
-    Spacer(Modifier.height(8.dp))
-    Text(
-      text = stringResource(R.string.tile_top_factor, stringResource(featureLabelRes(topFactor.name))),
-      style = MaterialTheme.typography.labelSmall,
-      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-    )
+  if (topFactor != null) {
+    Text(stringResource(R.string.tile_top_factor, stringResource(featureLabelRes(topFactor.name))),
+      style = MaterialTheme.typography.labelSmall)
   }
 }
 
@@ -353,101 +334,22 @@ private fun DailyTile(state: HomeUiState) {
     EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return
   }
-  val periodMin = model.periodMin
-  val periodMax = model.periodMax
-  val units = rememberUnitFormatter()
-  val today = model.today
-  val dayFormatter = remember { DateTimeFormatter.ofPattern("EEE", Locale.getDefault()) }
-
-  Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-    model.days.forEach { (date, temps, kind) ->
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-          text = if (date == today) stringResource(R.string.common_today) else dayFormatter.format(date).replaceFirstChar { it.uppercase() },
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurface,
-          modifier = Modifier.width(38.dp),
-        )
-        WeatherKindIcon(kind, size = 16.dp)
-        Spacer(Modifier.width(8.dp))
-        Text(
-          text = units.degrees(temps.min()),
-          style = MaterialTheme.typography.labelMedium,
-          color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-          modifier = Modifier.width(26.dp),
-        )
-        Charts.RangeBar(
-          periodMin = periodMin,
-          periodMax = periodMax,
-          dayMin = temps.min(),
-          dayMax = temps.max(),
-          nowValue = if (date == today) state.temperatureC else null,
-          trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
-          barBrushColors = listOf(Color(0xFF6FAAF0), Color(0xFFF0C060)),
-          modifier = Modifier
-            .weight(1f)
-            .height(5.dp),
-        )
-        Text(
-          text = units.degrees(temps.max()),
-          style = MaterialTheme.typography.labelMedium,
-          color = MaterialTheme.colorScheme.onSurface,
-          modifier = Modifier
-            .width(30.dp)
-            .padding(start = 6.dp),
-        )
-      }
-    }
-  }
+  val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+  val formatter = remember(locale) { DateTimeFormatter.ofPattern("EEEE d MMMM", locale) }
+  DailyForecastRows(model.days.map { (date, temps, kind) ->
+    DailyForecastRow(date.toString(),
+      if (date == model.today) stringResource(R.string.common_today) + " \u00b7 " + formatter.format(date) else formatter.format(date),
+      temps.min(), temps.max(), kind, if (date == model.today) state.temperatureC else null)
+  }, model.periodMin, model.periodMax)
 }
 
 // ------------------------------------------------------------------------------ precipitazioni
 
 @Composable
 private fun PrecipitationTile(state: HomeUiState) {
-  val now = System.currentTimeMillis()
-  val next6 = state.fusedHours.filter { it.timestampMillis >= now }.take(6)
-  if (next6.isEmpty()) {
-    EmptyTileBody(stringResource(R.string.common_waiting_providers))
-    return
-  }
-  val pops = next6.map { it.values[FusionVariables.PRECIP_PROBABILITY]?.value ?: 0.0 }
-  val totalMm = next6.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 }
-  val zone = ZoneId.systemDefault()
-  val units = rememberUnitFormatter()
+  SharedRainHeadline(state.weatherBrief)
+  dev.pampa.fluidweather.feature.home.pages.PrecipitationForecastSamples(state, compact = true)
 
-  Text(
-    text = if (totalMm >= 0.1) {
-      stringResource(R.string.tile_rain_6h, units.precipitation(totalMm))
-    } else {
-      stringResource(R.string.tile_no_rain_6h)
-    },
-    style = MaterialTheme.typography.bodyMedium,
-    color = MaterialTheme.colorScheme.onSurface,
-  )
-  Spacer(Modifier.height(10.dp))
-  val barsDescription = stringResource(
-    R.string.a11y_chart_probability,
-    next6.zip(pops).joinToString(", ") { (hour, pop) -> "${TimeFormats.hour(hour.timestampMillis, zone)} ${pop.toInt()}%" },
-  )
-  Charts.ProbabilityBars(
-    percentages = pops,
-    color = Color(0xFF8FC7F0),
-    modifier = Modifier
-      .fillMaxWidth()
-      .height(52.dp)
-      .semantics { contentDescription = barsDescription },
-  )
-  Spacer(Modifier.height(4.dp))
-  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-    next6.forEach { hour ->
-      Text(
-        text = TimeFormats.hour(hour.timestampMillis, zone),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-      )
-    }
-  }
 }
 
 // ---------------------------------------------------------------------- pressione (compatto)

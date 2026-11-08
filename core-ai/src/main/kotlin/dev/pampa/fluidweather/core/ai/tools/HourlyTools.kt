@@ -27,8 +27,10 @@ internal object ToolPhrases {
   const val NO_DATA = "nessun dato: i servizi meteo non hanno ancora risposto per questo posto"
 
   fun header(ctx: ToolContext, place: dev.pampa.fluidweather.core.ai.data.ResolvedPlace, snapshot: WeatherSnapshot): String {
-    val ageMin = ((ctx.nowMillis - snapshot.fetchedAtMillis) / 60_000.0).roundToInt()
-    return "luogo: ${place.label} · dati di ${ageMin} min fa da ${snapshot.providersResponding} servizi"
+    val ageMin = ((System.currentTimeMillis() - snapshot.fetchedAtMillis) / 60_000.0).roundToInt()
+    val providers = snapshot.fetches.filter { it.ok }.joinToString { it.providerId }
+    return if (ctx.locale.language == "it") "Luogo: ${place.label}; dati di $ageMin min fa; fonti: $providers. Campioni del MODELLO, non misure; risoluzione sorgente sconosciuta, campioni mancanti sconosciuti; fuso ${ctx.zone.id}."
+    else "Place: ${place.label}; data $ageMin min old; sources: $providers. MODEL samples, not measurements; unknown source resolution, missing samples unknown; zone ${ctx.zone.id}."
   }
 }
 
@@ -50,6 +52,8 @@ class NowTool(private val resolver: PlaceResolver) : WeatherTool() {
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
+    val ctx = ctx.atPlace(place, snapshot)
+    val shared = dev.pampa.fluidweather.core.ai.grounding.sharedWeatherFacts(place, resolver, ctx)
     val hour = snapshot.fused.nearestHour(ctx.nowMillis)?.first
       ?.takeIf { abs(it.timestampMillis - ctx.nowMillis) <= 90 * 60_000L } ?: return ToolPhrases.NO_DATA
     val u = ctx.units
@@ -59,7 +63,8 @@ class NowTool(private val resolver: PlaceResolver) : WeatherTool() {
     val dew = hour.value(FusionVariables.DEW_POINT)
     return ToolText.build {
       line(ToolPhrases.header(ctx, place, snapshot))
-      line("ora di riferimento", ctx.timeLabel(hour.timestampMillis))
+      line(shared)
+      line("ora di riferimento del modello (non misura attuale)", ctx.timeLabel(hour.timestampMillis))
       line("condizione", ctx.kindLabel(hour.kind))
       line("temperatura", t?.let { u.temperature(it) })
       if (t != null && rh != null && wind != null) line("percepita", u.temperature(ApparentTemperature.celsius(t, rh, wind)))
@@ -103,6 +108,7 @@ class HourlyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
+    val ctx = ctx.atPlace(place, snapshot)
     val from = (args.int("da_ore") ?: 0).coerceIn(0, 240)
     val to = (args.int("a_ore") ?: (from + 12)).coerceIn(from + 1, 240)
     val extra = args.list("variabili").mapNotNull { VARIABLES[it] }

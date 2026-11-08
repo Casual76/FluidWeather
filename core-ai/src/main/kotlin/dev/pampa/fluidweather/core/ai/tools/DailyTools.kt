@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.core.ai.tools
 import dev.antigravity.fluidengine.ai.tools.Schema
 import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
+import dev.pampa.fluidweather.core.ai.data.WeatherPlaceResolver
 import dev.antigravity.fluidengine.ai.tools.Args.int
 import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.DailyAggregate
@@ -24,6 +25,7 @@ class DailyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
+    val ctx = ctx.atPlace(place, snapshot)
     val days = (args.int("giorni") ?: 7).coerceIn(1, 10)
     val today = Instant.ofEpochMilli(ctx.nowMillis).atZone(ctx.zone).toLocalDate()
     val summaries = DailyAggregate.of(snapshot.fused.hours, ctx.zone, place.latitude, place.longitude, today, days)
@@ -35,9 +37,12 @@ class DailyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
         val parts = mutableListOf<String>()
         parts += TimeFormats.shortDate(day.date, ctx.locale) + (if (day.date == today) " (oggi)" else if (day.date == today.plusDays(1)) " (domani)" else "")
         parts += ctx.kindLabel(day.kind)
-        parts += "min ${u.temperature(day.minC)} max ${u.temperature(day.maxC)}"
+        val temperatures = day.hours.mapNotNull { it.value(FusionVariables.TEMPERATURE) }
+        if (temperatures.isNotEmpty()) parts += "min ${u.temperature(temperatures.min())} max ${u.temperature(temperatures.max())} (available samples)"
         day.precipitationProbabilityMaxPercent?.let { parts += "pioggia fino a ${it.roundToInt()}%" }
-        if (day.precipitationMm >= 0.1) parts += "accumulo ${u.precipitation(day.precipitationMm)}"
+        day.hours.mapNotNull { it.value(FusionVariables.PRECIPITATION) }.takeIf { it.isNotEmpty() }?.let {
+          parts += "somma dei soli campioni disponibili (${it.size}/${day.hours.size}): ${u.precipitation(it.sum())}"
+        }
         day.windMaxKmh?.let { parts += "vento max ${u.wind(it)}" }
         val sunrise = day.sunriseMillis
         val sunset = day.sunsetMillis
@@ -50,7 +55,7 @@ class DailyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
 }
 
 /** Un giorno nelle sue quattro fasce, piu' le ore salienti. */
-class DayDetailTool(private val resolver: PlaceResolver) : WeatherTool() {
+class DayDetailTool(private val resolver: WeatherPlaceResolver) : WeatherTool() {
   override val name = "giorno_dettaglio"
   override val group = ToolGroup.DAILY
   override val description = "Il dettaglio di un giorno (data AAAA-MM-GG, 'oggi' o 'domani'): notte, mattina, pomeriggio, sera, con temperature, pioggia e vento per fascia."
@@ -59,12 +64,13 @@ class DayDetailTool(private val resolver: PlaceResolver) : WeatherTool() {
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
     val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
+    val ctx = ctx.atPlace(place, snapshot)
     val today = Instant.ofEpochMilli(ctx.nowMillis).atZone(ctx.zone).toLocalDate()
     val date = when (val raw = args.str("data")?.lowercase()) {
       null, "oggi", "today" -> today
       "domani", "tomorrow" -> today.plusDays(1)
       "dopodomani" -> today.plusDays(2)
-      else -> try { LocalDate.parse(raw) } catch (e: DateTimeParseException) { return "errore: data non capita ($raw); usa AAAA-MM-GG" }
+      else -> try { LocalDate.parse(raw) } catch (e: DateTimeParseException) { return ToolFailure.INVALID_DATE.text(ctx) }
     }
     val day = DailyAggregate.of(snapshot.fused.hours, ctx.zone, place.latitude, place.longitude, date, 1).firstOrNull { it.date == date }
       ?: return "nessun dato per il ${TimeFormats.shortDate(date, ctx.locale)}: fuori dall'orizzonte dei servizi"
@@ -73,7 +79,8 @@ class DayDetailTool(private val resolver: PlaceResolver) : WeatherTool() {
       line(ToolPhrases.header(ctx, place, snapshot))
       line("giorno", TimeFormats.longDate(date, ctx.locale))
       line("prevalente", ctx.kindLabel(day.kind))
-      line("minima / massima", "${u.temperature(day.minC)} / ${u.temperature(day.maxC)}")
+      val temperatures = day.hours.mapNotNull { it.value(FusionVariables.TEMPERATURE) }
+      if (temperatures.isNotEmpty()) line("minima / massima dei campioni", "${u.temperature(temperatures.min())} / ${u.temperature(temperatures.max())}")
       DailyAggregate.parts(day, ctx.zone).forEach { part ->
         val label = when (part.part) {
           DailyAggregate.DayPart.NIGHT -> "notte (0-6)"
@@ -87,7 +94,7 @@ class DayDetailTool(private val resolver: PlaceResolver) : WeatherTool() {
         val partMax = part.maxC
         if (partMin != null && partMax != null) bits += "${u.temperature(partMin)}-${u.temperature(partMax)}"
         part.precipitationProbabilityMaxPercent?.let { bits += "pioggia ${it.roundToInt()}%" }
-        if (part.precipitationMm >= 0.1) bits += u.precipitation(part.precipitationMm)
+        // No manufactured part total: DailyAggregate may fold missing amounts into zero.
         part.windMaxKmh?.let { bits += "vento ${u.wind(it)}" }
         line(label, bits.joinToString(" · "))
       }

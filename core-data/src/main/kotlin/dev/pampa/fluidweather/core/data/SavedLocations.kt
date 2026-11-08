@@ -8,6 +8,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import dev.pampa.fluidweather.core.model.Place
+import dev.pampa.fluidweather.core.model.WeatherZones
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +25,7 @@ data class SavedLocationEntity(
   val latitude: Double,
   val longitude: Double,
   val sortOrder: Int,
+  val zoneId: String? = null,
 )
 
 @Dao
@@ -33,6 +36,10 @@ interface SavedLocationsDao {
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsert(location: SavedLocationEntity)
+
+  /** Metadata-only backfill: never replaces a row or changes ordering. */
+  @Query("UPDATE saved_locations SET zoneId = :zoneId WHERE id = :id AND zoneId IS NULL")
+  suspend fun backfillZoneId(id: Long, zoneId: String): Int
 
   @Query("DELETE FROM saved_locations WHERE id = :id")
   suspend fun remove(id: Long)
@@ -58,8 +65,22 @@ class SavedLocationsRepository(private val dao: SavedLocationsDao) {
         latitude = place.latitude,
         longitude = place.longitude,
         sortOrder = dao.nextSortOrder(),
+        zoneId = WeatherZones.validId(place.zoneId),
       ),
     )
+  }
+
+  /** Optional metadata must not block a forecast; cancellation still stops an obsolete load. */
+  suspend fun backfillZoneId(placeId: Long, zoneId: String?): Boolean {
+    if (placeId == Place.GPS_ID) return false
+    val valid = WeatherZones.validId(zoneId) ?: return false
+    return try {
+      dao.backfillZoneId(placeId, valid) > 0
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
+      false
+    }
   }
 
   suspend fun remove(placeId: Long) {
@@ -68,7 +89,7 @@ class SavedLocationsRepository(private val dao: SavedLocationsDao) {
   }
 
   private fun SavedLocationEntity.toPlace() =
-    Place(id = id, name = name, region = region, latitude = latitude, longitude = longitude)
+    Place(id = id, name = name, region = region, latitude = latitude, longitude = longitude, zoneId = WeatherZones.validId(zoneId))
 }
 
 /**

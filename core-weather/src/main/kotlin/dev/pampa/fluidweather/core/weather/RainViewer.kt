@@ -1,6 +1,7 @@
 package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.strings.R
+import kotlinx.coroutines.CancellationException
 
 /** Un fotogramma del radar: quando, e il pezzo di percorso che identifica i suoi tile. */
 data class RadarFrame(
@@ -8,21 +9,20 @@ data class RadarFrame(
   val path: String,
 )
 
-/**
- * La mappa dei fotogrammi disponibili: le ultime due ore a passi di dieci minuti (passato) e,
- * quando il servizio li serve, i fotogrammi di previsione a breve (nowcast). Il fotogramma di
- * "adesso" e' l'ultimo del passato.
- *
- * Il JSON pubblico oggi manda `nowcast: []` (verificato il 2026-09-10: la previsione a breve e'
- * passata al piano a pagamento). Il campo resta perche' il formato lo prevede e la barra del tempo
- * sa disegnarlo; se un giorno tornano fotogrammi futuri, compaiono da soli.
+/** Past frames have a ten-minute cadence. Future products were discontinued on 2026-01-01.
+ * `nowcast` remains a display-format compatibility field, never observation evidence.
+ * https://www.rainviewer.com/api/transition-faq.html
  */
 data class RadarFrames(
   val host: String,
   val generatedMillis: Long,
   val past: List<RadarFrame>,
   val nowcast: List<RadarFrame>,
+  val downloadedAtMillis: Long? = null,
 ) {
+  fun coverageUrl(zoom: Int, x: Int, y: Int, size: Int = 256): String =
+    "$host/v2/coverage/0/$size/$zoom/$x/$y/0/0_0.png"
+
   val all: List<RadarFrame> get() = past + nowcast
 
   val nowIndex: Int get() = (past.size - 1).coerceAtLeast(0)
@@ -77,7 +77,10 @@ data class RadarFrames(
 class RainViewerClient(private val http: ProviderHttp) {
 
   suspend fun frames(): RadarFrames? {
-    val root = runCatching { http.readJson(MAPS_URL, FRAMES_TTL_MILLIS) }.getOrNull() ?: return null
+    val response = try { http.readJsonTimed(MAPS_URL, FRAMES_TTL_MILLIS) }
+      catch (cancelled: CancellationException) { throw cancelled }
+      catch (_: Exception) { return null }
+    val root = response.value
     val host = root["host"].string() ?: return null
     val radar = root["radar"]
     fun frames(name: String): List<RadarFrame> = radar[name].asArray().mapNotNull { frame ->
@@ -92,6 +95,7 @@ class RainViewerClient(private val http: ProviderHttp) {
       generatedMillis = (root["generated"].double()?.toLong() ?: 0L) * 1_000,
       past = past,
       nowcast = frames("nowcast"),
+      downloadedAtMillis = response.downloadedAtMillis,
     )
   }
 

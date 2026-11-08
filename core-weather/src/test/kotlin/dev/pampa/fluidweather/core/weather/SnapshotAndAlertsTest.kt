@@ -14,6 +14,8 @@ import java.nio.file.Files
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -65,6 +67,34 @@ class SnapshotAndAlertsTest {
       context = context,
       predictionsRegisteredAtMillis = now - 10 * 60_000L,
     )
+  }
+
+  @Test
+  fun `optional zones roundtrip without refreshing carried context timestamps`() {
+    val old = snapshot()
+    assertNull(WeatherSnapshotCodec.decode(WeatherSnapshotCodec.encode(old))!!.zoneId)
+    val original = old.copy(zoneId = "Europe/Rome",
+      context = old.context!!.copy(zoneId = "Europe/Rome", fetchedAtMillis = now - 60_000),
+      contextCarriedFromMillis = now - 60_000)
+    val decoded = WeatherSnapshotCodec.decode(WeatherSnapshotCodec.encode(original))!!
+    assertEquals(original, decoded)
+    assertEquals(now - 60_000, decoded.context!!.fetchedAtMillis)
+    assertEquals(now - 60_000, decoded.contextCarriedFromMillis)
+    val invalid = WeatherSnapshotCodec.encode(original).replace("Europe/Rome", "invalid")
+    assertNull(WeatherSnapshotCodec.decode(invalid)!!.zoneId)
+    assertNull(WeatherSnapshotCodec.decode(invalid)!!.context!!.zoneId)
+  }
+
+  @Test
+  fun `incomplete context is unknown instead of zero coordinates or download time`() {
+    val root = Json.parseToJsonElement(WeatherSnapshotCodec.encode(snapshot())).jsonObject
+    for (field in listOf("latitude", "longitude", "fetchedAtMillis")) {
+      val context = JsonObject(root.getValue("context").jsonObject - field)
+      val incomplete = JsonObject(root + ("context" to context)).toString()
+      val decoded = WeatherSnapshotCodec.decode(incomplete)!!
+      assertNull(decoded.context)
+      assertEquals(snapshot().fused, decoded.fused)
+    }
   }
 
   @Test

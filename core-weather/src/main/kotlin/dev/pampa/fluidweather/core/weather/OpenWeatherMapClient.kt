@@ -1,6 +1,6 @@
 package dev.pampa.fluidweather.core.weather
 
-import dev.pampa.fluidweather.core.model.ForecastBundle
+import dev.pampa.fluidweather.core.model.*
 import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.WeatherKind
 
@@ -35,7 +35,7 @@ class OpenWeatherMapClient(
         windDirectionDeg = entry["wind"]["deg"].double(),
         windGustKmh = entry["wind"]["gust"].double()?.metersPerSecondToKmh(),
         precipitationProbabilityPercent = entry["pop"].double()?.times(100),
-        precipitationMm = entry["rain"]["3h"].double() ?: entry["snow"]["3h"].double(),
+        precipitationMm = (entry["rain"]["3h"].double() ?: entry["snow"]["3h"].double())?.takeIf { it.isFinite() && it >= 0 },
         visibilityMeters = entry["visibility"].double(),
         kind = entry["weather"].at(0)["id"].double()?.toInt()?.let { owmKind(it) },
       )
@@ -47,6 +47,8 @@ class OpenWeatherMapClient(
       latitude = latitude,
       longitude = longitude,
       hourly = points,
+      // Official docs: rain/snow volume for the preceding three hours, not mm/h.
+      hourlyPrecipitation = PrecipitationAccumulation(10_800_000L, AccumulationAnchor.PRECEDING),
     )
   }
 

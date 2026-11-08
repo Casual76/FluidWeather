@@ -11,6 +11,9 @@ captures/
 *.aab
 output-metadata.json
 
+# Evidenze locali, APK di valutazione e archivi generati dai workflow.
+/artifacts/
+
 # Dati e rapporti del banco di prova: si rigenerano con `gradlew :testbench:run --args=fetch`.
 testbench/data/
 testbench/reports/

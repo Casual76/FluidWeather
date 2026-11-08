@@ -21,7 +21,7 @@ class OfficialAlertsTool(private val resolver: PlaceResolver) : WeatherTool() {
     val context = runCatching { ctx.sources.placeContext.resolve(place.latitude, place.longitude) }.getOrNull()
     val alerts = runCatching {
       ctx.sources.officialAlerts.forPoint(place.latitude, place.longitude, context?.countryCode, context?.areaCandidates ?: emptyList())
-    }.getOrElse { return "allerte non raggiungibili adesso (${it.message ?: "rete"})" }
+    }.getOrElse { return ToolFailure.ALERTS_UNAVAILABLE.text(ctx) }
     val active = alerts.filter { it.isActive(ctx.nowMillis) }
     if (active.isEmpty()) return "nessuna allerta ufficiale attiva per ${place.label}" + (context?.countryCode?.let { " (paese $it)" } ?: "")
     return ToolText.build {

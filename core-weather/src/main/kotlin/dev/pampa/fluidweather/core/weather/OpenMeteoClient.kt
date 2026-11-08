@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.core.weather
 
+import dev.pampa.fluidweather.core.model.*
 import dev.pampa.fluidweather.core.model.ForecastBundle
 import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.MinutePoint
@@ -32,17 +33,18 @@ class OpenMeteoClient(
       // Il quarto d'ora: due giorni bastano e avanzano — serve a sapere cosa sta succedendo
       // adesso e nell'ora che viene, non a fare previsioni lunghe. `past_minutely_15` porta
       // l'ultima ora e mezza gia' accaduta, che e' la parte che risponde a "sta piovendo?".
+      append("&current=temperature_2m,weather_code,precipitation")
       append("&minutely_15=precipitation,precipitation_probability")
       append("&past_minutely_15=8&forecast_minutely_15=8")
       append("&past_hours=6&forecast_days=${(descriptor.horizonHours + 23) / 24}")
-      append("&timeformat=unixtime&timezone=UTC&wind_speed_unit=kmh")
+      append("&timeformat=unixtime&timezone=auto&wind_speed_unit=kmh")
       if (model != null) append("&models=$model")
     }
     val (root, downloadedAt) = http.readJsonTimed(url, FORECAST_TTL_MILLIS)
     val hourly = root["hourly"]
 
     val times = hourly["time"].asArray()
-    fun series(name: String): List<Double?> = hourly[name].asArray().map { it.double() }
+    fun series(name: String): List<Double?> = hourly[name].asArray().map { it.double()?.takeIf { value -> value.isFinite() } }
 
     val temperature = series("temperature_2m")
     val humidity = series("relative_humidity_2m")
@@ -60,14 +62,14 @@ class OpenMeteoClient(
     val code = series("weather_code")
 
     val points = times.mapIndexedNotNull { i, time ->
-      val timestamp = time.double()?.toLong()?.times(1_000) ?: return@mapIndexedNotNull null
+      val timestamp = time.double()?.takeIf { it.isFinite() && it >= 0 && it < Long.MAX_VALUE / 1000.0 && it % 1.0 == 0.0 }?.toLong()?.times(1_000) ?: return@mapIndexedNotNull null
       HourlyPoint(
         timestampMillis = timestamp,
         temperatureC = temperature.getOrNull(i),
         relativeHumidityPercent = humidity.getOrNull(i),
         dewPointC = dewPoint.getOrNull(i),
         pressureMslHpa = pressure.getOrNull(i),
-        precipitationMm = precipitation.getOrNull(i),
+        precipitationMm = precipitation.getOrNull(i)?.takeIf { it >= 0 },
         precipitationProbabilityPercent = probability.getOrNull(i),
         cloudCoverPercent = cloud.getOrNull(i),
         windSpeedKmh = windSpeed.getOrNull(i),
@@ -88,6 +90,11 @@ class OpenMeteoClient(
       longitude = longitude,
       hourly = points,
       minutely = minutelyPoints(root),
+      zoneId = WeatherZones.validId(root["timezone"].string()),
+      current = parseCurrent(root["current"], downloadedAt),
+      hourlyPrecipitation = PrecipitationAccumulation(3_600_000L, AccumulationAnchor.PRECEDING),
+      minutelyPrecipitation = PrecipitationAccumulation(900_000L, AccumulationAnchor.PRECEDING),
+      minutelyPossiblyInterpolated = true,
     )
   }
 
@@ -100,17 +107,30 @@ class OpenMeteoClient(
     val block = runCatching { root["minutely_15"] }.getOrNull() ?: return emptyList()
     val times = runCatching { block["time"].asArray() }.getOrNull() ?: return emptyList()
     fun series(name: String): List<Double?> =
-      runCatching { block[name].asArray().map { it.double() } }.getOrDefault(emptyList())
+      runCatching { block[name].asArray().map { it.double()?.takeIf { value -> value.isFinite() } } }.getOrDefault(emptyList())
     val precipitation = series("precipitation")
     val probability = series("precipitation_probability")
     return times.mapIndexedNotNull { i, time ->
-      val timestamp = time.double()?.toLong()?.times(1_000) ?: return@mapIndexedNotNull null
+      val timestamp = time.double()?.takeIf { it.isFinite() && it >= 0 && it < Long.MAX_VALUE / 1000.0 && it % 1.0 == 0.0 }?.toLong()?.times(1_000) ?: return@mapIndexedNotNull null
       MinutePoint(
         timestampMillis = timestamp,
-        precipitationMm = precipitation.getOrNull(i),
+        precipitationMm = precipitation.getOrNull(i)?.takeIf { it >= 0 },
         precipitationProbabilityPercent = probability.getOrNull(i),
       )
     }
+  }
+
+  private fun parseCurrent(block: kotlinx.serialization.json.JsonElement?, downloadedAt: Long): ProviderCurrent? {
+    fun finite(name: String) = block[name].double()?.takeIf { it.isFinite() }
+    val time = finite("time")?.takeIf { it >= 0 && it < Long.MAX_VALUE / 1000.0 && it % 1.0 == 0.0 }
+      ?.toLong()?.times(1000) ?: return null
+    val interval = finite("interval")?.takeIf { it > 0 && it < Long.MAX_VALUE / 1000.0 && it % 1.0 == 0.0 }
+      ?.toLong()?.times(1000)
+    val temperature = finite("temperature_2m")
+    val kind = finite("weather_code")?.takeIf { it >= 0 && it <= Int.MAX_VALUE && it % 1.0 == 0.0 }?.toInt()?.let(::wmoKind)
+    val precipitation = finite("precipitation")?.takeIf { it >= 0 }
+    if (temperature == null && kind == null && precipitation == null) return null
+    return ProviderCurrent(time, temperature, kind, precipitation, interval, downloadedAt, true)
   }
 
   companion object {

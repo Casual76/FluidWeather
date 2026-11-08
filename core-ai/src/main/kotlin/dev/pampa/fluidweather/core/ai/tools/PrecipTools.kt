@@ -3,64 +3,33 @@ package dev.pampa.fluidweather.core.ai.tools
 import dev.antigravity.fluidengine.ai.tools.Schema
 import dev.antigravity.fluidengine.ai.tools.ToolText
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
-import dev.pampa.fluidweather.core.ai.radar.DbzPalette
-import dev.pampa.fluidweather.core.ai.radar.RadarSample
-import dev.pampa.fluidweather.core.ai.radar.RadarTrend
+import dev.pampa.fluidweather.core.ai.data.ResolvedPlace
+import dev.pampa.fluidweather.core.weather.radar.DbzPalette
+import dev.pampa.fluidweather.core.weather.radar.RadarSample
+import dev.pampa.fluidweather.core.weather.radar.RadarTrend
 import dev.antigravity.fluidengine.ai.tools.Args.int
 import dev.antigravity.fluidengine.ai.tools.Args.str
-import dev.pampa.fluidweather.core.cycle.PrecipitationTransitions
-import dev.pampa.fluidweather.core.cycle.TransitionKind
-import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.strings.compassPoint
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.CancellationException
 
 /** Pioggia e neve nelle prossime ore: probabilita', accumuli, inizio e fine, tipo. */
 class UpcomingPrecipitationTool(private val resolver: PlaceResolver) : WeatherTool() {
   override val name = "pioggia_prossime_ore"
   override val group = ToolGroup.PRECIP
-  override val description = "Precipitazioni previste ora per ora nelle prossime N ore (max 48): probabilita', quantita', tipo (pioggia/neve/temporale), inizio e fine previsti."
+  override val description = "Precipitazioni previste ora per ora nelle prossime N ore (max 48): probabilita', quantita', tipo (pioggia/neve/temporale), valutazione condivisa di pioggia e transizioni; dettagli del modello distinti."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place, "ore" to Schema.int("quante ore avanti (1-48)", 1, 48)))
 
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
     val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
-    val snapshot = resolver.snapshot(place) ?: return ToolPhrases.NO_DATA
-    val hours = (args.int("ore") ?: 12).coerceIn(1, 48)
-    val end = ctx.nowMillis + hours * 3_600_000L
-    val fused = snapshot.fused.hours.sortedBy { it.timestampMillis }
-    val window = fused.filter { it.timestampMillis >= ctx.nowMillis - 30 * 60_000L && it.timestampMillis <= end }
-    if (window.isEmpty()) return ToolPhrases.NO_DATA
-    val u = ctx.units
-    return ToolText.build {
-      line(ToolPhrases.header(ctx, place, snapshot))
-      val transition = PrecipitationTransitions.next(fused, ctx.nowMillis)
-      val current = window.first()
-      line("adesso", if (PrecipitationTransitions.isWet(current)) "ora bagnata (${ctx.kindLabel(current.kind)})" else "asciutto")
-      transition?.let {
-        line(
-          if (it.kind == TransitionKind.ONSET) "inizio previsto" else "fine prevista",
-          "${ctx.timeLabel(it.atMillis)} (${ctx.kindLabel(it.weatherKind)})",
-        )
-      }
-      val firstWet = window.firstOrNull { PrecipitationTransitions.isWet(it) }
-      if (transition == null && firstWet != null && firstWet !== current) line("prima ora bagnata", ctx.dayTimeLabel(firstWet.timestampMillis))
-      if (transition == null && firstWet == null) line("nelle prossime $hours ore", "nessuna ora bagnata prevista")
-      val total = window.sumOf { it.value(FusionVariables.PRECIPITATION) ?: 0.0 }
-      line("accumulo totale previsto", u.precipitation(total))
-      val maxPop = window.maxOfOrNull { it.value(FusionVariables.PRECIP_PROBABILITY) ?: 0.0 } ?: 0.0
-      line("probabilita' massima", "${maxPop.roundToInt()}%")
-      val types = window.mapNotNull { it.kind }.filter { it in WET_KINDS }.distinct()
-      if (types.isNotEmpty()) line("tipo", types.joinToString(", ") { ctx.kindLabel(it) })
-      blank()
-      line("ora · probabilita' · quantita' · condizione")
-      val step = if (window.size <= 24) 1 else 2
-      window.filterIndexed { i, _ -> i % step == 0 }.forEach { h ->
-        val pop = h.value(FusionVariables.PRECIP_PROBABILITY)?.let { "${it.roundToInt()}%" } ?: "—"
-        val mm = h.value(FusionVariables.PRECIPITATION)?.let { if (it >= 0.05) u.precipitation(it) else "0" } ?: "—"
-        line("${ctx.timeLabel(h.timestampMillis)} · $pop · $mm · ${ctx.kindLabel(h.kind)}")
-      }
-    }
+    val facts = dev.pampa.fluidweather.core.ai.grounding.sharedWeatherFacts(place, resolver, ctx)
+    val detail = HourlyForecastTool(resolver).answer(kotlinx.serialization.json.buildJsonObject {
+      put("luogo", kotlinx.serialization.json.JsonPrimitive(""))
+      put("a_ore", kotlinx.serialization.json.JsonPrimitive((args.int("ore") ?: 12).coerceIn(1, 48)))
+    }, ToolContext({ ctx.sources }, { ctx.units }, { ctx.resources }, ctx.locale, ctx.zone, ctx.nowMillis, place, ctx.actionsEnabled, ctx.actions))
+    return "$facts\n\nMODEL forecast samples (not measurements or onset/end times; gaps remain unknown):\n$detail"
   }
 
   companion object {
@@ -69,19 +38,36 @@ class UpcomingPrecipitationTool(private val resolver: PlaceResolver) : WeatherTo
 }
 
 /** Il radar letto come numeri attorno al posto. */
-class RadarAroundTool(private val resolver: PlaceResolver) : WeatherTool() {
+class RadarAroundTool internal constructor(
+  private val resolvePlace: suspend (String?, ResolvedPlace?) -> ResolvedPlace?,
+  private val sampleRadar: suspend (Double, Double, ToolContext) -> RadarSample,
+  private val clock: () -> Long,
+  private val shared: (suspend (ResolvedPlace, ToolContext) -> String)? = null,
+) : WeatherTool() {
+  constructor(resolver: PlaceResolver, clock: () -> Long = System::currentTimeMillis) : this(
+    { query, selected -> resolver.resolve(query, selected) },
+    { latitude, longitude, ctx -> ctx.sources.radarSampler.sample(latitude, longitude) },
+    clock,
+    { place, ctx -> dev.pampa.fluidweather.core.ai.grounding.sharedWeatherFacts(place, resolver, ctx) },
+  )
   override val name = "radar_intorno"
   override val group = ToolGroup.PRECIP
-  override val description = "Il radar RainViewer attorno al posto: intensita' sul punto, eco piu' vicino (distanza e direzione), copertura nei 30 km, tendenza dell'ultima ora, moto delle celle, stima di arrivo o fine. E' una stima da immagini."
+  override val description = "Il radar RainViewer attorno al posto: intensita' sul punto, eco piu' vicino (distanza e direzione), copertura nei 30 km, tendenza dell'ultima ora, moto delle celle; pioggia e transizioni solo dalla valutazione condivisa. E' una stima da immagini."
   override val parameters = Schema.obj(mapOf("luogo" to Schema.place))
 
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
-    val place = resolver.resolve(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
-    val sample = ctx.sources.radarSampler.sample(place.latitude, place.longitude)
+    val place = resolvePlace(args.str("luogo"), ctx.selected) ?: return ToolPhrases.PLACE_NOT_FOUND
+    val sharedFacts = shared?.invoke(place, ctx)
+    val sample = sampleRadar(place.latitude, place.longitude, ctx)
+    // The chat context predates orchestration and IO. Recheck at actual consumption.
+    val consumedAtMillis = clock()
     val reading = when (sample) {
-      is RadarSample.Unavailable -> return "radar non disponibile: ${sample.reason}"
+      is RadarSample.Unavailable -> return listOfNotNull(sharedFacts, "radar non disponibile").joinToString("\n")
       is RadarSample.Ok -> sample.reading
     }
+    if (!reading.isUsableAt(consumedAtMillis)) return listOfNotNull(sharedFacts, "radar non disponibile: fotogramma vecchio, copertura sconosciuta o raster incompleto").joinToString("\n")
+    val eta = reading.absoluteEta(consumedAtMillis)
+    if (eta?.transitionAlreadyPassed == true) return listOfNotNull(sharedFacts, "radar: transizione stimata gia' trascorsa; serve un nuovo fotogramma. Fonte RainViewer, stima da immagini; il fotogramma precedente non basta a stabilire la pioggia attuale.").joinToString("\n")
     val u = ctx.units
     fun label(dbz: Int): String = when (DbzPalette.intensity(dbz)) {
       DbzPalette.Intensity.NONE -> "nulla"
@@ -93,8 +79,10 @@ class RadarAroundTool(private val resolver: PlaceResolver) : WeatherTool() {
       DbzPalette.Intensity.HAIL -> "violenta/grandine"
     }
     return ToolText.build {
+      sharedFacts?.let { line(it) }
       line("luogo", place.label)
-      line("fotogramma", "${ctx.timeLabel(reading.frameTimeMillis)} (${reading.frameAgeMin} min fa), riquadro ${reading.boxKm} km, fonte RainViewer")
+      val frameAgeMin = ((consumedAtMillis - reading.frameTimeMillis) / 60_000.0).roundToInt().coerceAtLeast(0)
+      line("fotogramma", "${ctx.timeLabel(reading.frameTimeMillis)} ($frameAgeMin min fa), riquadro ${reading.boxKm} km, fonte RainViewer")
       line("sul punto", "${label(reading.atPointDbz)} (${reading.atPointDbz} dBZ" + (if (reading.atPointDbz >= 10) ", ~${u.precipitation(DbzPalette.rateMmPerHour(reading.atPointDbz))}/h" else "") + ")")
       reading.nearest?.let {
         line("eco piu' vicino", "${u.distance(it.km, 1)} verso ${compassPoint(ctx.resources, it.bearingDeg.toDouble())} (${it.bearingDeg}°), ${label(it.maxDbz)} ${it.maxDbz} dBZ")
@@ -106,7 +94,7 @@ class RadarAroundTool(private val resolver: PlaceResolver) : WeatherTool() {
           RadarTrend.INTENSIFYING -> "in intensificazione"
           RadarTrend.WEAKENING -> "in attenuazione"
           RadarTrend.STEADY -> "stabile"
-          RadarTrend.NO_ECHO -> "nessuna precipitazione nell'ultima ora"
+          RadarTrend.NO_ECHO -> "nessun eco nei fotogrammi completi disponibili"
         },
       )
       reading.motion?.let { m ->
@@ -116,18 +104,9 @@ class RadarAroundTool(private val resolver: PlaceResolver) : WeatherTool() {
           line("moto delle celle", "${u.wind(m.speedKmh)} da ${compassPoint(ctx.resources, m.fromDeg)} verso ${compassPoint(ctx.resources, m.towardDeg)}, ${m.pairsUsed} coppie di fotogrammi" + if (!m.agreement) ", in disaccordo" else "")
         }
       } ?: line("moto delle celle", "non stimabile")
-      reading.eta?.let { eta ->
-        when {
-          !reading.rainingNow && eta.arrivesInMin != null -> line("stima di arrivo", "tra ~${eta.arrivesInMin} min, intensita' attesa ${label(eta.expectedDbz ?: 0)} (estrapolazione del moto, orizzonte ${eta.horizonMin} min)")
-          !reading.rainingNow -> line("stima di arrivo", "nessuna cella in rotta sul punto entro ${eta.horizonMin} min")
-          eta.endsInMin != null -> line("stima di fine", "tra ~${eta.endsInMin} min")
-          else -> line("stima di fine", "non entro ${eta.horizonMin} min")
-        }
-      }
-      if (reading.nowcastAtPoint.isNotEmpty()) {
-        line("previsione RainViewer sul punto", reading.nowcastAtPoint.joinToString(", ") { (min, dbz) -> "+$min min ${label(dbz)}" })
-      }
-      line("confidenza", "${reading.confidenceLabel} (${(reading.confidence * 100).roundToInt()}%)")
+      line("ETA", "solo la valutazione congiunta condivisa determina pioggia attuale e transizioni; nessuna ETA indipendente da questo diagnostico")
+      line("confidenza euristica", "${reading.confidenceLabel}; non e' una probabilita' calibrata")
+      line("natura", "RADAR_ESTIMATE, stima da immagini composite; assenza eco nella zona coperta non prova assenza di pioggia al suolo")
       line("note", reading.notes.joinToString("; "))
     }
   }
@@ -141,7 +120,7 @@ class RadarFramesTool : WeatherTool() {
   override val parameters = Schema.obj(emptyMap())
 
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
-    val frames = runCatching { ctx.sources.rainViewer.frames() }.getOrNull() ?: return "radar non raggiungibile"
+    val frames = try { ctx.sources.rainViewer.frames() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null } ?: return "radar non raggiungibile"
     return ToolText.build {
       line("generato", ctx.timeLabel(frames.generatedMillis))
       line("passato", frames.past.joinToString(", ") { ctx.timeLabel(it.timeMillis) })

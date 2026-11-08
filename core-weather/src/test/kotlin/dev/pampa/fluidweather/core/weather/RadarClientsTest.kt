@@ -19,6 +19,32 @@ class RadarClientsTest {
   private fun http(body: String) = ProviderHttp(FakeHttp(body), UrlCache(Files.createTempDirectory("cache").toFile()))
 
   @Test
+  fun `manifest download time survives cache reads in UTC milliseconds`() = runTest {
+    val fixture = javaClass.getResource("/rainviewer.json")!!.readText()
+    val dir = Files.createTempDirectory("radar-manifest").toFile()
+    var now = 1_700_000_000_000L
+    val provider = ProviderHttp(FakeHttp(fixture), UrlCache(dir, clock = { now }), clock = { now })
+    val client = RainViewerClient(provider)
+    val first = client.frames()!!
+    now += 120_000L
+    val second = client.frames()!!
+    assertEquals(first.downloadedAtMillis, second.downloadedAtMillis)
+    assertEquals(1_700_000_000_000L, second.downloadedAtMillis)
+    assertEquals(first.past.last().timeMillis, second.past.last().timeMillis)
+    assertEquals("https://tilecache.rainviewer.com/v2/coverage/0/256/7/1/2/0/0_0.png", second.coverageUrl(7, 1, 2))
+  }
+
+  @Test
+  fun `manifest cancellation propagates`() = runTest {
+    val engine = object : EngineHttp() {
+      override suspend fun readText(url: String, headers: Map<String, String>): String = throw kotlinx.coroutines.CancellationException("manifest")
+    }
+    val provider = ProviderHttp(engine, UrlCache(Files.createTempDirectory("radar-cancel").toFile()))
+    try { RainViewerClient(provider).frames(); org.junit.Assert.fail("swallowed") }
+    catch (_: kotlinx.coroutines.CancellationException) { }
+  }
+
+  @Test
   fun `il JSON vero di RainViewer diventa fotogrammi e URL dei tile`() = runTest {
     val fixture = javaClass.getResource("/rainviewer.json")!!.readText()
     val frames = RainViewerClient(http(fixture)).frames()

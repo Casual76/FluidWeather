@@ -15,16 +15,13 @@ import dev.antigravity.fluidengine.ai.speech.SpeechCapture
 import dev.antigravity.fluidengine.ai.speech.Transcriber
 import dev.antigravity.fluidengine.config.EngineRemoteConfig
 import dev.antigravity.fluidengine.foundation.EngineFlag
-import dev.antigravity.fluidengine.net.EngineHttp
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 import dev.pampa.fluidweather.core.ai.keys.AiPreferences
 import dev.pampa.fluidweather.core.ai.orchestrator.AssistantSession
 import dev.pampa.fluidweather.core.ai.orchestrator.WeatherOrchestrator
-import dev.pampa.fluidweather.core.ai.radar.RadarSampler
-import dev.pampa.fluidweather.core.ai.radar.RadarTileStore
+import dev.pampa.fluidweather.core.weather.radar.RadarSampler
 import dev.pampa.fluidweather.core.ai.tools.AllTools
-import dev.pampa.fluidweather.core.weather.RainViewerClient
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -50,11 +47,11 @@ object AiFlags {
 class AiAssistant(
   context: Context,
   scope: CoroutineScope,
-  engineHttp: EngineHttp,
   userAgent: String,
   referer: String,
   appTitle: String,
-  rainViewer: RainViewerClient,
+  /** Il campionatore condiviso del grafo, usato anche dal nowcast senza dipendere dall'IA. */
+  val radarSampler: RadarSampler,
   sources: (RadarSampler) -> AiDataSources,
   remoteConfig: EngineRemoteConfig,
   /**
@@ -84,8 +81,6 @@ class AiAssistant(
   val diagnostics = AiDiagnosticsLog()
   val verifier = AiKeyVerifier(keys, settings, providers, catalogs)
 
-  val radarTiles = RadarTileStore(File(appContext.cacheDir, "radar-tiles"), engineHttp)
-  val radarSampler = RadarSampler(frames = { rainViewer.frames() }, tiles = radarTiles, prune = { radarTiles.prune() })
   val dataSources: AiDataSources = sources(radarSampler)
   val resolver = PlaceResolver(dataSources)
   val registry = AllTools.registry(resolver)
