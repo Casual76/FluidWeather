@@ -95,3 +95,24 @@ failure-preserving merge and confirmed-empty replacement. Existing wipe,
 cancellation, generation and independent-read scenarios remain. Full execution
 accounting and APK identities are in `weather-premium-verification.md` and the
 frozen correction2 inputs; no process-death or multi-day continuity claim follows.
+
+## Correction3 caller boundary
+
+Correction2's independent hydration handled strict failures correctly, but its
+ordinary evaluate call was not guarded. Home now acquires that result through
+the cancellation-preserving `homeCatching` boundary. It replaces verdict,
+cleaning, raw pressure and readiness only on success. Ordinary acquisition
+failure retains those fields and continues air/name work. Forecast/local-load
+completion clears loading/refreshing before optional auxiliary lookups. A
+successful empty result remains an explicit replacement.
+
+The caller regression invokes the actual `rememberHomeState` Compose effects
+and actual NowcastUseCase/PressureRepository/cleaner. A private snapshot/cache,
+synthetic read-only pressure DAO, memory history DAO and private Preferences
+baseline prevent writes into the app's real archives/settings. The baseline
+store's Context constructor still resolves the identical preferences store and
+keys; a DataStore constructor permits isolated ownership. The default name
+lookup is unchanged, with an optional dependency callback so this test uses no
+geocoding/network/GPS. Synthetic capability on the sensorless tablet exercises
+the local caller, not hardware. Execution results and the initial test-clock
+failure are recorded in the verification document after completion.
