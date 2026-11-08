@@ -41,7 +41,7 @@ import kotlin.math.sqrt
  * quasi bianco. Le nuvole non sono chiazze: hanno una faccia al sole, una pancia in ombra, una
  * base piatta e i bordi che sfilacciano. La neve non e' una fila di pallini uguali: ha fiocchi
  * vicini grandi e sfocati e fiocchi lontani minuscoli. La pioggia ha due piani. Il temporale
- * lampeggia.
+ * non inventa scariche da un codice meteo.
  *
  * Le soglie sono tarate a occhio sul banco di anteprima (tools/skypreview), che disegna questi
  * pennelli con Skia esattamente come il telefono: si giudica dai fotogrammi, non dai numeri.
@@ -76,9 +76,11 @@ class SkyScenePainter(
   private val random = Random(seed.toLong())
   private val clouds = CloudLayer.forState(this.state, quality, Random(random.nextLong()))
   private val stars = StarField(quality, Random(random.nextLong()))
-  private val precipitation = PrecipitationField(this.state.kind, quality, Random(random.nextLong()))
+  private val atmosphere = this.state.atmosphere?.boundedForPainting()
+  private val precipitation = PrecipitationField(this.state.kind, quality, Random(random.nextLong()), atmosphere)
   private val fog = if (this.state.kind == WeatherKind.FOG) FogLayer(Random(random.nextLong())) else null
-  private val lightning = if (this.state.kind == WeatherKind.THUNDERSTORM) LightningField(Random(random.nextLong())) else null
+  // A condition code or storminess is not evidence of a visible discharge.
+  private val lightning: LightningField? = null
 
   /**
    * [moon] e' la fotografia del lato visibile della luna (NASA/LRO), che chi ha delle risorse
@@ -86,14 +88,14 @@ class SkyScenePainter(
    * luna procedurale, che e' meno luna ma e' sempre una luna.
    */
   fun draw(scope: DrawScope, sky: SkyPalette.Sky, body: CelestialBody?, t: Float, moon: ImageBitmap? = null) {
+    val time = if (quality == SceneQuality.STATIC || !t.isFinite()) 0f else t.coerceAtLeast(0f)
     SkyGradientPainter.draw(scope, sky)
-    if (sky.starAlpha > 0f) stars.draw(scope, t, sky)
+    if (sky.starAlpha > 0f) stars.draw(scope, time, sky)
     // L'ordine e' il punto: l'astro sta DIETRO le nuvole, come fuori dalla finestra.
     body?.let { CelestialPainter.draw(scope, it, sky, moon) }
-    clouds.draw(scope, t, sky, body)
-    fog?.draw(scope, t, sky)
-    lightning?.draw(scope, t)
-    precipitation.draw(scope, t, sky)
+    clouds.draw(scope, time, sky, body)
+    fog?.draw(scope, time, sky)
+    precipitation.draw(scope, time, sky)
   }
 
   /** Vero se in questo istante c'e' un lampo: il banco di anteprima lo usa per fotografarne uno. */
@@ -364,7 +366,10 @@ internal object CelestialPainter {
     val core = lerp(SkyPalette.SunCoreHigh, SkyPalette.SunCoreLow, warmth)
     val glow = lerp(SkyPalette.SunGlowHigh, SkyPalette.SunGlowLow, warmth)
     // Dietro una coltre il sole non ha alone e il disco e' appena un chiarore.
-    val visibility = (1f - sky.gloom * 0.85f).coerceIn(0.1f, 1f)
+    val optical = sky.atmosphere
+    val transmission = optical?.let { 1f - it.cloudCoverage * it.cloudDepth } ?: 1f
+    val diffusion = optical?.diffuseLight ?: 0f
+    val visibility = ((1f - sky.gloom * 0.85f) * transmission).coerceIn(0.025f, 1f)
     val discRadius = minSide * lerp(0.046f, 0.07f, warmth)
     val wide = smallness
 
@@ -402,7 +407,7 @@ internal object CelestialPainter {
     // 3) La corona: la luce che il disco proietta subito intorno a se'. Fermate fitte, che
     // decrescono senza gomiti: un gomito nel gradiente si vede come un anello.
     val coronaRadius = discRadius * 3.6f
-    val coronaStrength = visibility * (1f + 0.25f * warmth)
+    val coronaStrength = visibility * (1f + 0.25f * warmth) * (1f - diffusion * 0.85f)
     drawCircle(
       brush = Brush.radialGradient(
         colorStops = arrayOf(
@@ -420,15 +425,15 @@ internal object CelestialPainter {
       blendMode = BlendMode.Plus,
     )
 
-    if (sky.gloom < 0.7f) {
+    if (sky.gloom < 0.7f && diffusion < 0.6f) {
       // 4) Il disco: alto e' quasi bianco col bordo appena morbido — e' troppo luminoso per avere
       // un contorno netto; basso e' arancio e piu' netto, perche' l'aria lo smorza.
       val edge = lerp(0.72f, 0.86f, warmth)
       drawCircle(
         brush = Brush.radialGradient(
           colorStops = arrayOf(
-            0f to core.copy(alpha = visibility),
-            edge to core.copy(alpha = visibility),
+            0f to core.copy(alpha = visibility * (1f - diffusion)),
+            edge to core.copy(alpha = visibility * (1f - diffusion)),
             1f to glow.copy(alpha = 0f),
           ),
           center = center,
@@ -439,7 +444,7 @@ internal object CelestialPainter {
       )
     } else {
       // Sotto una coltre: solo la macchia diffusa piu' chiara, dove il sole sta dietro.
-      softDisc(center, discRadius * 3f, core, 0.32f * visibility + 0.08f, blendMode = BlendMode.Screen)
+      softDisc(center, discRadius * (3f + diffusion * 4f), core, (0.32f * visibility + 0.08f) * transmission, blendMode = BlendMode.Screen)
     }
   }
 
@@ -447,7 +452,8 @@ internal object CelestialPainter {
     val minSide = minOf(size.width, size.height)
     val center = Offset(body.x * size.width, skyY(body.y) * size.height)
     val radius = minSide * 0.046f
-    val visibility = (1f - sky.gloom * 0.85f).coerceIn(0.12f, 1f)
+    val transmission = sky.atmosphere?.let { 1f - it.cloudCoverage * it.cloudDepth } ?: 1f
+    val visibility = ((1f - sky.gloom * 0.85f) * transmission).coerceIn(0f, 1f)
     val lit = body.illuminated.coerceIn(0f, 1f)
 
     // L'alone: tenue, freddo. Piu' ampio dietro un velo di nuvole sottili, che e' l'unico caso
@@ -776,9 +782,9 @@ private class Deck(
   val bottom: Float,
 ) {
   companion object {
-    fun random(random: Random, darkness: Float, coverage: Float, ragged: Boolean, quality: SceneQuality): Deck {
+    fun random(random: Random, darkness: Float, coverage: Float, ragged: Boolean, quality: SceneQuality, depth: Float = darkness): Deck {
       val full = quality == SceneQuality.FULL
-      val bottom = 0.4f + darkness * 0.14f
+      val bottom = 0.32f + depth * 0.22f
       val count = if (full) 22 else 12
       val blobs = List(count) {
         val y = random.nextFloat().let { v -> v * v * 0.6f + v * 0.4f } * bottom
@@ -786,7 +792,7 @@ private class Deck(
           x = random.between(-0.12f, 1.12f),
           y = y,
           rx = random.between(0.14f, 0.32f),
-          ry = random.between(0.05f, 0.11f),
+          ry = random.between(0.035f, 0.075f) * (0.7f + depth * 0.9f),
           darkness = ((y / bottom).toDouble().pow(0.8).toFloat() * 0.85f + random.between(-0.1f, 0.1f)).coerceIn(0f, 1f),
           drift = random.between(0.002f, 0.006f),
         )
@@ -846,16 +852,27 @@ internal class CloudLayer private constructor(
   private val deck: Deck?,
   private val cirri: List<Cirrus>,
   private val quality: SceneQuality,
+  private val atmosphere: SkyAtmosphere? = null,
 ) {
   private val cache = BrushCache()
+  private var ceilingBrush: Brush? = null
+  private var mistBrush: Brush? = null
+  private var brushSky: SkyPalette.Sky? = null
+  private var brushSize = Size.Zero
 
   fun draw(scope: DrawScope, t: Float, sky: SkyPalette.Sky, body: CelestialBody?) {
-    cache.sync(Triple(sky.cloudColor, sky.cloudShadow, scope.size))
+    cache.sync(sky to scope.size)
     // Da che parte arriva la luce: dal sole (o dalla luna) se c'e', altrimenti da destra in alto.
     val lightX = body?.x ?: 0.7f
-    cirri.forEach { scope.drawCirrus(it, t, sky) }
-    deck?.let { scope.drawDeck(it, t, sky) }
-    cumuli.forEach { scope.drawCumulus(it, t, sky, lightX) }
+    val time = if (quality == SceneQuality.STATIC) 0f else t * (atmosphere?.windSpeedFactor ?: 1f)
+    cirri.forEach { scope.drawCirrus(it, time, sky) }
+    deck?.let { scope.drawDeck(it, time, sky, lightX) }
+    cumuli.forEach { scope.drawCumulus(it, time, sky, lightX) }
+    // A low, distant veil reduces contrast without moving the foreground or any glass layer.
+    val haze = atmosphere?.haze ?: 0f
+    if (haze > 0f) scope.cachedBlob(cache, Offset(scope.size.width * 0.5f, scope.size.height),
+      scope.size.width * 1.1f, scope.size.height * 0.44f, sky.hazeColor, haze * 0.48f)
+
   }
 
   private fun DrawScope.drawCumulus(cloud: Cumulus, t: Float, sky: SkyPalette.Sky, lightX: Float) {
@@ -866,13 +883,18 @@ internal class CloudLayer private constructor(
     val x = ((cloud.cx * travel + t * cloud.speed * width) % travel) - w * 0.6f
     val center = Offset(x, cloud.cy * height)
     val sunSide = if (lightX * width >= x) 1f else -1f
-    val lit = sky.cloudColor
-    val shadow = sky.cloudShadow
+    val distant = (1f - cloud.width / 0.65f).coerceIn(0f, 1f)
+    val air = (atmosphere?.haze ?: 0f) * distant * 0.45f
+    val lit = lerp(sky.cloudColor, sky.hazeColor, air)
+    val shadow = lerp(sky.cloudShadow, sky.hazeColor, air)
     val body = lerp(lit, shadow, 0.22f)
     val a = cloud.alpha
+    val depth = atmosphere?.cloudDepth ?: 0.5f
+    val diffuse = atmosphere?.diffuseLight ?: 0f
+    val edge = lerp(0.52f, 0.15f, distant)
 
     // La base: un'ellisse scura e piatta che appoggia il cumulo sull'aria.
-    cachedBlob(cache, Offset(center.x, center.y + w * 0.03f), w * 0.5f, w * 0.09f, shadow, 0.5f * a, hardness = 0.25f)
+    cachedBlob(cache, Offset(center.x, center.y + w * 0.03f), w * 0.5f, w * 0.09f, shadow, (0.25f + depth * 0.5f) * a, hardness = 0.35f)
     // La massa in ombra: ogni batuffolo, spostato in basso e via dal sole. Non piu' grande — un
     // orlo scuro uniforme intorno a tutto e' un disegno, non un'ombra.
     for (p in cloud.puffs) {
@@ -882,7 +904,7 @@ internal class CloudLayer private constructor(
         radius = p.r * w,
         color = shadow,
         alpha = 0.85f * a,
-        hardness = 0.45f,
+        hardness = edge,
       )
     }
     // I corpi: in basso trasparenti (resta l'ombra), in alto pieni. Ogni batuffolo con la sua tinta.
@@ -894,7 +916,7 @@ internal class CloudLayer private constructor(
         radius = p.r * w,
         color = color,
         alpha = lerp(0.45f, 0.97f, p.height) * a,
-        hardness = 0.42f,
+        hardness = edge,
       )
     }
     // Le luci: sui batuffoli alti, verso il sole e verso l'alto, piu' piccole. E sulle cime un
@@ -907,7 +929,7 @@ internal class CloudLayer private constructor(
           center = Offset(center.x + p.dx * w + sunSide * w * 0.03f, center.y + p.dy * w - w * 0.045f),
           radius = p.r * w * 0.72f,
           color = lit,
-          alpha = (0.9f * (p.height - 0.15f)).coerceIn(0f, 0.85f) * a,
+          alpha = (0.9f * (p.height - 0.15f)).coerceIn(0f, 0.85f) * a * (1f - diffuse * 0.75f),
           hardness = 0.3f,
         )
         if (p.height > 0.7f) {
@@ -916,7 +938,7 @@ internal class CloudLayer private constructor(
             center = Offset(center.x + p.dx * w + sunSide * w * 0.045f, center.y + p.dy * w - w * 0.06f),
             radius = p.r * w * 0.5f,
             color = lit,
-            alpha = 0.55f * a,
+            alpha = 0.55f * a * (1f - diffuse * 0.85f),
             hardness = 0.2f,
           )
         }
@@ -928,7 +950,7 @@ internal class CloudLayer private constructor(
     }
   }
 
-  private fun DrawScope.drawDeck(deck: Deck, t: Float, sky: SkyPalette.Sky) {
+  private fun DrawScope.drawDeck(deck: Deck, t: Float, sky: SkyPalette.Sky, lightX: Float) {
     val width = size.width
     val height = size.height
     val lit = lerp(sky.cloudColor, sky.cloudShadow, 0.2f + deck.darkness * 0.25f)
@@ -938,15 +960,28 @@ internal class CloudLayer private constructor(
     // basso, sotto la texture dei banchi. Senza, fra un banco e l'altro spuntava il cielo azzurro,
     // e un cielo coperto con dei buchi azzurri non e' coperto.
     val ceilingBottom = (deck.bottom + 0.04f) * height
-    drawRect(
-      brush = Brush.verticalGradient(
+    if (ceilingBrush == null || brushSky != sky || brushSize != size) {
+      brushSky = sky
+      brushSize = size
+      ceilingBrush = Brush.verticalGradient(
         0f to lit.copy(alpha = 0.96f),
         0.45f to lerp(lit, dark, 0.5f).copy(alpha = 0.92f),
         0.85f to dark.copy(alpha = 0.85f),
         1f to dark.copy(alpha = 0f),
         startY = 0f,
         endY = ceilingBottom,
-      ),
+      )
+      val mistTop = (deck.bottom - 0.08f) * height
+      mistBrush = Brush.verticalGradient(
+        0f to dark.copy(alpha = 0f),
+        0.25f to dark.copy(alpha = 0.3f + deck.darkness * 0.25f),
+        0.55f to dark.copy(alpha = 0.16f + deck.darkness * 0.14f),
+        1f to dark.copy(alpha = 0f), startY = mistTop, endY = mistTop + height * 0.5f,
+      )
+    }
+    drawRect(
+      brush = ceilingBrush!!,
+      alpha = atmosphere?.let { (it.cloudCoverage * 1.6f - 0.55f).coerceIn(0f, 1f) } ?: 1f,
       topLeft = Offset.Zero,
       size = Size(width, ceilingBottom),
     )
@@ -954,14 +989,7 @@ internal class CloudLayer private constructor(
     val mistTop = (deck.bottom - 0.08f) * height
     val mistHeight = height * 0.5f
     drawRect(
-      brush = Brush.verticalGradient(
-        0f to dark.copy(alpha = 0f),
-        0.25f to dark.copy(alpha = 0.55f),
-        0.55f to dark.copy(alpha = 0.3f),
-        1f to dark.copy(alpha = 0f),
-        startY = mistTop,
-        endY = mistTop + mistHeight,
-      ),
+      brush = mistBrush!!,
       topLeft = Offset(0f, mistTop),
       size = Size(width, mistHeight),
     )
@@ -975,7 +1003,12 @@ internal class CloudLayer private constructor(
         radiusY = blob.ry * height,
         color = color,
         alpha = 0.78f,
-        hardness = 0.4f,
+        hardness = 0.2f + deck.darkness * 0.3f,
+      )
+      if (quality == SceneQuality.FULL) cachedBlob(
+        cache, Offset(x * width + (if (lightX >= x) 1f else -1f) * blob.rx * width * 0.12f, (blob.y - blob.ry * 0.32f) * height),
+        blob.rx * width * 0.82f, blob.ry * height * 0.42f,
+        sky.cloudColor, 0.12f + (1f - deck.darkness) * 0.16f, hardness = 0.18f,
       )
       // La pancia di ogni banco, piu' scura: e' quello che da' spessore alla coltre.
       cachedBlob(
@@ -1007,7 +1040,7 @@ internal class CloudLayer private constructor(
     val height = size.height
     val x = ((cirrus.cx + t * 0.0015f) % 1.3f) - 0.15f
     val center = Offset(x * width, cirrus.cy * height)
-    val color = lerp(sky.cloudColor, Color.White, 0.3f)
+    val color = sky.cloudColor
     for (f in cirrus.filaments) {
       cachedBlob(
         cache,
@@ -1036,7 +1069,24 @@ internal class CloudLayer private constructor(
         cumuli += Cumulus.random(random, cx = random.nextFloat(), cy = y, width = width, alpha = alpha, quality = quality)
       }
 
-      when (state.kind) {
+      val optical = state.atmosphere?.boundedForPainting()
+      if (optical != null && state.kind != WeatherKind.FOG) {
+        val depth = optical.cloudDepth
+        val coverage = optical.cloudCoverage
+        if (coverage > 0.38f) deck = Deck.random(random,
+          darkness = (depth * optical.cloudDarkness).coerceIn(0f, 1f), coverage = coverage,
+          ragged = depth > 0.65f && optical.precipitationStrength > 0.45f, quality = quality, depth = depth)
+        if (coverage > 0.04f && coverage < 0.94f) {
+          val count = (coverage * (if (quality == SceneQuality.FULL) 4f else 2f)).roundToInt().coerceIn(1, 4)
+          repeat(count) { i ->
+            val near = i % 2 == 1
+            cumulus(if (near) random.between(0.42f, 0.68f) else random.between(0.18f, 0.3f),
+              if (near) random.between(0.23f, 0.42f) else random.between(0.08f, 0.21f),
+              alpha = 0.6f + depth * 0.4f)
+          }
+        }
+        if (coverage > 0.1f && quality == SceneQuality.FULL) cirrus(0.08f + optical.diffuseLight * 0.1f)
+      } else when (state.kind) {
         WeatherKind.FOG -> Unit
         WeatherKind.THUNDERSTORM, WeatherKind.HEAVY_RAIN ->
           deck = Deck.random(random, darkness = 1f, coverage = 1f, ragged = true, quality = quality)
@@ -1070,7 +1120,7 @@ internal class CloudLayer private constructor(
       }
       // Le vicine si disegnano per ultime, sopra le lontane.
       cumuli.sortBy { it.width }
-      return CloudLayer(cumuli, deck, cirri, quality)
+      return CloudLayer(cumuli, deck, cirri, quality, optical)
     }
   }
 }
@@ -1206,7 +1256,7 @@ internal class LightningField(random: Random) {
  * fiocco grande e sfocato, quella lontana un granello; e ondeggia. Le forti aggiungono un velo che
  * toglie contrasto al cielo, che e' cio' che si vede davvero quando viene giu' sul serio.
  */
-internal class PrecipitationField(private val kind: WeatherKind?, quality: SceneQuality, random: Random) {
+internal class PrecipitationField(private val kind: WeatherKind?, quality: SceneQuality, random: Random, private val atmosphere: SkyAtmosphere? = null) {
 
   private enum class Mode { RAIN, SNOW, NONE }
 
@@ -1243,7 +1293,7 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
       WeatherKind.HEAVY_SNOW -> 230
       else -> 0
     }
-    val total = (base * scale).toInt()
+    val total = (base * scale * (atmosphere?.precipitationStrength ?: 1f)).toInt()
     when {
       total == 0 -> emptyList()
       mode == Mode.SNOW -> listOf(
@@ -1256,7 +1306,7 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
   }
 
   /** I fiocchi nella pioggia mista: il nevischio non e' pioggia sottile, e' pioggia con dentro la neve. */
-  private val sleetFlakes = if (kind == WeatherKind.SLEET) Layer((40 * scale).toInt(), 0.6f, random) else null
+  private val sleetFlakes = if (kind == WeatherKind.SLEET) Layer((40 * scale * (atmosphere?.precipitationStrength ?: 1f)).toInt(), 0.6f, random) else null
 
   /**
    * L'inclinazione: quanto ogni goccia si sposta di lato per ogni pixel che scende. Un rapporto,
@@ -1294,12 +1344,12 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
       WeatherKind.SNOW -> 0.07f
       else -> 0f
     }
-    if (veil > 0f) scope.drawRect(sky.hazeColor.copy(alpha = veil))
+    if (veil > 0f) scope.drawRect(sky.hazeColor.copy(alpha = veil * (atmosphere?.precipitationStrength ?: 1f)))
 
     when (mode) {
       Mode.RAIN -> {
         // Le raffiche: la pendenza respira, non e' un binario.
-        val slant = slantRatio * (1f + 0.3f * sin(t * 0.45f))
+        val slant = -slantRatio * (atmosphere?.windSpeedFactor ?: 1f) * (1f + 0.15f * sin(t * 0.45f))
         val tint = lerp(Color(0xFFDCE7F3), sky.hazeColor, 0.3f)
         for (layer in layers) {
           val near = layer.depth
@@ -1337,7 +1387,7 @@ internal class PrecipitationField(private val kind: WeatherKind?, quality: Scene
         }
         sleetFlakes?.let { scope.drawFlakes(it, t, u, width, height, 0.6f) }
       }
-      Mode.SNOW -> for (layer in layers) scope.drawFlakes(layer, t, u, width, height, layer.depth, snowDrift)
+      Mode.SNOW -> for (layer in layers) scope.drawFlakes(layer, t, u, width, height, layer.depth, -snowDrift * (atmosphere?.windSpeedFactor ?: 1f))
       Mode.NONE -> Unit
     }
   }

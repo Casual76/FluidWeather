@@ -35,6 +35,8 @@ object SkyPalette {
     /** Quanto neve e nebbia sbiancano tutto. */
     val whiteout: Float,
     val phase: DayPhase,
+    /** Internal optical controls, absent for legacy callers. */
+    val atmosphere: SkyAtmosphere? = null,
   )
 
   /**
@@ -58,6 +60,37 @@ object SkyPalette {
   fun sky(state: SkyState): Sky {
     val rendered = state.forRendering()
     val base = sky(rendered.phase, rendered.kind, rendered.cloudCoverPercent)
+    rendered.atmosphere?.boundedForPainting()?.let { a ->
+      // Coverage is area; depth is optical thickness. Thin stratus can cover the sky without
+      // turning it into a thunderhead. Snow/fog retain the existing whitening semantics.
+      val density = a.cloudCoverage * a.cloudDepth
+      val shade = (density * a.cloudDarkness * 0.85f).coerceIn(0f, 1f)
+      val neutral = when (rendered.phase) {
+        DayPhase.DAY -> Color(0xFFBAC5D0)
+        DayPhase.DAWN, DayPhase.DUSK -> Color(0xFF9C929B)
+        DayPhase.NIGHT -> Color(0xFF202A3B)
+      }
+      val underside = when (rendered.phase) {
+        DayPhase.DAY -> Color(0xFF414D5D)
+        DayPhase.DAWN, DayPhase.DUSK -> Color(0xFF494556)
+        DayPhase.NIGHT -> Color(0xFF0C1220)
+      }
+      val clear = sky(rendered.phase, WeatherKind.CLEAR, 0.0)
+      val stops = clear.stops.map { (at, color) ->
+        val overcast = lerp(neutral, underside, shade * (1f - at * 0.45f))
+        val air = lerp(color, overcast, (a.cloudCoverage * (0.32f + a.cloudDepth * 0.68f)).coerceIn(0f, 1f))
+        at to lerp(air, base.hazeColor, (a.haze * at * at * 0.65f + base.whiteout * 0.5f).coerceIn(0f, 1f))
+      }
+      return base.copy(
+        stops = stops,
+        gradient = listOf(stops[0].second, stops[2].second, stops[4].second),
+        cloudColor = lerp(litCloud(rendered.phase), neutral, a.diffuseLight * 0.55f + shade * 0.25f),
+        cloudShadow = lerp(shadowCloud(rendered.phase), underside, a.cloudDarkness * a.cloudDepth),
+        starAlpha = clear.starAlpha * (1f - a.cloudCoverage) * (1f - a.haze),
+        gloom = (density * 0.45f + shade * 0.55f).coerceIn(0f, 1f),
+        atmosphere = a,
+      )
+    }
     if (!rendered.assessmentKnown) return base
     return when (rendered.precipitation) {
       dev.pampa.fluidweather.core.model.PrecipitationState.WET -> base.copy(
@@ -221,4 +254,15 @@ object SkyPalette {
     DayPhase.DUSK -> Color(0xFFCDB3B0)
     DayPhase.NIGHT -> Color(0xFF3A4256)
   }
+}
+
+/** Defensive rendering boundary; never promotes missing values into observations. */
+internal fun SkyAtmosphere.boundedForPainting(): SkyAtmosphere {
+  fun unit(v: Float) = if (v.isFinite()) v.coerceIn(0f, 1f) else 0f
+  return copy(
+    cloudDepth = unit(cloudDepth), cloudCoverage = unit(cloudCoverage),
+    cloudDarkness = unit(cloudDarkness), diffuseLight = unit(diffuseLight), haze = unit(haze),
+    windSpeedFactor = if (windSpeedFactor.isFinite()) windSpeedFactor.coerceIn(0.25f, 2f) else 1f,
+    precipitationStrength = unit(precipitationStrength), storminess = unit(storminess),
+  )
 }
