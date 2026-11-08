@@ -70,7 +70,7 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
    * il launcher sceglie al ridimensionamento senza risvegliare il processo dell'app. Su API 26-30,
    * dove `Exact` rifarebbe la composizione a ogni trascinamento, la differenza si vede.
    */
-  override val sizeMode = SizeMode.Responsive(setOf(Small, Medium, Large, Expanded))
+  override val sizeMode = SizeMode.Responsive(setOf(Small, Medium, Large, Expanded, Wide, WideExpanded))
 
   override suspend fun provideGlance(context: Context, id: GlanceId) {
     val runtime = context.appWidgetRuntime()
@@ -168,6 +168,8 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     val Medium = DpSize(250.dp, 110.dp)
     val Large = DpSize(250.dp, 200.dp)
     val Expanded = DpSize(250.dp, 340.dp)
+    val Wide = DpSize(350.dp, 180.dp)
+    val WideExpanded = DpSize(350.dp, 350.dp)
   }
 }
 

@@ -35,7 +35,7 @@ data class WidgetHostCase(
   val size get() = DpSize(width.dp, height.dp)
   val key get() = "${width}x${height}_${language}_${fontScale}_$variant"
   companion object {
-    val sizes = listOf(110 to 110, 250 to 110, 250 to 200, 250 to 340)
+    val sizes = listOf(110 to 110, 250 to 110, 250 to 200, 250 to 340, 350 to 180, 350 to 350)
     val variants = listOf("empty", "stale", "current", "missing")
     const val NOW = 1_783_080_000_000L
     val zone: ZoneId = ZoneId.of("Europe/Rome")
@@ -50,7 +50,7 @@ object WeatherWidgetHostRenderer {
     })
 
   fun model(case: WidgetHostCase): AppWidgetModel {
-    val hours = (0 until 96).map { h ->
+    val hours = (0 until 168).map { h ->
       FusedHour(WidgetHostCase.NOW + h * 3_600_000L,
         if (case.variant == "missing") emptyMap() else mapOf(
           FusionVariables.TEMPERATURE to FusedValue(21.0 + h % 5, emptyList()),

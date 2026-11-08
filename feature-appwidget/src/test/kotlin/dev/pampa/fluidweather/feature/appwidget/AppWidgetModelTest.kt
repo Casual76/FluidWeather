@@ -101,7 +101,7 @@ class AppWidgetModelTest {
   }
 
   @Test
-  fun `la grande porta quattro ore, tutte future`() {
+  fun `la grande porta sei ore, tutte future`() {
     val model = AppWidgetModelBuilder.of(istantanea(), null, verdetto(), adesso, AppWidgetTier.LARGE)
 
     assertEquals(AppWidgetModelBuilder.STRIP_HOURS, model.hours.size)

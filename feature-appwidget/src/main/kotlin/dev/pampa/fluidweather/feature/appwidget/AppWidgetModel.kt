@@ -92,7 +92,7 @@ data class AppWidgetModel(
 
 /** Cache-only presentation; fused hours are forecast details, never current observations. */
 object AppWidgetModelBuilder {
-  const val STRIP_HOURS = 4
+  const val STRIP_HOURS = 6
 
   fun of(
     snapshot: WeatherSnapshot?,

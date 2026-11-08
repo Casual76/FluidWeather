@@ -1,6 +1,8 @@
 package dev.pampa.fluidweather.feature.appwidget
 
 import android.graphics.Bitmap
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
@@ -99,6 +101,14 @@ object SkyScene {
         scrim = true,
         moon = moon,
       )
+      // A bounded tonal veil keeps the reference's calm sky and white glyph contrast.
+      // SkyFrame still owns weather, atmosphere and solar state; HOME is untouched.
+      val night = phaseOf(latitude, longitude, nowMillis, zone) == DayPhase.NIGHT
+      val cloudy = kind != null && kind != WeatherKind.CLEAR
+      val top = if (night) Color(0xE60C2046) else if (cloudy) Color(0xE6475E77) else Color(0xE61B5288)
+      val bottom = if (night) Color(0xD92C4770) else if (cloudy) Color(0xD9647C92) else Color(0xD93E78AD)
+      drawRect(Brush.verticalGradient(listOf(top, bottom)))
+
     }
     return bitmap.asAndroidBitmap()
   }

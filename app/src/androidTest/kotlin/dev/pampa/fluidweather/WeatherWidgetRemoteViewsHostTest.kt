@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.ImageView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.pampa.fluidweather.widgetqa.*
@@ -54,6 +55,12 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
         val capture = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
         root.draw(Canvas(capture))
         File(directory, "${case.key}.png").outputStream().use { capture.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // Bars are framework-painted content, not merely extrema strings in the model.
+        val barRows = (0 until capture.height).filter { y ->
+          (0 until capture.width).count { x -> capture.getPixel(x, y) == 0xFFF2D76C.toInt() } >= 2
+        }
+        val bands = barRows.filterIndexed { index, y -> index == 0 || y > barRows[index - 1] + 1 }
+        assertEquals("Expected visible complete-day range bars", if (case.height >= 330 && case.variant in listOf("current", "stale")) 5 else 0, bands.size)
         capture.recycle()
         val density = host.widgetContext.resources.displayMetrics.density
         assertEquals((case.width * density).roundToInt(), root.width)
@@ -92,17 +99,17 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
     assertTrue("Place must precede hero", bounds(root, place).top <= bounds(root, hero).top)
     assertTrue("Temperature must dominate place", hero.textSize > place.textSize)
     assertTrue("Hero must be largest text", texts.all { it.textSize <= hero.textSize })
-    val emptyLabel = host.getString(R.string.widget_quality_empty)
+    val emptyLabel = host.getString(dev.pampa.fluidweather.feature.appwidget.R.string.widget_reference_empty)
     if (case.variant == "empty") {
       assertEquals(3, texts.size)
-      assertTrue(texts.any { it.text.toString() == host.widgetContext.getString(R.string.widget_quality_empty) })
+      assertTrue(texts.any { it.text.toString() == host.widgetContext.getString(dev.pampa.fluidweather.feature.appwidget.R.string.widget_reference_empty) })
     } else {
       assertFalse(texts.any { it.text.toString() == emptyLabel })
       assertEquals("Unexpected extra/missing text rows", when {
         case.width == 110 -> if (case.variant == "stale") 4 else 3
         case.height == 110 -> 4
-        case.height == 200 -> 13
-        else -> 20
+        case.height < 330 -> if (case.width >= 320) 17 else 13
+        else -> if (case.width >= 320) 32 else 28
       }, texts.size)
       if (model.usesHourlyForecast) {
         val valid = requireNotNull(model.forecastAtMillis)
@@ -114,15 +121,34 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
       val hourLabels = model.hours.map { dev.pampa.fluidweather.strings.TimeFormats.hour(it.timestampMillis, model.zone,
         Locale.forLanguageTag(case.language)) }
       val hours = texts.filter { it.text.toString() in hourLabels }
-      assertEquals(if (case.height >= 200) 4 else 0, hours.size)
+      val expectedHours = if (case.height < 170) 0 else if (case.width >= 320) 6 else 4
+      assertEquals(expectedHours, hours.size)
       hours.forEach { assertTrue("Hours must follow hero", bounds(root, it).top >= bounds(root, hero).bottom) }
-      val heading = texts.filter { it.text.toString() == host.widgetContext.getString(R.string.widget_quality_days) }
-      assertEquals(if (case.height == 340) 1 else 0, heading.size)
-      if (heading.isNotEmpty()) {
-        assertTrue(bounds(root, heading.single()).top >= hours.maxOf { bounds(root, it).bottom })
-        model.days.take(3).forEach { day ->
-          val label = day.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE d", Locale.forLanguageTag(case.language)))
-          assertEquals("Daily row missing/duplicated", 1, texts.count { it.text.toString() == label })
+      val dayCount = if (case.height >= 330) 5 else 0
+      if (dayCount > 0) {
+        assertEquals("Fixture must populate all five days", 5, model.days.size)
+        var previousBottom = hours.maxOf { bounds(root, it).bottom }
+        model.days.take(dayCount).forEach { day ->
+          val label = day.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE", Locale.forLanguageTag(case.language)))
+          val row = texts.single { it.text.toString() == label }
+          assertTrue("Daily rows must follow hours in order", bounds(root, row).top >= previousBottom)
+          previousBottom = bounds(root, row).bottom
+        }
+        if (case.variant != "missing") {
+          assertTrue("Complete fixture needs actual daily ranges", model.days.all { it.minC != null && it.maxC != null })
+        }
+      }
+      // Every hourly label has a real drawable centered below it, and columns share a baseline.
+      if (hours.isNotEmpty()) {
+        assertEquals("Hourly labels must align", 1, hours.map { bounds(root, it).top }.distinct().size)
+        val icons = descendants(root).filterIsInstance<ImageView>().toList()
+        hours.forEach { hour ->
+          val cell = bounds(root, hour)
+          assertTrue("Missing aligned hourly weather icon", icons.any {
+            val icon = bounds(root, it)
+            kotlin.math.abs(icon.centerX() - cell.centerX()) <= 2 &&
+              icon.top >= cell.bottom && icon.bottom <= cell.bottom + (48 * host.widgetContext.resources.displayMetrics.density).roundToInt()
+          })
         }
       }
       if (case.variant == "stale") {

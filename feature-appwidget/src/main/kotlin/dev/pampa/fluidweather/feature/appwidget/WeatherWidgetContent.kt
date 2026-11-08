@@ -11,6 +11,7 @@ import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
@@ -33,6 +34,7 @@ import androidx.glance.unit.ColorProvider
 import dev.pampa.fluidweather.core.ui.AppDeepLink
 import dev.pampa.fluidweather.core.ui.AppDestination
 import dev.pampa.fluidweather.core.ui.HomeWidget
+import dev.pampa.fluidweather.feature.appwidget.R as WidgetR
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.UnitFormatter
@@ -51,7 +53,7 @@ fun WeatherWidgetContent(
   val density = WidgetDensity.of(LocalSize.current.width.value, LocalSize.current.height.value)
   val enlarged = resources.configuration.fontScale > 1.15f
   val short = LocalSize.current.height.value < 150
-  val placeSize = if (enlarged) 11 else if (density.compact) 13 else 15
+  val placeSize = if (enlarged) 11 else if (density.compact) 13 else 17
   val heroSize = if (enlarged) { if (density.compact || short) 24 else 32 } else if (density.compact) 32 else 44
   val detailSize = if (enlarged) 10 else 11
   val ink = ColorProvider(ComposeColor.White)
@@ -79,6 +81,7 @@ fun WeatherWidgetContent(
       .padding(horizontal = density.padding.dp,
         vertical = (density.padding - when {
           compactFallback -> 3
+          enlarged && LocalSize.current.height.value in 170f..189f -> 8
           enlarged && !density.compact -> 2
           else -> 0
         }).dp)
@@ -87,7 +90,7 @@ fun WeatherWidgetContent(
     if (model.isEmpty) {
       Label(place, ink, placeSize, FontWeight.Medium)
       Label("\u2014", ink, if (enlarged) 24 else 32)
-      Label(resources.getString(R.string.widget_quality_empty), secondary, detailSize)
+      Label(resources.getString(WidgetR.string.widget_reference_empty), secondary, detailSize)
       return@Column
     }
     if (density.compact) {
@@ -116,30 +119,41 @@ fun WeatherWidgetContent(
         }
       }
       if (density.hourCount > 0 && model.hours.isNotEmpty()) {
-        Spacer(GlanceModifier.height(8.dp))
+        Spacer(GlanceModifier.height(4.dp))
+        Separator()
+        Spacer(GlanceModifier.height(4.dp))
         HourStrip(model, units, ink, secondary, target, density.hourCount, enlarged)
       }
       if (density.dayCount > 0 && model.days.isNotEmpty()) {
-        Spacer(GlanceModifier.height(10.dp))
-        Label(resources.getString(R.string.widget_quality_days), secondary, detailSize)
-        model.days.take(density.dayCount).forEach { day ->
-          Row(
-            GlanceModifier.fillMaxWidth().height(30.dp)
-              .clickable(actionStartActivity(widgetIntent(target, HomeWidget.DAILY))),
-            verticalAlignment = Alignment.Vertical.CenterVertically,
-          ) {
-            Label(day.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE d", resources.configuration.locales[0])),
-              ink, if (enlarged) 11 else 12, modifier = GlanceModifier.defaultWeight())
-            WeatherIcon(day.iconRes, ink, 18)
-            Spacer(GlanceModifier.width(12.dp))
-            Label(rangeText(day.minC, day.maxC, units), ink, if (enlarged) 11 else 12)
+        Column(GlanceModifier.fillMaxWidth()) {
+          Spacer(GlanceModifier.height(4.dp))
+          Separator()
+          val days = model.days.take(density.dayCount)
+          val domain = widgetRangeDomain(days)
+          days.forEach { day ->
+            Row(
+              GlanceModifier.fillMaxWidth().height(28.dp)
+                .clickable(actionStartActivity(widgetIntent(target, HomeWidget.DAILY))),
+              verticalAlignment = Alignment.Vertical.CenterVertically,
+            ) {
+              Label(day.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE", resources.configuration.locales[0])),
+                ink, 11, FontWeight.Medium, GlanceModifier.width(if (enlarged) 38.dp else 32.dp))
+              WeatherIcon(day.iconRes, ink, 18)
+              Spacer(GlanceModifier.width(4.dp))
+              Label(day.minC?.takeIf(Double::isFinite)?.let(units::degrees) ?: "\u2014",
+                secondary, 11, modifier = GlanceModifier.width(if (enlarged) 38.dp else 30.dp))
+              RangeBar(day, domain, enlarged, GlanceModifier.defaultWeight())
+              Spacer(GlanceModifier.width(6.dp))
+              Label(day.maxC?.takeIf(Double::isFinite)?.let(units::degrees) ?: "\u2014",
+                ink, 11, modifier = GlanceModifier.width(if (enlarged) 38.dp else 30.dp))
+            }
           }
         }
       }
       // A short age only: full source/timestamps stay in app details.
       if (density.showFooter) {
         Spacer(GlanceModifier.defaultWeight())
-        Label(ageText, secondary, detailSize)
+        Label(ageText, if (stale) ink else secondary, detailSize, if (stale) FontWeight.Medium else FontWeight.Normal)
       }
     }
   }
@@ -195,4 +209,28 @@ private fun widgetIntent(base: Intent, widget: HomeWidget): Intent {
     else -> null
   }
   return Intent(base).setData(AppDeepLink.uri(AppDestination.Widget(widget, placeId)))
+}
+
+@Composable
+private fun Separator() = Box(GlanceModifier.fillMaxWidth().height(1.dp)
+  .background(ComposeColor.White.copy(alpha = 0.22f))) {}
+
+/** Vector-like Glance boxes: no per-size or per-day bitmap allocation. */
+@Composable
+private fun RangeBar(day: AppWidgetDay, domain: ClosedFloatingPointRange<Double>?, enlarged: Boolean, modifier: GlanceModifier) {
+  val fractions = widgetRangeFractions(day, domain)
+  val width = (LocalSize.current.width.value - 24 - (if (enlarged) 38 + 38 + 38 else 32 + 30 + 30) - 18 - 4 - 6).coerceAtLeast(2f)
+  val start = fractions?.first ?: 0f
+  val end = fractions?.second ?: 0f
+  Box(modifier.height(5.dp).background(ComposeColor.White.copy(alpha = 0.14f)).cornerRadius(2.5.dp)) {
+    if (fractions != null) {
+      Row(GlanceModifier.fillMaxWidth()) {
+        val barWidth = (width * (end - start)).coerceAtLeast(2f).coerceAtMost(width)
+        val offset = (width * start).coerceAtMost(width - barWidth)
+        if (offset > 0f) Spacer(GlanceModifier.width(offset.dp))
+        Box(GlanceModifier.width(barWidth.dp).height(5.dp)
+          .background(ComposeColor(0xFFF2D76C)).cornerRadius(2.5.dp)) {}
+      }
+    }
+  }
 }
