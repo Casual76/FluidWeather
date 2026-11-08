@@ -2,6 +2,12 @@ package dev.pampa.fluidweather.feature.home
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -68,55 +74,59 @@ fun HomeRainOverview(
   val evidence = (brief?.precipitation?.evidence.orEmpty() + current?.evidence.orEmpty() +
     brief?.timeline.orEmpty().flatMap { it.evidence }).distinct()
   var sourcesExpanded by rememberSaveable(locationName) { mutableStateOf(false) }
-  val colors = MaterialTheme.colorScheme
   val headlineText = stringResource(if (forecastLeads) when (forecast.kind) {
     RainForecastKind.DRY -> if (forecast.hasGaps) R.string.rain_quality_forecast_partial_dry else R.string.rain_quality_forecast_dry
-    RainForecastKind.WET -> R.string.rain_quality_forecast_wet
-    RainForecastKind.UNCERTAIN -> R.string.rain_quality_forecast_uncertain
+    RainForecastKind.WET -> R.string.glance_rain_forecast_wet
+    RainForecastKind.UNCERTAIN -> R.string.glance_rain_forecast_uncertain
     RainForecastKind.NONE -> R.string.rain_quality_now_unknown
   } else when (headline) {
     RainHeadline.MODEL_WET -> R.string.home_rain_model_wet
     RainHeadline.MODEL_DRY -> R.string.home_rain_model_dry
-    RainHeadline.RADAR_WET -> R.string.home_rain_radar_wet
-    RainHeadline.RADAR_NO_ECHO -> R.string.home_rain_radar_no_echo
-    RainHeadline.WET -> R.string.home_rain_wet
-    RainHeadline.DRY -> R.string.home_rain_dry
-    RainHeadline.CONFLICT -> R.string.home_rain_conflict
+    RainHeadline.RADAR_WET -> R.string.glance_rain_radar_wet
+    RainHeadline.RADAR_NO_ECHO -> R.string.glance_rain_no_echo
+    RainHeadline.WET -> R.string.glance_rain_wet
+    RainHeadline.DRY -> R.string.glance_rain_dry
+    RainHeadline.CONFLICT -> R.string.glance_rain_conflict
     RainHeadline.UNCERTAIN -> R.string.home_rain_uncertain
     RainHeadline.UNAVAILABLE -> R.string.rain_quality_now_unknown
   })
   GlassTile(modifier.testTag("home_rain_overview")) {
+    // Resolve ink inside the glass palette, including the shared canvas white foreground.
+    val colors = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
       if (showCurrent) {
         Text(locationName, style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
-        if (current != null && (current.temperatureC != null || current.kind != null)) Text(
-          stringResource(if (current.evidence.any { it.type == WeatherEvidenceType.MODEL })
-            R.string.home_rain_current_model else R.string.home_rain_current,
-            current.temperatureC?.let { units.degrees(it) } ?: stringResource(R.string.home_rain_timeline_unknown),
-            current.kind?.labelRes()?.let { stringResource(it) } ?: stringResource(R.string.home_rain_timeline_unknown)),
-          style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+        if (current != null && (current.temperatureC != null || current.kind != null)) {
+          val temperature = current.temperatureC?.let { units.degrees(it) }
+            ?: stringResource(R.string.home_rain_timeline_unknown)
+          val condition = current.kind?.labelRes()?.let { stringResource(it) }
+            ?: stringResource(R.string.home_rain_timeline_unknown)
+          val description = stringResource(if (current.evidence.any { it.type == WeatherEvidenceType.MODEL })
+            R.string.home_rain_current_model else R.string.home_rain_current, temperature, condition)
+          Text(stringResource(R.string.glance_rain_current, temperature, condition),
+            style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
+            modifier = Modifier.clearAndSetSemantics { contentDescription = description })
+        }
       }
-      if (showCurrent || forecastLeads) Text(
-        stringResource(if (forecastLeads) R.string.rain_quality_forecast_title else R.string.rain_quality_title),
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (headline in setOf(RainHeadline.CONFLICT, RainHeadline.UNCERTAIN) ||
+          (forecastLeads && forecast.kind == RainForecastKind.UNCERTAIN)) Icons.Rounded.WarningAmber
+          else if (headline in setOf(RainHeadline.MODEL_WET, RainHeadline.RADAR_WET, RainHeadline.WET) ||
+            (forecastLeads && forecast.kind == RainForecastKind.WET)) Icons.Rounded.WaterDrop else Icons.Rounded.Cloud,
+          contentDescription = null, tint = colors.onSurface, modifier = Modifier.size(24.dp))
+        Text(headlineText, style = MaterialTheme.typography.titleMedium, color = colors.onSurface,
+          modifier = Modifier.weight(1f).semantics { heading() }.testTag("home_rain_headline"))
+      }
+      if (forecastLeads) Text(stringResource(R.string.glance_rain_now_unknown),
         style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
-      Text(headlineText, style = MaterialTheme.typography.titleMedium, color = colors.onSurface,
-        modifier = Modifier.semantics { heading() }.testTag("home_rain_headline"))
-      val qualifier = when {
-        forecastLeads -> R.string.rain_quality_now_and_forecast
-        headline in setOf(RainHeadline.CONFLICT, RainHeadline.UNCERTAIN) -> R.string.home_rain_conflict_limit
-        headline in setOf(RainHeadline.MODEL_WET, RainHeadline.MODEL_DRY) -> R.string.rain_quality_model_recent
-        headline == RainHeadline.UNAVAILABLE -> null
-        else -> R.string.rain_quality_radar_recent
-      }
-      qualifier?.takeIf { showCurrent || forecastLeads || headline in setOf(RainHeadline.CONFLICT, RainHeadline.UNCERTAIN) }
-        ?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
       HomeRainPresentation.transition(brief, now)?.let { transition ->
         Text(stringResource(if (transition.arrival) R.string.home_rain_arrival else R.string.home_rain_end,
           TimeFormats.time(transition.startMillis, zone.zoneId, locale), TimeFormats.time(transition.endMillis, zone.zoneId, locale)),
-          style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+          style = MaterialTheme.typography.titleSmall, color = colors.onSurface,
+          modifier = Modifier.testTag("home_rain_transition"))
       }
       // No decorative chart for entirely missing data. Gaps within a useful forecast stay visible.
-      if (hasForecast) RainTimeline(brief, now, zone.zoneId, forecast, showTitle = !forecastLeads, compact = !showCurrent)
+      if (hasForecast) RainTimeline(brief, now, zone.zoneId, forecast)
     }
     // These actions sit on the weather glass. Use its foreground ink; a brand-blue label
     // can disappear over a bright cloud even though the app's dark-theme palette is valid.
@@ -127,7 +137,7 @@ fun HomeRainOverview(
         modifier = Modifier.heightIn(min = 48.dp).testTag("home_summary_open"))
       if (evidence.isNotEmpty() || limits.isNotEmpty()) {
         val expandedLabel = stringResource(if (sourcesExpanded) R.string.home_rain_sources_expanded else R.string.home_rain_sources_collapsed)
-        FluidButton(text = stringResource(R.string.home_rain_sources), onClick = { sourcesExpanded = !sourcesExpanded },
+        FluidButton(text = stringResource(R.string.glance_rain_details), onClick = { sourcesExpanded = !sourcesExpanded },
           style = FluidButtonStyle.Plain, grip = FluidPressGrip.YieldsToScroll,
           modifier = Modifier.heightIn(min = 48.dp).testTag("home_rain_sources_toggle").semantics { stateDescription = expandedLabel })
       }
@@ -139,7 +149,7 @@ fun HomeRainOverview(
 
 @Composable
 private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId,
-  forecast: RainForecastPresentation, showTitle: Boolean, compact: Boolean) {
+  forecast: RainForecastPresentation) {
   val parts = HomeRainPresentation.timeline(brief, now)
   val locale = LocalConfiguration.current.locales[0]
   val units = rememberUnitFormatter()
@@ -165,13 +175,14 @@ private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId,
   val amountScale = parts.mapNotNull { it.period?.amountMm }.maxOrNull()?.takeIf { it > 0 }
   val hasRain = forecast.kind == RainForecastKind.WET
   val partial = stringResource(R.string.rain_quality_partial)
+  val scaleDescription = if (hasRain && amountScale != null)
+    stringResource(R.string.rain_quality_amount_bars, units.precipitation(amountScale)) else ""
   Column(Modifier.fillMaxWidth().padding(top = 4.dp).testTag("home_rain_timeline")
     .clearAndSetSemantics { contentDescription = listOf(title, resolution,
-      if (forecast.hasGaps) partial else "", descriptions.joinToString("; ")).filter { it.isNotBlank() }.joinToString(". ") },
+      if (forecast.hasGaps) partial else "",
+      scaleDescription, descriptions.joinToString("; ")).filter { it.isNotBlank() }.joinToString(". ") },
     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    if (zone != ZoneId.systemDefault()) Text(stringResource(R.string.quality_times_in, zone.id),
-      style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
-    if (showTitle) Text(title, style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
+    Text(title, style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
     Canvas(Modifier.fillMaxWidth().height(if (hasRain) 40.dp else 12.dp)) {
       val baseline = size.height - 2.dp.toPx()
       parts.forEach { part ->
@@ -188,10 +199,10 @@ private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId,
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(1.dp.toPx(), 4.dp.toPx())))
           period.state == PrecipitationState.WET && amount != null && amountScale != null -> {
             val barHeight = ((amount / amountScale).toFloat() * (size.height - 5.dp.toPx())).coerceAtLeast(3.dp.toPx())
-            drawRoundRect(colors.primary, Offset(start, baseline - barHeight),
+            drawRoundRect(colors.onSurface, Offset(start, baseline - barHeight),
               Size((finish - start).coerceAtLeast(0f), barHeight), CornerRadius(2.dp.toPx()))
           }
-          else -> drawLine(if (period.state == PrecipitationState.DRY) colors.primary else colors.tertiary,
+          else -> drawLine(if (period.state == PrecipitationState.DRY) colors.onSurface else colors.onSurfaceVariant,
             Offset(start, baseline), Offset(finish, baseline), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
         }
       }
@@ -201,16 +212,18 @@ private fun RainTimeline(brief: WeatherBrief?, now: Long, zone: ZoneId,
         Text(TimeFormats.time(it, zone, locale), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
       }
     }
-    val gapLabel = if (forecast.hasGaps) stringResource(R.string.rain_quality_gaps) else null
-    val caption = if (compact) gapLabel else listOfNotNull(resolution, gapLabel).joinToString(" · ")
-    caption?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant) }
-    if (hasRain && amountScale != null) Text(stringResource(R.string.rain_quality_amount_bars, units.precipitation(amountScale)),
-      style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
-    val metrics = listOfNotNull(
-      forecast.totalAmountMm?.takeIf { it > 0 }?.let { stringResource(R.string.rain_quality_total, units.precipitation(it)) },
-      forecast.maximumProbabilityPercent?.takeIf { !compact || it > 0 }?.let {
-        stringResource(R.string.rain_quality_probability, units.percent(it / 100.0)) })
-    if (metrics.isNotEmpty()) Text(metrics.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+  }
+  // Separate concise values from the chart's interval semantics so each metric is reachable.
+  FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    forecast.maximumProbabilityPercent?.let {
+      RainGlanceMetric(Icons.Rounded.WaterDrop, units.percent(it / 100.0),
+        stringResource(R.string.rain_quality_probability, units.percent(it / 100.0)), "home_rain_probability")
+    }
+    forecast.totalAmountMm?.takeIf { it > 0 }?.let {
+      RainGlanceMetric(Icons.Rounded.WaterDrop, units.precipitation(it),
+        stringResource(R.string.rain_quality_total, units.precipitation(it)), "home_rain_amount")
+    }
+    if (forecast.hasGaps) RainGapKey()
   }
 }
 
@@ -270,7 +283,7 @@ private fun RainSourceDetails(brief: WeatherBrief?, evidence: List<WeatherEviden
     }
     if (brief?.timeline?.any { it.role == PrecipitationPeriodRole.FORECAST } == true)
       SourceText(stringResource(R.string.rain_quality_forecast_notice))
-    (limits + evidence.flatMap { it.limits }).map { limit -> when (limit) {
+    (limits + evidence.flatMap { it.limits }).mapNotNull { limit -> when (limit) {
       WeatherEvidenceLimit.STALE -> R.string.home_rain_stale
       WeatherEvidenceLimit.UNKNOWN_PROVENANCE -> R.string.routines_provenance_unknown
       WeatherEvidenceLimit.PARTIAL_COVERAGE -> R.string.routines_partial
@@ -282,7 +295,7 @@ private fun RainSourceDetails(brief: WeatherBrief?, evidence: List<WeatherEviden
       WeatherEvidenceLimit.CONFLICTING_SIGNALS -> R.string.home_rain_conflict_limit
       WeatherEvidenceLimit.TRANSITION_EXPIRED -> R.string.rain_quality_transition_expired
       WeatherEvidenceLimit.FUTURE_DIVERGENCE -> R.string.rain_quality_future_divergence
-      WeatherEvidenceLimit.MODEL_ONLY -> R.string.rain_quality_model_recent
+      WeatherEvidenceLimit.MODEL_ONLY -> if (brief?.timeline?.any { it.role == PrecipitationPeriodRole.FORECAST } == true) null else R.string.rain_quality_model_recent
       WeatherEvidenceLimit.RADAR_GROUND_UNCERTAINTY -> R.string.rain_quality_radar_recent
       WeatherEvidenceLimit.RADAR_UNAVAILABLE -> R.string.home_rain_radar_unavailable
       WeatherEvidenceLimit.RADAR_SUPPORT_UNKNOWN -> R.string.home_rain_radar_unknown

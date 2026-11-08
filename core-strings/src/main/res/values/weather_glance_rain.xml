@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="glance_rain_forecast_wet">Rain forecast</string>
+  <string name="glance_rain_forecast_uncertain">Forecast uncertain</string>
+  <string name="glance_rain_radar_wet">Radar rain signal</string>
+  <string name="glance_rain_no_echo">No radar echoes</string>
+  <string name="glance_rain_wet">Rain indicated</string>
+  <string name="glance_rain_dry">No rain indicated</string>
+  <string name="glance_rain_conflict">Signals disagree</string>
+  <string name="glance_rain_now_unknown">Now unavailable</string>
+  <string name="glance_rain_gaps">No data</string>
+  <string name="glance_rain_details">Details</string>
+  <string name="glance_rain_current">%1$s ? %2$s</string>
+</resources>

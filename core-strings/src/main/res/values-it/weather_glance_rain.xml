@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="glance_rain_forecast_wet">Pioggia prevista</string>
+  <string name="glance_rain_forecast_uncertain">Previsione incerta</string>
+  <string name="glance_rain_radar_wet">Pioggia sul radar</string>
+  <string name="glance_rain_no_echo">Nessun eco radar</string>
+  <string name="glance_rain_wet">Pioggia indicata</string>
+  <string name="glance_rain_dry">Pioggia non indicata</string>
+  <string name="glance_rain_conflict">Segnali discordanti</string>
+  <string name="glance_rain_now_unknown">Ora non disponibile</string>
+  <string name="glance_rain_gaps">Dati assenti</string>
+  <string name="glance_rain_details">Dettagli</string>
+  <string name="glance_rain_current">%1$s ? %2$s</string>
+</resources>
