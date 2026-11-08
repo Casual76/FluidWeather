@@ -28,6 +28,8 @@ Glance Responsive deliberately selects supported compositions instead of adding 
 
 ## Rendering and handoff limits
 
+Root correction1: a hero using hourly fallback shows its original valid time (`Alle 15:00` / `At 3 PM`) within the existing text budget. Download age stays separate when stale. This follows the user's request to avoid repeated Model/estimate prose: there is no new disclaimer paragraph. Compact fallback uses the range slot for the clock; short wide fallback uses the condition slot, with the condition icon retained. Hour-strip labels use locale-aware hours (`15` / `3 PM`), without unnecessary `:00`. A widget-only top scrim attenuates bright celestial glow behind header ink; Home painting is unchanged.
+
 SkyScene remains unchanged and calls the shared SkyFrame.draw boundary with static semantics, the existing scrim and the same moon input. Three distinct 220 px long-edge bitmaps remain the memory budget; the fourth layout reuses the large bitmap. Expanded cells crop that scene without stretching celestial discs. Core sky rendering work can integrate independently.
 
 WidgetPresentationTest adds pure checks for density limits, timestamp age, sparse/missing/nonfinite/duplicate day slots, local date ordering and 23/25-hour DST days. No build, Gradle, tests, device, AVD, network or provider commands were run by the implementation agent. Only source inspection and git diff --check were performed. No claim of compiled or visual verification is made.

@@ -41,7 +41,23 @@ Evidence lives under the parent workspace `artifacts/quality-2.1.2/`, outside Gi
 | P4.regression | Home/details/glass remain coherent; no model, feedback, migration or principal-app changes; source clocks/unknown/conflicts preserved. |
 | P5.delivery | Pertinent JVM/device checks, exact tested APK/source identities, doctor and signed release checks; three independent Sol-high reviews with each mandatory criterion >=8 and no blocker. |
 
-Three reviewers will inspect the final frozen version independently. Initial review plus at most three correction rounds; scores, evidence, mean/minimum and open problems will be recorded here. No score assigned yet.
+Three fresh independent Sol-high reviewers completed the initial round. Initial review plus at most three correction rounds remain the workflow; correction1 is underway, with two further rounds available afterward if needed.
+
+## Independent review round0
+
+Version `Premium-R0-f1d8bb00bd6e`, HEAD `c6fe9385271d619277a3205c860e7a9b6c9bb03b`. Manifest769 files; ZIP SHA256 `045c0757062875e7d04afbd83d91cc40589ede210c07244620f295d7305b08e3`. All three critics checked sources, artifact integrity and actual images independently in read-only mode. Their full reports are `weather-premium-review-r0-r1.md`, `-r2.md`, `-r3.md`.
+
+| Criterion | R1 technical | R2 visual | R3 widget/evidence | Mean | Minimum |
+|---|---:|---:|---:|---:|---:|
+| P1.sky | 8 | 8.5 | 8 | 8.17 | 8 |
+| P2.widget | 7 | 7 | 6 | 6.67 | 6 |
+| P3.reliability | 8 | 8 | 8 | 8 | 8 |
+| P4.regression | 7 | 7 | 7 | 7 | 7 |
+| P5.delivery | 8 | 8 | 7 | 7.67 | 7 |
+
+Decision: CORRECT; no publication. P2/P4 fail the mandatory threshold and P5 collective acceptance is open. The mean cannot compensate.
+
+Required: (1) the hourly widget fallback lost its visible validity distinction; (2) root Home for the same place did not dismiss an already open detail. R3 additionally identified an essential-text ellipsis assertion checking only line0. R2 noted low-priority sun glow behind widget header text. Correction1 retains the user's concise-copy requirement: show the fallback's valid time rather than repeating Model/estimate prose, preserve stale download age separately, deliver a consumable Home nonce, inspect every text line and apply a widget-only header scrim. Home cloud artwork remains unchanged from the accepted upper soft-cloud correction.
 
 ## Explicit limits
 
@@ -53,5 +69,5 @@ Field forecast accuracy, controlled whole-app p95/memory comparison, process dea
 - The first64-case phone host run had multiple failures. The second and third each passed63/64, exposing respectively the compact stale-age clipping and a long Italian condition's footer margin. `premium-phone-widget-host-test-4.log` finally records **64/64**,54.627s, terminal-1. These are distinct cases, not additive to prior attempts.
 - `premium-phone-startup-test-5.log` records **1/1**,3.363s: real MainActivity/graph/Room, denied GPS/no GPS cache, persisted raw pressure and history, then Room-driven history/pressure update without refresh. No network setting was changed. Earlier attempts included UiAutomation ownership collision and native navigation deadline failures; only the final method is a pass. Back uses the production key/dispatcher path rather than a scrolled-away close header. It is cold Activity proof, not process-death proof.
 - Phone tests preceded the final purely visual cloud-layout refinements. Reliability/Home hydration/sensor code is unchanged afterward. No claim is made that the exact later APK was rerun on the phone.
-- At the user's request, SM-S931B/RFCY61FZDHW was released immediately after the completed runner, and the designated priority thread was explicitly notified. No further phone commands are authorized for this task until coordinated again. Remaining QA uses the physical SM-X710/R52X50DKRBW only.
+- At the user's request, SM-S931B was released immediately after the completed runner, and the designated priority thread was explicitly notified. No further phone commands are authorized for this task until coordinated again. Remaining QA uses the physical SM-X710 only.
 - The user then accepted the individual soft clouds as the base and requested removal of the gray stripe. The Deck pass is removed for overcast/wet cloud scenes and replaced with stratified volumetric-looking groups; final build/visual checks follow this feedback. See `weather-cloud-experiments.md` for rejected prototypes.

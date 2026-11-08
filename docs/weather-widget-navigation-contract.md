@@ -24,6 +24,8 @@ or GPS acquisition is introduced.
 
 ## Delivery and ordering
 
+Correction1: root Home requests carry a consumable nonce to the Home owner. It dismisses an active widget detail even when the place ID is unchanged, then acknowledges only the matching Home request. Superseding non-Home requests clear the pending Home nonce; a Home request also drops an obsolete pending widget target. The native integration regression deliberately leaves Hourly open for the same-place root request, rather than closing it beforehand.
+
 MainActivity retains its request serial for cold launch and onNewIntent delivery.
 NavHost forwards widget, optional place ID and serial to HomeScreen. Home waits
 for the first actual repository emission, rather than treating the initial GPS
