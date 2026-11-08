@@ -110,6 +110,8 @@ class HomeDependencies(
   val weatherSummaryGateway: dev.pampa.fluidweather.core.model.WeatherSummaryGateway,
   val dataGeneration: () -> Long,
   val routineWindowStore: RoutineWindowStore,
+  /** Optional name lookup, isolated from the weather/local-data load. */
+  val resolveLocationName: suspend (Context, Double, Double) -> String? = ::reverseGeocode,
 )
 
 data class HomeUiState(
@@ -345,7 +347,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         // storico. **Solo dove sei**: su una citta' lontana questo sensore non ha niente da dire, e
         // registrarne il verdetto sporcherebbe anche lo storico con previsioni di un altro posto.
         if (place.isGps && deps.barometerAvailable) {
-          val nowcast = withContext(Dispatchers.Default) { deps.nowcast.evaluate(
+          val nowcast = homeCatching { withContext(Dispatchers.Default) { deps.nowcast.evaluate(
             snapshot = snapshot,
             nowMillis = now,
             calibrationProgress = deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
@@ -353,18 +355,22 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
             pointLatitude = latitude,
             pointLongitude = longitude,
             failOnLocalReadError = true,
-          ) }
-          val history = homeCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrElse { value.verdictHistory }
-          value = value.copy(
-            barometerApplies = true,
-            verdict = nowcast.verdict,
-            cleaning = nowcast.cleaning,
-            latestRawPressureHpa = nowcast.latestRawPressureHpa,
-            verdictHistory = history,
-            nowcastExplanation = nowcast.explanation,
-            readiness = nowcast.readiness,
-            loading = false,
-          )
+          ) } }.getOrNull()
+          // Ordinary local failures preserve the last local fields and cannot abort
+          // weather work. homeCatching still propagates structured cancellation.
+          if (nowcast != null) {
+            val history = homeCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrElse { value.verdictHistory }
+            value = value.copy(
+              barometerApplies = true,
+              verdict = nowcast.verdict,
+              cleaning = nowcast.cleaning,
+              latestRawPressureHpa = nowcast.latestRawPressureHpa,
+              verdictHistory = history,
+              nowcastExplanation = nowcast.explanation,
+              readiness = nowcast.readiness,
+              loading = false,
+            )
+          }
         } else {
           value = value.copy(
             barometerApplies = false,
@@ -378,11 +384,15 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
           )
         }
 
+        // Forecast/local acquisition is complete even if local acquisition failed.
+        // Auxiliary air/name lookups must not hold the refresh indicator open.
+        value = value.copy(loading = false, refreshing = false)
+
         val air = homeCatching { deps.airQualityClient.now(latitude, longitude) }.getOrNull()
         if (air != null) value = value.copy(airQuality = air)
 
         if (presetName == null) {
-          val name = reverseGeocode(context, latitude, longitude)
+          val name = homeCatching { deps.resolveLocationName(context, latitude, longitude) }.getOrNull()
           if (name != null) value = value.copy(locationName = name)
         }
 
@@ -403,9 +413,6 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
           }
         }
 
-        // Il giro e' finito: la rotella dell'aggiornamento si spegne qui, non alla fine dell'effetto,
-        // che non finisce mai perche' resta in ascolto del ciclo.
-        value = value.copy(loading = false, refreshing = false)
 
       }
     }

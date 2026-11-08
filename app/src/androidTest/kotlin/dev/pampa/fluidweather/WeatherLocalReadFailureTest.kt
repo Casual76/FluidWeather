@@ -67,6 +67,7 @@ class WeatherLocalReadFailureTest {
       val useCase = reader(dao)
       assertSame(dao.failure, runCatching { useCase.clean(now, failOnLocalReadError = true) }.exceptionOrNull())
       assertSame(dao.failure, runCatching { useCase.readiness(now, null, failOnLocalReadError = true) }.exceptionOrNull())
+      assertSame(dao.failure, runCatching { useCase.evaluate(null, now, failOnLocalReadError = true) }.exceptionOrNull())
     }
   }
 

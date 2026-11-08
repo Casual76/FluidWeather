@@ -58,9 +58,10 @@ private val Context.baselineStore: DataStore<Preferences> by preferencesDataStor
  * del modello era addestrata su un valore che in produzione non esisteva: il modello se
  * l'aspettava e non la riceveva mai.
  */
-class BarometerBaselineStore(private val context: Context) {
+class BarometerBaselineStore(private val store: DataStore<Preferences>) {
+  constructor(context: Context) : this(context.baselineStore)
 
-  val baseline: Flow<BarometerBaseline> = context.baselineStore.data.map { preferences ->
+  val baseline: Flow<BarometerBaseline> = store.data.map { preferences ->
     BarometerBaseline(
       referenceAltitudeMeters = preferences[Keys.Altitude],
       normalHpa = preferences[Keys.Normal],
@@ -79,7 +80,7 @@ class BarometerBaselineStore(private val context: Context) {
    * ballonzolamento del GPS non deve essere inseguito per niente.
    */
   suspend fun observeAltitude(medianMeters: Double) {
-    context.baselineStore.edit { preferences ->
+    store.edit { preferences ->
       val known = preferences[Keys.Altitude]
       preferences[Keys.Altitude] = when {
         known == null -> medianMeters
@@ -92,7 +93,7 @@ class BarometerBaselineStore(private val context: Context) {
   /** L'ultimo posto e l'ultima temperatura noti: si aggiornano quando la rete c'e'. */
   suspend fun observePlace(temperatureCelsius: Double?, latitude: Double?, longitude: Double?) {
     if (temperatureCelsius == null && latitude == null) return
-    context.baselineStore.edit { preferences ->
+    store.edit { preferences ->
       temperatureCelsius?.let { preferences[Keys.Temperature] = it }
       latitude?.let { preferences[Keys.Latitude] = it }
       longitude?.let { preferences[Keys.Longitude] = it }
@@ -100,14 +101,14 @@ class BarometerBaselineStore(private val context: Context) {
   }
 
   suspend fun saveNormal(normalHpa: Double, nowMillis: Long) {
-    context.baselineStore.edit {
+    store.edit {
       it[Keys.Normal] = normalHpa
       it[Keys.NormalAt] = nowMillis
     }
   }
 
   suspend fun clear() {
-    context.baselineStore.edit { it.clear() }
+    store.edit { it.clear() }
   }
 
   private object Keys {
