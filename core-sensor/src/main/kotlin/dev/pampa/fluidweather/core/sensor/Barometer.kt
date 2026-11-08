@@ -8,7 +8,6 @@ import android.hardware.SensorManager
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
@@ -20,31 +19,57 @@ data class TimedReading(
   val pressureHpa: Double,
 )
 
-class Barometer(context: Context) {
+/** A rejected registration is a failed attempt, not unsupported hardware. */
+class SensorRegistrationException : IllegalStateException("Pressure sensor registration rejected")
 
-  private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-  private val sensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+internal interface PressureSensorInput {
+  val isAvailable: Boolean
+  val sensorName: String?
+  fun register(onReading: (TimedReading) -> Unit): Boolean
+  fun unregister()
+}
 
-  val isAvailable: Boolean get() = sensor != null
-
-  val sensorName: String? get() = sensor?.name
-
-  /**
-   * Il flusso vivo delle letture: il sensore e' acceso solo mentre qualcuno colleziona.
-   * Senza barometro il flusso e' vuoto e si chiude subito — chi legge decide come degradare.
-   */
-  fun readings(): Flow<TimedReading> {
-    val pressureSensor = sensor ?: return emptyFlow()
-    return callbackFlow {
-      val listener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) {
-          trySend(TimedReading(System.currentTimeMillis(), event.values[0].toDouble()))
-        }
-
-        override fun onAccuracyChanged(changed: Sensor?, accuracy: Int) = Unit
+private class AndroidPressureSensorInput(context: Context) : PressureSensorInput {
+  private val manager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+  private val sensor = manager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+  private var listener: SensorEventListener? = null
+  override val isAvailable get() = sensor != null
+  override val sensorName get() = sensor?.name
+  override fun register(onReading: (TimedReading) -> Unit): Boolean {
+    val pressureSensor = sensor ?: return false
+    val registeredListener = object : SensorEventListener {
+      override fun onSensorChanged(event: SensorEvent) {
+        onReading(TimedReading(System.currentTimeMillis(), event.values[0].toDouble()))
       }
-      sensorManager.registerListener(listener, pressureSensor, SensorManager.SENSOR_DELAY_UI)
-      awaitClose { sensorManager.unregisterListener(listener) }
+      override fun onAccuracyChanged(changed: Sensor?, accuracy: Int) = Unit
+    }
+    listener = registeredListener
+    return manager.registerListener(registeredListener, pressureSensor, SensorManager.SENSOR_DELAY_UI)
+  }
+  override fun unregister() {
+    listener?.let(manager::unregisterListener)
+    listener = null
+  }
+}
+
+class Barometer internal constructor(private val inputFactory: () -> PressureSensorInput) {
+  constructor(context: Context) : this({ AndroidPressureSensorInput(context) })
+
+  val isAvailable: Boolean get() = inputFactory().isAvailable
+  val sensorName: String? get() = inputFactory().sensorName
+
+  /** Each collector owns its listener, including rejected or cancelled registrations. */
+  fun readings(): Flow<TimedReading> = callbackFlow {
+    val input = inputFactory()
+    if (!input.isAvailable) {
+      close()
+      return@callbackFlow
+    }
+    try {
+      if (!input.register { trySend(it) }) throw SensorRegistrationException()
+      awaitClose { }
+    } finally {
+      input.unregister()
     }
   }
 
@@ -61,14 +86,16 @@ class Barometer(context: Context) {
     val start = System.currentTimeMillis()
     val endAt = start + durationSeconds * 1_000L
     var lastBucket = -1L
-    readings()
-      .takeWhile { it.timestampMillis < endAt }
-      .collect { reading ->
-        val bucket = (reading.timestampMillis - start) / periodMillis
-        if (bucket != lastBucket) {
-          lastBucket = bucket
-          emit(reading)
+    withTimeoutOrNull(durationSeconds * 1_000L) {
+      readings()
+        .takeWhile { it.timestampMillis < endAt }
+        .collect { reading ->
+          val bucket = (reading.timestampMillis - start) / periodMillis
+          if (bucket != lastBucket) {
+            lastBucket = bucket
+            emit(reading)
+          }
         }
-      }
+    }
   }
 }

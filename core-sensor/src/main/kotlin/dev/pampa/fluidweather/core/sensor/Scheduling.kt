@@ -86,22 +86,10 @@ class PressureSamplingWorker(
   params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
-  /**
-   * **Non lascia mai uscire un'eccezione**, e non e' pigrizia difensiva.
-   *
-   * Un `doWork` che lancia vale `Result.failure()`, e per un lavoro **periodico** fallito
-   * WorkManager smette di riprogrammarlo: il campionamento si ferma per sempre, in silenzio, e
-   * quello stato vive nel database di WorkManager — dentro i *dati* dell'app, non nella cache. E'
-   * la strada piu' probabile per la barra ferma a "0 ore di 13" che ha costretto qualcuno a
-   * cancellare i dati.
-   *
-   * `retry()` invece di `success()` quando qualcosa e' andato storto: una passata persa si
-   * recupera al tentativo successivo, e lo stato resta ENQUEUED, che e' anche cio' che
-   * [SamplingHealth] va a guardare.
-   */
+  /** Failed attempts request WorkManager backoff; cancellation remains owned by WorkManager. */
   override suspend fun doWork(): Result {
     val runtime = applicationContext.sensorRuntime()
-    runCatching { runtime.samplingHealth.check() }
+    runtime.samplingHealth.check()
     return runPass { runtime.samplingEngine.runScheduledPass() }
   }
 }
@@ -137,7 +125,7 @@ class MaximaPassWorker(
  * scaduto, vincoli, quota del bucket), e rispondergli "riprova" dentro una coroutine gia'
  * cancellata e' rispondere a nessuno: la cancellazione deve salire.
  */
-private suspend fun runPass(pass: suspend () -> Unit): ListenableWorker.Result = try {
+internal suspend fun runPass(pass: suspend () -> Unit): ListenableWorker.Result = try {
   pass()
   ListenableWorker.Result.success()
 } catch (cancelled: CancellationException) {
@@ -195,7 +183,13 @@ class MaximaAlarmReceiver : BroadcastReceiver() {
         // Riapplicare la modalita' corrente e' anche il riaggancio della catena: se nel frattempo
         // l'utente ha cambiato modalita', qui la catena muore e subentra il lavoro periodico.
         // Un'eccezione qui spezzerebbe la catena per sempre, senza dirlo a nessuno.
-        runCatching { runtime.samplingScheduler.applyCurrentMode() }
+        try {
+          runtime.samplingScheduler.applyCurrentMode()
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (failure: Exception) {
+          android.util.Log.e("SamplingScheduler", "Could not rearm sampling; health check recovery required", failure)
+        }
       } finally {
         pending.finish()
       }
@@ -216,7 +210,13 @@ class BootReceiver : BroadcastReceiver() {
     val runtime = context.sensorRuntime()
     CoroutineScope(Dispatchers.Default).launch {
       try {
-        runCatching { runtime.samplingScheduler.applyCurrentMode() }
+        try {
+          runtime.samplingScheduler.applyCurrentMode()
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (failure: Exception) {
+          android.util.Log.e("SamplingScheduler", "Could not rearm sampling; health check recovery required", failure)
+        }
       } finally {
         pending.finish()
       }

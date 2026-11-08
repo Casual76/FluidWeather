@@ -1,0 +1,32 @@
+# Sensor recovery contract
+
+Scope: core-sensor only, based on committed parent `88655da79e208819da16c251b8b2051f969f4cda`. These are source-level failure paths and fixes, not evidence of the cause of any user's hardware incident. No model, training, readiness, feedback, notification content, permission, place persistence, engine, dependency or version changes.
+
+## Attempt outcomes and ownership
+
+- `Barometer(Context)` retains its public constructor and existing `readings`, `single`, `burst`, availability and name APIs. Each flow collector owns a distinct Android listener, always unregistered in finally after registration was attempted, including false registration and thrown registration.
+- A supported sensor rejecting registration throws the additive public `SensorRegistrationException`. A silent single returns null after its existing five-second budget; a burst now ends at its nominal duration even without another callback. Unsupported hardware returns an empty flow/null immediately without registration.
+- `SamplingEngine.collect` retains its Int return contract: missing hardware and zero stored samples return zero. `runScheduledPass` skips unsupported hardware without completion hooks; supported hardware with zero stored samples throws additive public `NoPressureSamplesException`. Both workers use their existing retry/backoff path for this and registration failures. Cancellation is always rethrown rather than converted into retry.
+- Collection is serialized by a mutex per SamplingEngine, covering context acquisition and recording. Existing root wiring shares one engine; no new root arguments are required. Waiting owners are cancellable. A long manual/calibration burst can delay periodic/surveillance attempts; this change adds no extra collector or retry cadence.
+- GPS/context exceptions no longer cancel sibling pressure work. Each location snapshot is capped at the existing ten-second budget and degrades to null on ordinary failure. Missing permission/fix requires no new permission or provider. Location objects, coordinates, pressure source timestamps and source tags are retained, without synthesizing new fix clocks or location identity. Existing refresher fallback to previous burst context is retained.
+- A silent single cancels its no-longer-needed location/motion children. Recorded partial bursts remain recorded. No repository write or after-pass callback is detached into another scope. Completion hooks and clean-trend callbacks now propagate cancellation.
+
+## Surveillance lifecycle
+
+The Boolean latch is replaced by an owned Job through internal `SurveillanceLoop`. Duplicate active starts are ignored; completion, collection failure, and cancellation all run cleanup and permit a later fresh start. Collection failures or zero samples end the current foreground session rather than retrying every minute. The service removes its existing foreground notification and stops using the latest service start id on the main dispatcher. Sampling stays on Default. Existing one-minute interval, quiet threshold and two-hour ceiling remain unchanged. Missing hardware ends surveillance immediately. No new notifications are introduced.
+
+## Alarm and health limits
+
+`SamplingHealth` still cannot prove that a future exact alarm is armed from PendingIntent existence. Android exposes no alarm query here; replacing this with unconditional rearming on every health check could perpetually postpone the next alarm. No such cadence change is made. `scheduled` remains compatibility evidence only and its KDoc now states that limit. A token can outlive a fired/cancelled alarm, especially with an empty history where the existing silence heuristic cannot trigger.
+
+Rearm failures in the alarm/boot receiver now produce a local error log and retain receiver finally cleanup; they do not create a new retry scheduler. Health rescheduling exceptions now reach `Report.failure` rather than looking like a successful inspection with `rescheduled=false`; health cancellation propagates. An exact-alarm rearm failure can still leave the chain broken until an existing health/app/mode/boot recovery path runs. Existing exact permission gates and WorkManager fallback remain unchanged. WorkManager enqueue operations remain asynchronous requests, not acknowledgements of durable scheduling.
+
+A durable alarm receipt plus explicit recovery policy would need coordinated lifecycle/design review (clock changes, reboot, revocation, mode switching, in-flight receiver), beyond this focused fix. This implementation does not claim that gap is closed.
+
+## Root integration and validation handoff
+
+No AppGraph/feature-home/nowcast/core-model/engine files changed. Public signatures have no required new arguments; the two typed exceptions are additive. The pressure input factory and recovery helpers are internal test seams. Root should retain its frozen F6 generation/wipe protections when merging: this committed base does not contain the dirty candidate's guards, and this patch must not overwrite those integration changes. Mutex ownership is not a substitute for a wipe-generation check; root must verify cancellation and generation checks around existing repository writes/hooks after integration.
+
+Added JVM regressions (UNRUN): `BarometerRecoveryTest` covers false/throwing registration cleanup, silent single/burst deadlines, unsupported hardware, cancellation cleanup and original reading clocks; `SamplingRecoveryTest` covers zero-sample worker retry and completion suppression, unsupported no-op, successful callback, registration retry, cancellation propagation, optional location identity/failure and surveillance restart/duplicate/cancellation cleanup. These use production internal boundaries with fakes; they do not instantiate a full SamplingEngine/Room/AppGraph or Android service lifecycle.
+
+Only source review and `git diff --check` were performed. Root owns serialized compilation, JVM test execution and integration checks. No Gradle/build/test runner, device, hardware, provider, network, secret access, long-duration or battery validation was performed. In particular, service notification cleanup, actual SensorManager behavior and OS exact-alarm delivery remain unverified on Android.

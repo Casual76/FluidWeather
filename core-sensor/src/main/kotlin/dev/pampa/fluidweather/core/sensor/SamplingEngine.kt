@@ -9,6 +9,8 @@ import dev.pampa.fluidweather.core.model.PressureTrend
 import dev.pampa.fluidweather.core.model.SampleSource
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -48,21 +50,28 @@ class SamplingEngine(
   private val cleanTrend: (suspend () -> Double?)? = null,
 ) {
 
+  private val collectionMutex = Mutex()
+
   /** Senza sensore niente raffiche: chi vuole tarare lo sa prima di partire. */
   val barometerAvailable: Boolean get() = barometer.isAvailable
 
   /** Il giro periodico: raffica o lettura secca secondo la modalita', poi il cambio di marcia. */
   suspend fun runScheduledPass() {
     val mode = settingsStore.current().mode
-    collect(source = SampleSource.PERIODIC, durationSeconds = mode.burstSeconds)
-    if (mode.surveillanceCapable && PressureTrend.callsForSurveillance(currentTrend())) {
-      surveillance.start()
-    }
-    notifyPassCompleted(SampleSource.PERIODIC)
+    scheduledSensorPass(
+      available = barometer.isAvailable,
+      collect = { collect(source = SampleSource.PERIODIC, durationSeconds = mode.burstSeconds) },
+      completed = {
+        if (mode.surveillanceCapable && PressureTrend.callsForSurveillance(currentTrend())) {
+          surveillance.start()
+        }
+        notifyPassCompleted(SampleSource.PERIODIC)
+      },
+    )
   }
 
   /**
-   * Il gancio, anche per chi campiona per conto suo: mai un'eccezione fuori.
+   * Il gancio per chi campiona per conto suo: errori isolati, cancellazione propagata.
    *
    * [source] dice **chi** ha campionato. Serve perche' il ciclo lo racconti per quello che e':
    * la sorveglianza passava di qui ogni minuto e arrivava travestita da passata periodica, quindi
@@ -70,7 +79,7 @@ class SamplingEngine(
    * dipende piu' da questa etichetta — vedi `RefreshBudget` — ma raccontare il falso resta falso.)
    */
   suspend fun notifyPassCompleted(source: SampleSource = SampleSource.PERIODIC) {
-    runCatching { afterPass(source) }
+    optionalContext { afterPass(source) }
   }
 
   /**
@@ -91,55 +100,61 @@ class SamplingEngine(
     burstId: String? = null,
     contextRefreshSeconds: Int? = null,
     onProgress: ((completedSeconds: Int, totalSeconds: Int) -> Unit)? = null,
-  ): Int = coroutineScope {
-    if (!barometer.isAvailable) return@coroutineScope 0
-    val locationDeferred = async { locationProvider.snapshot() }
-    // Il movimento si misura mentre il fix arriva: i due tempi si sovrappongono, e poi la velocita'
-    // che il fix porta con se' (o la media dal fix precedente) entra nel giudizio.
-    val motionDeferred = async { measureMotion() }
-    var context = BurstContext(location = null, activity = freshActivity())
-    var stored = 0
-    if (durationSeconds <= 0) {
-      val reading = barometer.single() ?: return@coroutineScope 0
-      val location = locationDeferred.await()
-      context = context.copy(activity = judgedActivity(motionDeferred.await(), location))
-      repository.record(listOf(reading.toSample(source, burstId = null, location, context.activity)))
-      stored = 1
-    } else {
-      val id = burstId ?: UUID.randomUUID().toString()
-      // La posizione prima della raffica: costa qualche secondo di attesa, ma tutti i campioni
-      // della raffica condividono lo stesso contesto invece di un contesto arrivato a meta'.
-      //
-      // **Vale finche' la raffica dura venti secondi.** Per i dieci minuti della taratura no: chi
-      // cammina, o guida, in quei minuti cambia quota e paese, e ogni campione finirebbe in
-      // archivio alla quota di partenza. Non un dato impreciso — un dato *falso*, e nessuna
-      // matematica a valle puo' rimediare a un contesto che non e' mai stato registrato.
-      val firstFix = locationDeferred.await()
-      context = context.copy(location = firstFix, activity = judgedActivity(motionDeferred.await(), firstFix))
-      val refresher = contextRefreshSeconds?.takeIf { it > 0 }?.let { seconds ->
-        launch {
-          while (true) {
-            delay(seconds * 1_000L)
-            val motion = async { measureMotion() }
-            val fix = runCatching { locationProvider.snapshot() }.getOrNull() ?: context.location
-            context = BurstContext(location = fix, activity = judgedActivity(motion.await(), fix))
+  ): Int = collectionMutex.withLock {
+    coroutineScope {
+      if (!barometer.isAvailable) return@coroutineScope 0
+      val locationDeferred = async { optionalContext { withTimeoutOrNull(10_000L) { locationProvider.snapshot() } } }
+      // Il movimento si misura mentre il fix arriva: i due tempi si sovrappongono, e poi la velocita'
+      // che il fix porta con se' (o la media dal fix precedente) entra nel giudizio.
+      val motionDeferred = async { measureMotion() }
+      var context = BurstContext(location = null, activity = freshActivity())
+      var stored = 0
+      if (durationSeconds <= 0) {
+        val reading = barometer.single() ?: run {
+          locationDeferred.cancel()
+          motionDeferred.cancel()
+          return@coroutineScope 0
+        }
+        val location = locationDeferred.await()
+        context = context.copy(activity = judgedActivity(motionDeferred.await(), location))
+        repository.record(listOf(reading.toSample(source, burstId = null, location, context.activity)))
+        stored = 1
+      } else {
+        val id = burstId ?: UUID.randomUUID().toString()
+        // La posizione prima della raffica: costa qualche secondo di attesa, ma tutti i campioni
+        // della raffica condividono lo stesso contesto invece di un contesto arrivato a meta'.
+        //
+        // **Vale finche' la raffica dura venti secondi.** Per i dieci minuti della taratura no: chi
+        // cammina, o guida, in quei minuti cambia quota e paese, e ogni campione finirebbe in
+        // archivio alla quota di partenza. Non un dato impreciso — un dato *falso*, e nessuna
+        // matematica a valle puo' rimediare a un contesto che non e' mai stato registrato.
+        val firstFix = locationDeferred.await()
+        context = context.copy(location = firstFix, activity = judgedActivity(motionDeferred.await(), firstFix))
+        val refresher = contextRefreshSeconds?.takeIf { it > 0 }?.let { seconds ->
+          launch {
+            while (true) {
+              delay(seconds * 1_000L)
+              val motion = async { measureMotion() }
+              val fix = optionalContext { withTimeoutOrNull(10_000L) { locationProvider.snapshot() } } ?: context.location
+              context = BurstContext(location = fix, activity = judgedActivity(motion.await(), fix))
+            }
           }
         }
-      }
-      try {
-        withTimeoutOrNull((durationSeconds + BURST_GRACE_SECONDS) * 1_000L) {
-          barometer.burst(durationSeconds).collect { reading ->
-            val now = context
-            repository.record(listOf(reading.toSample(source, id, now.location, now.activity)))
-            stored++
-            onProgress?.invoke(stored, durationSeconds)
+        try {
+          withTimeoutOrNull((durationSeconds + BURST_GRACE_SECONDS) * 1_000L) {
+            barometer.burst(durationSeconds).collect { reading ->
+              val now = context
+              repository.record(listOf(reading.toSample(source, id, now.location, now.activity)))
+              stored++
+              onProgress?.invoke(stored, durationSeconds)
+            }
           }
+        } finally {
+          refresher?.cancel()
         }
-      } finally {
-        refresher?.cancel()
       }
+      stored
     }
-    stored
   }
 
   /** Posizione e attivita' di questo momento della raffica. */
@@ -154,7 +169,7 @@ class SamplingEngine(
    * finestra su cui parlano le soglie della letteratura (1,6 e 3-4 hPa/3h).
    */
   suspend fun currentTrend(): Double? {
-    cleanTrend?.let { return runCatching { it() }.getOrNull() }
+    cleanTrend?.let { return optionalContext { it() } }
     val samples = repository.samplesSince(System.currentTimeMillis() - TREND_WINDOW_MILLIS)
     return cleaningPipeline.process(samples).latest?.trendHpaPerHour
   }

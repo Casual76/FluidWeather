@@ -20,7 +20,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import dev.pampa.fluidweather.strings.R
 
 /**
@@ -47,17 +47,19 @@ class SurveillanceController(private val context: Context) {
  */
 class SurveillanceService : Service() {
 
-  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-  private var looping = false
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+  private val loop = SurveillanceLoop(scope)
+  private var latestStartId = 0
 
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     startInForeground()
-    if (!looping) {
-      looping = true
-      scope.launch { watch() }
-    }
+    latestStartId = startId
+    loop.start(onFinished = {
+      stopForeground(STOP_FOREGROUND_REMOVE)
+      stopSelfResult(latestStartId)
+    }) { withContext(Dispatchers.Default) { watch() } }
     return START_STICKY
   }
 
@@ -71,13 +73,13 @@ class SurveillanceService : Service() {
     val startedAt = System.currentTimeMillis()
     var quietMinutes = 0
     while (scope.isActive) {
-      engine.collect(source = SampleSource.SURVEILLANCE, durationSeconds = 0)
+      // Missing hardware and an empty attempt both end this session without a minute retry loop.
+      if (engine.collect(source = SampleSource.SURVEILLANCE, durationSeconds = 0) == 0) return
       engine.notifyPassCompleted(SampleSource.SURVEILLANCE)
       val calm = !PressureTrend.callsForSurveillance(engine.currentTrend())
       quietMinutes = if (calm) quietMinutes + 1 else 0
       val expired = System.currentTimeMillis() - startedAt > MAX_RUNTIME_MILLIS
       if (quietMinutes >= QUIET_MINUTES_TO_STOP || expired) {
-        stopSelf()
         return
       }
       delay(SAMPLE_INTERVAL_MILLIS)
