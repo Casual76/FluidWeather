@@ -111,6 +111,8 @@ android {
 }
 
 dependencies {
+  debugImplementation project(':engine-widget') // Production Glance APIs for debug-only host QA.
+
   implementation project(':feature-home')
   implementation project(':feature-radar')
   // Solo perche' il manifest col ricevitore si fonda: il widget non si chiama da nessuna parte.
