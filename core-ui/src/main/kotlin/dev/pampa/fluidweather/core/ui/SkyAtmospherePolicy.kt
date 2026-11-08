@@ -45,7 +45,9 @@ object SkyAtmospherePolicy {
     val c = input.current
     val trust = c?.let {
       downloadWeight(it.downloadedAtMillis, now) *
-        (1.0 - abs(now.toDouble() - it.validAtMillis) / (90 * MINUTE)).coerceIn(0.0, 1.0)
+        // Nearest hourly atmosphere represents its half-hour neighbourhood. Do not turn a
+        // freshly downloaded overcast hour into blue sky as its valid-time minute advances.
+        min(1.0, (90 * MINUTE - abs(now.toDouble() - it.validAtMillis)) / (60 * MINUTE)).coerceAtLeast(0.0)
     } ?: 0.0
     val coverage = percent(c?.cloudCoverPercent) ?: 0.35
     val humidity = percent(c?.relativeHumidityPercent)

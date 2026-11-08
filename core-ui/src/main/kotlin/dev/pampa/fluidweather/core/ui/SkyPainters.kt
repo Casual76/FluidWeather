@@ -75,7 +75,7 @@ class SkyScenePainter(
 ) {
   private val state = state.forRendering()
   private val random = Random(seed.toLong())
-  private val clouds = CloudVolumeLayer.forState(this.state, random.nextLong().toInt())
+  private val clouds = CloudLayer.forState(this.state, quality, Random(random.nextLong()))
   private val stars = StarField(quality, Random(random.nextLong()))
   private val atmosphere = this.state.atmosphere?.boundedForPainting()
   private val precipitation = PrecipitationField(this.state.kind, quality, Random(random.nextLong()), atmosphere)
@@ -95,7 +95,7 @@ class SkyScenePainter(
     // L'ordine e' il punto: l'astro sta DIETRO le nuvole, come fuori dalla finestra.
     body?.let { CelestialPainter.draw(scope, it, sky, moon) }
     // Change the cloud coordinate space without hard-clipping its soft edges.
-    with(scope) { inset(0f, 0f, 0f, size.height * 0.48f) { clouds?.draw(this, time, sky, body, quality) } }
+    with(scope) { inset(0f, 0f, 0f, size.height * 0.48f) { clouds.draw(this, time, sky, body) } }
     fog?.draw(scope, time, sky)
     precipitation.draw(scope, time, sky)
   }
@@ -762,62 +762,6 @@ private class Cumulus(
   }
 }
 
-/** Un banco di una coltre: un blob largo e basso, con la sua scurezza. */
-private class DeckBlob(val x: Float, val y: Float, val rx: Float, val ry: Float, val darkness: Float, val drift: Float)
-
-/**
- * Una coltre: cielo coperto, pioggia, neve, temporale.
- *
- * Non e' una fila di nuvole, e' un soffitto: banchi sparsi a caso dall'alto fin quasi a meta'
- * tela, ognuno piu' scuro quanto piu' sta in basso, perche' la luce arriva dall'alto e in basso
- * resta l'ombra — una scurezza continua, non a file, altrimenti si vedono le file. Sotto il
- * soffitto la foschia: la base che sfuma nel grigio, invece di un bordo netto sul cielo. E gli
- * stracci: brandelli scuri che pendono, che e' cio' che distingue un cielo di pioggia da un
- * cielo grigio.
- */
-private class Deck(
-  val blobs: List<DeckBlob>,
-  val scud: List<DeckBlob>,
-  /** 0 = coltre chiara e sottile, 1 = piombo. */
-  val darkness: Float,
-  /** Fin dove scende il soffitto, in frazione dell'altezza. */
-  val bottom: Float,
-) {
-  companion object {
-    fun random(random: Random, darkness: Float, coverage: Float, ragged: Boolean, quality: SceneQuality, depth: Float = darkness): Deck {
-      val full = quality == SceneQuality.FULL
-      val bottom = 0.32f + depth * 0.22f
-      val count = if (full) 22 else 12
-      val blobs = List(count) {
-        val y = random.nextFloat().let { v -> v * v * 0.6f + v * 0.4f } * bottom
-        DeckBlob(
-          x = random.between(-0.12f, 1.12f),
-          y = y,
-          rx = random.between(0.14f, 0.32f),
-          ry = random.between(0.035f, 0.075f) * (0.7f + depth * 0.9f),
-          darkness = ((y / bottom).toDouble().pow(0.8).toFloat() * 0.85f + random.between(-0.1f, 0.1f)).coerceIn(0f, 1f),
-          drift = random.between(0.002f, 0.006f),
-        )
-      }.filter { random.nextFloat() <= coverage }.sortedBy { it.y }
-      val scud = if (ragged) {
-        List(if (full) 8 else 4) {
-          DeckBlob(
-            x = random.between(-0.05f, 1.05f),
-            y = bottom + random.between(-0.02f, 0.1f),
-            rx = random.between(0.07f, 0.15f),
-            ry = random.between(0.03f, 0.055f),
-            darkness = 1f,
-            drift = random.between(0.006f, 0.011f),
-          )
-        }
-      } else {
-        emptyList()
-      }
-      return Deck(blobs, scud, darkness, bottom)
-    }
-  }
-}
-
 /** Un filamento di un cirro. */
 private class Filament(val dx: Float, val dy: Float, val length: Float, val thickness: Float, val angle: Float, val alpha: Float)
 
@@ -851,7 +795,6 @@ private class Cirrus(val cx: Float, val cy: Float, val filaments: List<Filament>
 /** Tutte le nuvole di una scena, decise una volta dal tipo di tempo e dalla copertura. */
 internal class CloudLayer private constructor(
   private val cumuli: List<Cumulus>,
-  private val deck: Deck?,
   private val cirri: List<Cirrus>,
   private val quality: SceneQuality,
   private val windSpeedFactor: Float = 1f,
@@ -864,14 +807,15 @@ internal class CloudLayer private constructor(
     val lightX = body?.x ?: 0.7f
     val time = if (quality == SceneQuality.STATIC) 0f else t * windSpeedFactor
     cirri.forEach { scope.drawCirrus(it, time, sky) }
-    deck?.let { scope.drawDeck(it, time, sky) }
     cumuli.forEach { scope.drawCumulus(it, time, sky, lightX) }
   }
 
   private fun DrawScope.drawCumulus(cloud: Cumulus, t: Float, sky: SkyPalette.Sky, lightX: Float) {
     val width = size.width
     val height = size.height
-    val w = cloud.width * width
+    // The original portrait proportions must not become gigantic cut-off masses on a
+    // landscape tablet or a short widget. Placement still spans the whole viewport.
+    val w = cloud.width * minOf(width, height * 1.6f)
     val travel = width + w * 1.2f
     val x = ((cloud.cx * travel + t * cloud.speed * width) % travel) - w * 0.6f
     val center = Offset(x, cloud.cy * height)
@@ -938,80 +882,6 @@ internal class CloudLayer private constructor(
     }
   }
 
-  private fun DrawScope.drawDeck(deck: Deck, t: Float, sky: SkyPalette.Sky) {
-    val width = size.width
-    val height = size.height
-    val lit = lerp(sky.cloudColor, sky.cloudShadow, 0.2f + deck.darkness * 0.25f)
-    val dark = lerp(sky.cloudShadow, Color(0xFF22262F), deck.darkness * 0.55f)
-
-    // Il soffitto: un riempimento continuo dall'alto fino alla base, chiaro in cima e scuro in
-    // basso, sotto la texture dei banchi. Senza, fra un banco e l'altro spuntava il cielo azzurro,
-    // e un cielo coperto con dei buchi azzurri non e' coperto.
-    val ceilingBottom = (deck.bottom + 0.04f) * height
-    drawRect(
-      brush = Brush.verticalGradient(
-        0f to lit.copy(alpha = 0.96f),
-        0.45f to lerp(lit, dark, 0.5f).copy(alpha = 0.92f),
-        0.85f to dark.copy(alpha = 0.85f),
-        1f to dark.copy(alpha = 0f),
-        startY = 0f,
-        endY = ceilingBottom,
-      ),
-      topLeft = Offset.Zero,
-      size = Size(width, ceilingBottom),
-    )
-    // La foschia sotto il soffitto: la base sfuma nel grigio, invece di finire con un bordo.
-    val mistTop = (deck.bottom - 0.08f) * height
-    val mistHeight = height * 0.5f
-    drawRect(
-      brush = Brush.verticalGradient(
-        0f to dark.copy(alpha = 0f),
-        0.25f to dark.copy(alpha = 0.55f),
-        0.55f to dark.copy(alpha = 0.3f),
-        1f to dark.copy(alpha = 0f),
-        startY = mistTop,
-        endY = mistTop + mistHeight,
-      ),
-      topLeft = Offset(0f, mistTop),
-      size = Size(width, mistHeight),
-    )
-    for (blob in deck.blobs) {
-      val x = ((blob.x + t * blob.drift) % 1.3f) - 0.15f
-      val color = lerp(lit, dark, blob.darkness)
-      cachedBlob(
-        cache,
-        center = Offset(x * width, blob.y * height),
-        radiusX = blob.rx * width,
-        radiusY = blob.ry * height,
-        color = color,
-        alpha = 0.78f,
-        hardness = 0.4f,
-      )
-      // La pancia di ogni banco, piu' scura: e' quello che da' spessore alla coltre.
-      cachedBlob(
-        cache,
-        center = Offset(x * width, (blob.y + blob.ry * 0.6f) * height),
-        radiusX = blob.rx * width * 0.85f,
-        radiusY = blob.ry * height * 0.5f,
-        color = dark,
-        alpha = 0.3f + 0.3f * blob.darkness,
-        hardness = 0.3f,
-      )
-    }
-    for (rag in deck.scud) {
-      val x = ((rag.x + t * rag.drift) % 1.2f) - 0.1f
-      cachedBlob(
-        cache,
-        center = Offset(x * width, rag.y * height),
-        radiusX = rag.rx * width,
-        radiusY = rag.ry * height,
-        color = dark,
-        alpha = 0.5f,
-        hardness = 0.25f,
-      )
-    }
-  }
-
   private fun DrawScope.drawCirrus(cirrus: Cirrus, t: Float, sky: SkyPalette.Sky) {
     val width = size.width
     val height = size.height
@@ -1037,27 +907,31 @@ internal class CloudLayer private constructor(
         ?: (state.cloudCoverPercentOrDefault() / 100f).coerceIn(0f, 1f)
       val cumuli = mutableListOf<Cumulus>()
       val cirri = mutableListOf<Cirrus>()
-      var deck: Deck? = null
 
       fun cirrus(alpha: Float) {
         cirri += Cirrus.random(random, alpha)
       }
 
-      fun cumulus(width: Float, y: Float, alpha: Float = 1f) {
-        cumuli += Cumulus.random(random, cx = random.nextFloat(), cy = y, width = width, alpha = alpha, quality = quality)
+      fun cumulus(width: Float, y: Float, alpha: Float = 1f, cx: Float = random.nextFloat()) {
+        cumuli += Cumulus.random(random, cx = cx, cy = y, width = width, alpha = alpha, quality = quality)
       }
 
+      fun cloudBank() {
+        val count = if (quality == SceneQuality.FULL) 4 else 3
+        repeat(count) { i ->
+          cumulus(width = random.between(0.48f, 0.72f),
+            y = if (i % 2 == 0) random.between(0.26f, 0.40f) else random.between(0.42f, 0.55f),
+            alpha = 0.95f,
+            cx = (i + .5f) / count + random.between(-.025f, .025f))
+        }
+      }
       when (state.kind) {
         WeatherKind.FOG -> Unit
-        WeatherKind.THUNDERSTORM, WeatherKind.HEAVY_RAIN ->
-          deck = Deck.random(random, darkness = 1f, coverage = 1f, ragged = true, quality = quality)
-        WeatherKind.RAIN, WeatherKind.DRIZZLE, WeatherKind.SLEET ->
-          deck = Deck.random(random, darkness = 0.7f, coverage = 1f, ragged = state.kind == WeatherKind.RAIN, quality = quality)
-        WeatherKind.SNOW, WeatherKind.HEAVY_SNOW ->
-          deck = Deck.random(random, darkness = 0.25f, coverage = 1f, ragged = false, quality = quality)
-        WeatherKind.CLOUDY -> {
-          deck = Deck.random(random, darkness = 0.5f, coverage = 0.85f + cover * 0.15f, ragged = false, quality = quality)
-        }
+        // Overcast and wet skies use the same volumetric shape language. Density/light
+        // comes from the shared palette; there is no stretched horizontal deck underneath.
+        WeatherKind.THUNDERSTORM, WeatherKind.HEAVY_RAIN,
+        WeatherKind.RAIN, WeatherKind.DRIZZLE, WeatherKind.SLEET,
+        WeatherKind.SNOW, WeatherKind.HEAVY_SNOW, WeatherKind.CLOUDY -> cloudBank()
         WeatherKind.PARTLY_CLOUDY -> {
           val count = (2 + (cover * 4f).roundToInt()).coerceIn(2, 5)
           // Le nuvole vicine (grandi, basse) e quelle lontane (piccole, alte): profondita'.
@@ -1081,7 +955,7 @@ internal class CloudLayer private constructor(
       }
       // Le vicine si disegnano per ultime, sopra le lontane.
       cumuli.sortBy { it.width }
-      return CloudLayer(cumuli, deck, cirri, quality, state.atmosphere?.boundedForPainting()?.windSpeedFactor ?: 1f)
+      return CloudLayer(cumuli, cirri, quality, state.atmosphere?.boundedForPainting()?.windSpeedFactor ?: 1f)
     }
   }
 }

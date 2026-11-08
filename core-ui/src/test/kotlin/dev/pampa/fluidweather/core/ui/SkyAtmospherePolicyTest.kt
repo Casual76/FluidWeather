@@ -85,6 +85,14 @@ class SkyAtmospherePolicyTest {
     assertTrue(scene(sample().copy(windSpeedKmh = 200.0)).windSpeedFactor in 1f..2f)
     assertEquals(1f, scene(sample().copy(windSpeedKmh = Double.NaN)).windSpeedFactor)
   }
+  @Test fun freshHourlyCloudDoesNotFadeToBlueWithinItsHalfHour() {
+    val current = scene(sample(95.0))
+    val sameHour = scene(sample(95.0).copy(validAtMillis = now - 29 * 60_000L))
+    assertEquals(current.cloudCoverage, sameHour.cloudCoverage, 0f)
+    assertEquals(current.diffuseLight, sameHour.diffuseLight, 0f)
+    val distant = scene(sample(95.0).copy(validAtMillis = now - 75 * 60_000L))
+    assertTrue(distant.cloudCoverage < sameHour.cloudCoverage)
+  }
 
   @Test fun fresheningAndSmallInputChangesRemainContinuous() {
     val first = scene(sample(70.0))

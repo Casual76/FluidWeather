@@ -17,11 +17,16 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.produceState
 import androidx.lifecycle.repeatOnLifecycle
 import dev.antigravity.fluidengine.ui.fluid.FluidMotion
 import dev.antigravity.fluidengine.ui.fluid.LocalFluidMotionPolicy
 import kotlin.math.roundToInt
 import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /**
  * Il cielo animato a tutto schermo: gradiente atmosferico per fase del giorno, il sole o la luna
@@ -88,12 +93,24 @@ fun WeatherScene(
   // resta finche' non cambia il tempo. La copertura si arrotonda al 10%: un 43% che diventa 44%
   // non deve rifare le nuvole da capo.
   val coverBucket = ((rendered.cloudCoverPercent ?: SkyPalette.defaultCover(rendered.kind)) / 10.0).roundToInt() * 10.0
-  val painter = remember(rendered, coverBucket, quality) {
-    SkyScenePainter(rendered.copy(cloudCoverPercent = coverBucket), quality, SkyVariation.seedFor(System.currentTimeMillis()))
+  val request = PainterRequest(rendered.copy(cloudCoverPercent = coverBucket), quality,
+    SkyVariation.seedFor(System.currentTimeMillis()))
+  // Integrating a fresh optical texture must not stall Compose/the glass render thread.
+  // A stale painter is never reused across a hard rain/uncertainty/context transition.
+  val prepared by produceState<Pair<PainterRequest, SkyScenePainter>?>(null, request) {
+    value = withContext(Dispatchers.Default) {
+      request to SkyScenePainter(request.state, request.quality, request.seed)
+    }
   }
+  val painter = prepared?.takeIf { it.first == request }?.second
   // L'astro si ricalcola a ogni minuto di orologio, non a ogni fotogramma: si sposta di un
   // quattrocentesimo di schermo al minuto, e le effemeridi non sono gratis.
-  val minute = (frameSeconds / 60f).toInt()
+  val minute by produceState(System.currentTimeMillis() / 60_000L, running, lifecycle) {
+    if (!running) return@produceState
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      while (isActive) { value = System.currentTimeMillis() / 60_000L; delay(60_000L) }
+    }
+  }
   val body = remember(state.latitude, state.longitude, minute) {
     Celestial.at(System.currentTimeMillis(), state.latitude, state.longitude)
   }
@@ -109,9 +126,12 @@ fun WeatherScene(
       cloudShadow = cloudShadow.value,
       hazeColor = haze.value,
     )
-    painter.draw(this, animatedSky, body, frameSeconds, moon)
+    if (painter != null) painter.draw(this, animatedSky, body, frameSeconds, moon)
+    else SkyGradientPainter.draw(this, animatedSky)
   }
 }
+
+private data class PainterRequest(val state: SkyState, val quality: SceneQuality, val seed: Int)
 
 @Composable
 private fun animatedSkyColor(target: Color, label: String, animated: Boolean): State<Color> =

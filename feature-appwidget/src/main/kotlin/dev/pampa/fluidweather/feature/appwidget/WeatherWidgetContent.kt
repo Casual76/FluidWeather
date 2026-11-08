@@ -69,7 +69,8 @@ fun WeatherWidgetContent(
     modifier = GlanceModifier.fillMaxSize()
       .background(ImageProvider(sky), contentScale = ContentScale.Crop)
       .cornerRadius(EngineWidgetShape.Container)
-      .padding(density.padding.dp)
+      .padding(horizontal = density.padding.dp,
+        vertical = (density.padding - if (enlarged && !density.compact) 2 else 0).dp)
       .clickable(actionStartActivity(target)),
   ) {
     if (model.isEmpty) {

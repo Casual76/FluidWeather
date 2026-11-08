@@ -6,6 +6,7 @@ import android.hardware.SensorManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.KeyEvent
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -133,10 +134,8 @@ class WeatherStartupReliabilityTest {
       await("Room invalidation updates the visible history without refresh", SystemClock.uptimeMillis() + 5_000) {
         historyRow(it, initialCount + 1, initialAlerts + 1, watches)
       }
-      click("close detail", SystemClock.uptimeMillis() + 5_000,
-        direction = AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) {
-        it.isClickable && it.contentDescription?.toString() == app.getString(R.string.common_close)
-      }
+      // Exercise production Back rather than requiring a scrolled-away header control.
+      instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
       reveal("updated raw pressure in the original Home", SystemClock.uptimeMillis() + 5_000,
         direction = AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) {
         hasText(it, units.pressureValue(nextPressure, 1)) &&

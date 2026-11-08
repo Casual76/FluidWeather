@@ -78,7 +78,11 @@ object SkyPalette {
       val clear = sky(rendered.phase, WeatherKind.CLEAR, 0.0)
       val stops = clear.stops.map { (at, color) ->
         val overcast = lerp(neutral, underside, shade * (1f - at * 0.45f))
-        val air = lerp(color, overcast, (a.cloudCoverage * (0.32f + a.cloudDepth * 0.68f)).coerceIn(0f, 1f))
+        // A closed ceiling removes blue skylight even when its clouds are optically thin.
+        // Geometry stays high; this broad light field makes overcast read as overcast.
+        val closure = ((a.cloudCoverage - 0.55f) / 0.4f).coerceIn(0f, 1f)
+        val mix = maxOf(a.cloudCoverage * (0.32f + a.cloudDepth * 0.68f), closure * 0.9f)
+        val air = lerp(color, overcast, mix.coerceIn(0f, 1f))
         at to lerp(air, base.hazeColor, (a.haze * at * at * 0.65f + base.whiteout * 0.5f).coerceIn(0f, 1f))
       }
       return base.copy(
