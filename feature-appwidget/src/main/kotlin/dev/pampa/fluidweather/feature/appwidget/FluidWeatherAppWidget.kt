@@ -102,6 +102,9 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
     val moon = runCatching {
       ImageBitmap.imageResource(context.resources, dev.pampa.fluidweather.core.ui.R.drawable.moon_nearside)
     }.getOrNull()
+    val cloudAtlas = runCatching {
+      ImageBitmap.imageResource(context.resources, dev.pampa.fluidweather.core.ui.R.drawable.cloud_atlas_v1)
+    }.getOrNull()
     // I modelli e i cieli si costruiscono QUI, una volta per taglia, non dentro `provideContent`.
     //
     // Quattro layout responsive condividono tre bitmap (Large ed Expanded usano la stessa scena).
@@ -128,6 +131,7 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
         longitude = model.longitude,
         nowMillis = now,
         moon = moon,
+        cloudAtlas = cloudAtlas,
         zone = zone.zoneId,
       )
     }

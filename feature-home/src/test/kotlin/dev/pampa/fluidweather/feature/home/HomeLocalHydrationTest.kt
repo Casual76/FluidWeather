@@ -153,4 +153,15 @@ class HomeLocalHydrationTest {
     assertTrue(state.verdictHistory.isEmpty())
     assertEquals(0.0, state.readiness!!.historyHours, 0.0)
   }
+
+  @Test fun `successful empty archive clears expired local data while retaining weather clocks`() = runTest {
+    var state = HomeUiState(cleaning = clean, latestRawPressureHpa = 999.0,
+      verdictHistory = listOf(record), dataAtMillis = now - 60_000)
+    val local = HomeLocalHydration({ 0 }, { null }, { null }, { emptyList() }, { ready.copy(historyHours = 0.0) })
+    local.refresh(now, 0) { state = it.applyTo(state) }
+    assertNull(state.cleaning)
+    assertNull(state.latestRawPressureHpa)
+    assertTrue(state.verdictHistory.isEmpty())
+    assertEquals(now - 60_000, state.dataAtMillis)
+  }
 }

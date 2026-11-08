@@ -67,7 +67,7 @@ internal data class HomeLocalReading(
   val readiness: Result<BarometerReadiness>,
 ) {
   fun applyTo(state: HomeUiState): HomeUiState = state.copy(
-    cleaning = cleaning.getOrNull() ?: state.cleaning,
+    cleaning = cleaning.getOrElse { state.cleaning },
     latestRawPressureHpa = raw.getOrElse { state.latestRawPressureHpa },
     verdictHistory = history.getOrElse { state.verdictHistory },
     readiness = readiness.getOrElse { state.readiness },

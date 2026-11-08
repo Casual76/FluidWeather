@@ -71,10 +71,12 @@ class SkyScenePainter(
   state: SkyState,
   private val quality: SceneQuality,
   seed: Int,
+  cloudAtlas: ImageBitmap? = null,
 ) {
   private val state = state.forRendering()
   private val random = Random(seed.toLong())
   private val clouds = CloudLayer.forState(this.state, quality, Random(random.nextLong()))
+  private val texturedClouds = cloudAtlas?.let { AtlasCloudLayer(this.state, quality, seed.toLong(), it) }
   private val stars = StarField(quality, Random(random.nextLong()))
   private val atmosphere = this.state.atmosphere?.boundedForPainting()
   private val precipitation = PrecipitationField(this.state.kind, quality, Random(random.nextLong()), atmosphere)
@@ -93,7 +95,7 @@ class SkyScenePainter(
     if (sky.starAlpha > 0f) stars.draw(scope, time, sky)
     // L'ordine e' il punto: l'astro sta DIETRO le nuvole, come fuori dalla finestra.
     body?.let { CelestialPainter.draw(scope, it, sky, moon) }
-    clouds.draw(scope, time, sky, body)
+    if (texturedClouds != null) texturedClouds.draw(scope, time, sky) else clouds.draw(scope, time, sky, body)
     fog?.draw(scope, time, sky)
     precipitation.draw(scope, time, sky)
   }
@@ -122,11 +124,12 @@ object SkyFrame {
     t: Float = 0f,
     /** La fotografia della luna, se chi chiama ce l'ha. */
     moon: ImageBitmap? = null,
+    cloudAtlas: ImageBitmap? = null,
   ) {
     val rendered = state.forRendering()
     val sky = SkyPalette.sky(rendered)
     val body = Celestial.at(nowMillis, state.latitude, state.longitude, zone)
-    SkyScenePainter(state, quality, SkyVariation.seedFor(nowMillis, zone)).draw(scope, sky, body, t, moon)
+    SkyScenePainter(state, quality, SkyVariation.seedFor(nowMillis, zone), cloudAtlas).draw(scope, sky, body, t, moon)
     if (scrim) ScrimPainter.draw(scope, sky)
   }
 }
