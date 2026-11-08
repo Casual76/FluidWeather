@@ -8,6 +8,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.*
@@ -33,7 +34,7 @@ fun HomeRoutineWindows(assessments: List<RoutineWindowAssessment>, readFailed: B
     }
   }
   val foreground = if (LocalFluidCanvasBackdrop.current != null) Color.White else MaterialTheme.colorScheme.onSurface
-  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+  Column(Modifier.fillMaxWidth().testTag("home_routine_windows"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
     if (readFailed) Text(stringResource(R.string.routines_read_error), color = MaterialTheme.colorScheme.error)
     if (!readFailed && assessments.isNotEmpty()) {
       Text(stringResource(R.string.routines_title), style = MaterialTheme.typography.titleMedium, color = foreground)

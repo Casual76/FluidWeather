@@ -54,7 +54,7 @@ fun WeatherWidgetContent(
   val enlarged = resources.configuration.fontScale > 1.15f
   val short = LocalSize.current.height.value < 150
   val placeSize = if (enlarged) 11 else if (density.compact) 13 else 17
-  val heroSize = if (enlarged) { if (density.compact || short) 24 else 32 } else if (density.compact) 32 else 44
+  val heroSize = if (enlarged) { if (density.compact || short) 24 else 32 } else if (density.compact) 32 else if (LocalSize.current.height.value < 180) 36 else 44
   val detailSize = if (enlarged) 10 else 11
   val ink = ColorProvider(ComposeColor.White)
   val secondary = ColorProvider(ComposeColor.White.copy(alpha = 0.85f))
@@ -78,13 +78,13 @@ fun WeatherWidgetContent(
     modifier = GlanceModifier.fillMaxSize()
       .background(ImageProvider(sky), contentScale = ContentScale.Crop)
       .cornerRadius(EngineWidgetShape.Container)
-      .padding(horizontal = density.padding.dp,
-        vertical = (density.padding - when {
-          compactFallback -> 3
-          enlarged && LocalSize.current.height.value in 170f..189f -> 8
-          enlarged && !density.compact -> 2
-          else -> 0
-        }).dp)
+      .padding(horizontal = density.padding.dp, vertical = when {
+        compactFallback -> (density.padding - 3).dp
+        density.compact -> density.padding.dp
+        LocalSize.current.height.value < 200 -> 6.dp
+        LocalSize.current.height.value >= 330 -> 10.dp
+        else -> density.padding.dp
+      })
       .clickable(actionStartActivity(target)),
   ) {
     if (model.isEmpty) {
@@ -96,7 +96,7 @@ fun WeatherWidgetContent(
     if (density.compact) {
       Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
         Label(place, ink, placeSize, FontWeight.Medium, GlanceModifier.defaultWeight())
-        WeatherIcon(model.iconRes, ink, 14)
+        WeatherIcon(model.iconRes, 14)
       }
       Label(model.temperatureC?.takeIf { it.isFinite() }?.let { units.degrees(it) } ?: "\u2014", ink, displayedHeroSize)
       // The icon carries conditions in the square cell; stale age takes precedence over range
@@ -111,7 +111,8 @@ fun WeatherWidgetContent(
           Label(model.temperatureC?.takeIf { it.isFinite() }?.let { units.degrees(it) } ?: "\u2014", ink, heroSize)
         }
         Column(GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.End) {
-          WeatherIcon(model.iconRes, ink, if (enlarged) 18 else 22)
+          WeatherIcon(model.iconRes, if (enlarged) 18 else 22)
+          if (LocalSize.current.width.value >= 220 || validTime != null)
           Label(validTime ?: if (short && stale) ageText else condition, ink, if (enlarged) 10 else 12,
             modifier = GlanceModifier.clickable(actionStartActivity(widgetIntent(target, HomeWidget.NOWCAST))), maxLines = 2)
           if (validTime != null && short && stale) Label(ageText, secondary, detailSize)
@@ -138,7 +139,7 @@ fun WeatherWidgetContent(
             ) {
               Label(day.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE", resources.configuration.locales[0])),
                 ink, 11, FontWeight.Medium, GlanceModifier.width(if (enlarged) 38.dp else 32.dp))
-              WeatherIcon(day.iconRes, ink, 18)
+              WeatherIcon(day.iconRes, 18)
               Spacer(GlanceModifier.width(4.dp))
               Label(day.minC?.takeIf(Double::isFinite)?.let(units::degrees) ?: "\u2014",
                 secondary, 11, modifier = GlanceModifier.width(if (enlarged) 38.dp else 30.dp))
@@ -168,9 +169,9 @@ private fun Label(
   style = engineWidgetTextStyle(color = color, size = size.sp, weight = weight), maxLines = maxLines)
 
 @Composable
-private fun WeatherIcon(icon: Int, color: ColorProvider, size: Int) = Image(
+private fun WeatherIcon(icon: Int, size: Int) = Image(
   provider = ImageProvider(icon), contentDescription = null,
-  colorFilter = androidx.glance.ColorFilter.tint(color), modifier = GlanceModifier.size(size.dp),
+  modifier = GlanceModifier.size(size.dp),
 )
 
 @Composable
@@ -194,7 +195,7 @@ private fun HourStrip(
       Column(GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
         Label(TimeFormats.hour(hour.timestampMillis, model.zone, locale), secondary, if (enlarged) 10 else 11)
         Spacer(GlanceModifier.height(4.dp))
-        WeatherIcon(hour.iconRes, ink, if (enlarged) 18 else 20)
+        WeatherIcon(hour.iconRes, if (enlarged) 18 else 20)
         Spacer(GlanceModifier.height(4.dp))
         Label(hour.temperatureC?.takeIf { it.isFinite() }?.let { units.degrees(it) } ?: "\u2014", ink, if (enlarged) 11 else 13, FontWeight.Medium)
       }
@@ -222,14 +223,14 @@ private fun RangeBar(day: AppWidgetDay, domain: ClosedFloatingPointRange<Double>
   val width = (LocalSize.current.width.value - 24 - (if (enlarged) 38 + 38 + 38 else 32 + 30 + 30) - 18 - 4 - 6).coerceAtLeast(2f)
   val start = fractions?.first ?: 0f
   val end = fractions?.second ?: 0f
-  Box(modifier.height(5.dp).background(ComposeColor.White.copy(alpha = 0.14f)).cornerRadius(2.5.dp)) {
+  Box(modifier.height(5.dp).background(ImageProvider(WidgetR.drawable.widget_temperature_track))) {
     if (fractions != null) {
       Row(GlanceModifier.fillMaxWidth()) {
         val barWidth = (width * (end - start)).coerceAtLeast(2f).coerceAtMost(width)
         val offset = (width * start).coerceAtMost(width - barWidth)
         if (offset > 0f) Spacer(GlanceModifier.width(offset.dp))
         Box(GlanceModifier.width(barWidth.dp).height(5.dp)
-          .background(ComposeColor(0xFFF2D76C)).cornerRadius(2.5.dp)) {}
+          .background(ImageProvider(WidgetR.drawable.widget_temperature_range))) {}
       }
     }
   }

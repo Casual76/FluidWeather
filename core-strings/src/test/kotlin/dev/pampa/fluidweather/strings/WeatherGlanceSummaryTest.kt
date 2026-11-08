@@ -50,7 +50,7 @@ class WeatherGlanceSummaryTest {
 
   @Test fun `document revision and expiry gate typed mapping`() {
     val b = WeatherBrief(LocalPrecipitationAssessment(PrecipitationState.UNAVAILABLE, now))
-    val d = WeatherSummaryDocument("context", WeatherSummaryPolicy.revision(b), "en", UnitPreferences(),
+    val d = WeatherSummaryDocument("context", WeatherSummaryPolicy.revision(b), "en", UnitPreferences.METRIC,
       listOf(WeatherSummaryFact("rain", "Unknown")), listOf("rain"), now + 1000)
     assertTrue(WeatherGlanceSummary.matches(d, b, now))
     assertFalse(WeatherGlanceSummary.matches(d, b, now + 1000))

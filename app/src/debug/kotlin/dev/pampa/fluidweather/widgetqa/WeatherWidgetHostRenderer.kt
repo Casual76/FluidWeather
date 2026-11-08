@@ -35,7 +35,7 @@ data class WidgetHostCase(
   val size get() = DpSize(width.dp, height.dp)
   val key get() = "${width}x${height}_${language}_${fontScale}_$variant"
   companion object {
-    val sizes = listOf(110 to 110, 250 to 110, 250 to 200, 250 to 340, 350 to 180, 350 to 350)
+    val sizes = listOf(110 to 110, 180 to 180, 250 to 110, 250 to 200, 250 to 340, 320 to 170, 350 to 180, 350 to 350)
     val variants = listOf("empty", "stale", "current", "missing")
     const val NOW = 1_783_080_000_000L
     val zone: ZoneId = ZoneId.of("Europe/Rome")
@@ -53,7 +53,7 @@ object WeatherWidgetHostRenderer {
     val hours = (0 until 168).map { h ->
       FusedHour(WidgetHostCase.NOW + h * 3_600_000L,
         if (case.variant == "missing") emptyMap() else mapOf(
-          FusionVariables.TEMPERATURE to FusedValue(21.0 + h % 5, emptyList()),
+          FusionVariables.TEMPERATURE to FusedValue(21.0 + listOf(0.0, 1.0, 0.4, 2.2, -0.6, 1.5, 0.8)[(h / 24).coerceAtMost(6)] - 3.0 + 3.0 * kotlin.math.cos((h % 24) * kotlin.math.PI / 12.0), emptyList()),
           FusionVariables.CLOUD_COVER to FusedValue(75.0, emptyList())), WeatherKind.CLOUDY)
     }
     val fetched = WidgetHostCase.NOW - if (case.variant == "stale") 9 * 3_600_000L else 5 * 60_000L
@@ -73,9 +73,9 @@ object WeatherWidgetHostRenderer {
   }
 
   @OptIn(ExperimentalGlanceRemoteViewsApi::class)
-  suspend fun render(context: Context, case: WidgetHostCase, model: AppWidgetModel): android.widget.RemoteViews {
+  suspend fun render(context: Context, case: WidgetHostCase, model: AppWidgetModel, sky: android.graphics.Bitmap? = null): android.widget.RemoteViews {
     val moon = ImageBitmap.imageResource(context.resources, dev.pampa.fluidweather.core.ui.R.drawable.moon_nearside)
-    val bitmap = SkyScene.of(tierFor(case.size), model.skyKind, model.cloudCover,
+    val bitmap = sky ?: SkyScene.of(tierFor(case.size), model.skyKind, model.cloudCover,
       model.latitude, model.longitude, WidgetHostCase.NOW, WidgetHostCase.zone, moon, model.atmosphere)
     return GlanceRemoteViews().compose(context = context, size = case.size) {
       WeatherWidgetContent(model, UnitFormatter(context.resources, UnitPreferences.METRIC,
@@ -83,4 +83,24 @@ object WeatherWidgetHostRenderer {
         Intent(context, MainActivity::class.java), bitmap)
     }.remoteViews
   }
+
+  /** Same declared sizes and three reused sky tiers, selected by Android's native host. */
+  @OptIn(ExperimentalGlanceRemoteViewsApi::class)
+  @androidx.annotation.RequiresApi(31)
+  suspend fun responsive(context: Context, base: WidgetHostCase): android.widget.RemoteViews {
+    val sizes = (FluidWeatherAppWidget().sizeMode as androidx.glance.appwidget.SizeMode.Responsive).sizes
+    val baseModel = model(base)
+    val moon = ImageBitmap.imageResource(context.resources, dev.pampa.fluidweather.core.ui.R.drawable.moon_nearside)
+    val skies = AppWidgetTier.entries.associateWith { tier ->
+      SkyScene.of(tier, baseModel.skyKind, baseModel.cloudCover, baseModel.latitude, baseModel.longitude,
+        WidgetHostCase.NOW, WidgetHostCase.zone, moon, baseModel.atmosphere)
+    }
+    val layouts = linkedMapOf<android.util.SizeF, android.widget.RemoteViews>()
+    for (size in sizes) {
+      val case = base.copy(width = size.width.value.toInt(), height = size.height.value.toInt())
+      layouts[android.util.SizeF(size.width.value, size.height.value)] = render(context, case, model(case), skies.getValue(tierFor(size)))
+    }
+    return android.widget.RemoteViews(layouts)
+  }
+
 }

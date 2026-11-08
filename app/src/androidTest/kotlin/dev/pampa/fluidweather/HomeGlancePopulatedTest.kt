@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
@@ -49,7 +50,7 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
     val start = tomorrow.atTime(7, 20).atZone(zone).toInstant().toEpochMilli()
     val end = tomorrow.atTime(14, 20).atZone(zone).toInstant().toEpochMilli()
     val source = WeatherEvidence("open-meteo", WeatherEvidenceType.MODEL,
-      downloadedAtMillis = now, sourceTimestampMillis = now, effectiveInterval = WeatherInterval(start, end),
+      downloadedAtMillis = now, sourceTimestampMillis = start, effectiveInterval = WeatherInterval(start, end),
       temporalResolutionMillis = 3_600_000, precipitationState = state)
     val partial = state == PrecipitationState.UNCERTAIN || state == PrecipitationState.UNAVAILABLE
     val routine = RoutineWindowAssessment(RoutineOccurrence(RoutineWindow("school", "School",
@@ -58,8 +59,10 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
       now, state, coveredMillis = if (partial) 3_600_000 else end - start,
       maxProbabilityPercent = 33.0, minTemperatureC = 13.0, maxTemperatureC = 15.0,
       evidence = listOf(source), limits = if (partial) setOf(WeatherEvidenceLimit.PARTIAL_COVERAGE) else emptySet())
-    brief = WeatherBrief(LocalPrecipitationAssessment(state, now, evidence = listOf(source)),
-      current = CurrentWeatherSummary(WeatherKind.PARTLY_CLOUDY, 13.0, listOf(source)), routines = listOf(routine))
+    val currentSource = source.copy(sourceTimestampMillis = now - 60_000,
+      effectiveInterval = WeatherInterval(now - 600_000, now + 600_000), temporalResolutionMillis = 900_000)
+    brief = WeatherBrief(LocalPrecipitationAssessment(state, now, evidence = listOf(currentSource)),
+      current = CurrentWeatherSummary(WeatherKind.PARTLY_CLOUDY, 13.0, listOf(currentSource)), routines = listOf(routine))
     compose.setContent {
       val base = LocalContext.current
       val configuration = remember { Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(language)) } }
@@ -69,11 +72,16 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
         val target = device.density * minOf(maxWidth.value / width, maxHeight.value / 900f)
         CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides configuration,
           LocalDensity provides Density(target, font)) {
-          FluidTheme(settings = EngineSettings()) {
+          FluidTheme(settings = EngineSettings(themeMode = dev.antigravity.fluidengine.foundation.ThemeMode.DARK)) {
             val host = rememberFluidGlassModalHostState()
             val backdrop = rememberGlassBackdrop()
             CompositionLocalProvider(LocalFluidGlassModalHostState provides host, LocalFluidCanvasBackdrop provides backdrop) {
               Box(Modifier.requiredWidth(width.dp).height(900.dp)) {
+                dev.pampa.fluidweather.core.ui.WeatherScene(
+                  dev.pampa.fluidweather.core.ui.SkyState(DayPhase.NIGHT, WeatherKind.PARTLY_CLOUDY, 30.0,
+                    precipitation = state, assessmentKnown = true),
+                  dev.pampa.fluidweather.core.ui.SceneQuality.STATIC,
+                  Modifier.fillMaxSize().glassBackdropSource(backdrop), running = false)
                 if (sheet) {
                   HomeSummarySheet(true, brief, "Roma", WeatherSummaryGateway {
                     calls++; WeatherSummaryResult(it.contextKey, WeatherSummaryStatus.READY, listOf("routine_0", "current"))
@@ -95,23 +103,64 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
     compose.onNodeWithText("open-meteo", substring = true).assertDoesNotExist()
     compose.onNodeWithText("Europe/Rome", substring = true).assertDoesNotExist()
     compose.onNodeWithText("33%").assertExists()
-    compose.onNodeWithText(if (language == "it") "Campioni" else "Samples").assertExists()
+    compose.onNodeWithText(if (language == "it") "Campioni" else "Samples").assertDoesNotExist()
     compose.onNodeWithText(if (language == "it") "Domani" else "Tomorrow").assertExists()
     var checkedLayouts = 0
     compose.onAllNodes(hasText("School") or hasText("33%") or hasText("13°–15°")).fetchSemanticsNodes().forEach { node ->
       val layouts = mutableListOf<TextLayoutResult>()
       node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(layouts)
-      layouts.forEach { checkedLayouts++; assertFalse(it.didOverflowWidth); assertFalse(it.didOverflowHeight) }
+      layouts.forEach { checkedLayouts++; assertPaintedGlyphsFit(it) }
     }
     assertTrue("Inspect actual text layout results", checkedLayouts > 0)
     val card = compose.onNodeWithTag("moment_school").fetchSemanticsNode().boundsInRoot
     val viewport = compose.onRoot().fetchSemanticsNode().boundsInRoot
-    assertTrue("Default personal window must remain compact", card.height < viewport.height * 0.65f)
+    assertTrue("Default personal window must remain compact", card.height < viewport.height * 0.32f)
+    val configuration = Configuration(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration)
+      .apply { setLocale(Locale.forLanguageTag(language)) }
+    val resources = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.createConfigurationContext(configuration).resources
+    compose.onNode(hasText(resources.getString(dev.pampa.fluidweather.strings.WeatherGlanceSummary.stateRes(state))) and
+      hasAnyAncestor(hasTestTag("moment_school")), useUnmergedTree = true).assertExists()
+  }
+
+
+  // Intrinsic text advances are fractional while Compose bounds round to Int pixels. A one-
+  // fraction advance overflow is not clipped ink. Inspect the actual painted glyphs instead.
+  private fun assertPaintedGlyphsFit(layout: TextLayoutResult) {
+    val margin = 64
+    val bitmap = androidx.compose.ui.graphics.ImageBitmap(layout.size.width + margin * 2, layout.size.height + margin * 2)
+    val canvas = androidx.compose.ui.graphics.Canvas(bitmap)
+    canvas.translate(margin.toFloat(), margin.toFloat())
+    layout.multiParagraph.paint(canvas, color = androidx.compose.ui.graphics.Color.White)
+    val pixels = bitmap.asAndroidBitmap()
+    var found = false
+    for (y in 0 until pixels.height) for (x in 0 until pixels.width) {
+      if ((pixels.getPixel(x, y) ushr 24) != 0) {
+        found = true
+        assertTrue("Clipped glyph ${layout.layoutInput.text.text} at $x,$y in ${layout.size}",
+          x >= margin && x < margin + layout.size.width && y >= margin && y < margin + layout.size.height)
+      }
+    }
+    pixels.recycle()
+    assertTrue("Text must paint visible glyphs", found)
+    assertFalse("Text may not be truncated", layout.multiParagraph.didExceedMaxLines)
+  }
+
+  private fun capture(kind: String) {
+    if (language != "it" || width != 360 || state != PrecipitationState.UNCERTAIN) return
+    val bitmap = compose.onNodeWithTag(if (kind == "summary") "weather_summary_sheet" else "home_routine_windows").captureToImage().asAndroidBitmap()
+    val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+    val directory = java.io.File(context.getExternalFilesDir(null), "glance-polish-qa").apply { mkdirs() }
+    java.io.File(directory, "${kind}_${language}_${width}_${font}.png").outputStream().use {
+      assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
+    }
   }
 
   @Test fun summaryIsBoundedAndDisclosureRetainsExactMetadataAfterSelection() {
     show(true)
+    capture("summary")
     assertCompact()
+    compose.onNodeWithText("13\u00b0").assertExists()
+    capture("summary")
     compose.onNodeWithTag("weather_summary_status").assertDoesNotExist()
     compose.onNodeWithTag("weather_summary_request").performScrollTo().performClick()
     compose.waitUntil { calls == 1 }
@@ -125,7 +174,9 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
 
   @Test fun momentDisclosesOriginalIntervalAndSampleUncertainty() {
     show(false)
+    capture("moments")
     assertCompact()
+    capture("moments")
     compose.onNodeWithTag("moment_details_school").performScrollTo().performClick()
     compose.onNodeWithTag("moment_metadata_school").assertExists()
     compose.onNodeWithText("Europe/Rome", substring = true).assertExists()

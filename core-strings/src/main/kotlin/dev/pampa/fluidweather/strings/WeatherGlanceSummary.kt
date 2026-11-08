@@ -49,9 +49,12 @@ object WeatherGlanceSummary {
     val start = Instant.ofEpochMilli(a.interval.startMillis).atZone(a.zone.zoneId)
     val end = Instant.ofEpochMilli(a.interval.endMillis).atZone(a.zone.zoneId)
     val overnight = start.toLocalDate() != end.toLocalDate()
-    val format = DateTimeFormatter.ofPattern(if (overnight) "d MMM HH:mm" else "HH:mm", locale)
+    val dateFormat = DateTimeFormatter.ofPattern("d MMM", locale)
     val offsets = start.offset != end.offset || a.adjustedForDst
-    fun endpoint(t: java.time.ZonedDateTime) = t.format(format) + if (offsets) " " + t.offset else ""
+    fun endpoint(t: java.time.ZonedDateTime) =
+      (if (overnight) t.format(dateFormat) + " " else "") +
+        TimeFormats.time(t.toInstant().toEpochMilli(), a.zone.zoneId, locale) +
+        if (offsets) " " + t.offset else ""
     return endpoint(start) + "\u2013" + endpoint(end)
   }
 

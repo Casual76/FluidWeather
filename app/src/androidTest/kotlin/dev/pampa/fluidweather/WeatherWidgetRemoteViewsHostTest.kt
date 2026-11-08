@@ -108,7 +108,7 @@ class WeatherWidgetRemoteViewsHostTest(private val case: WidgetHostCase) {
       assertEquals("Unexpected extra/missing text rows", when {
         case.width == 110 -> if (case.variant == "stale") 4 else 3
         case.height == 110 -> 4
-        case.height < 330 -> if (case.width >= 320) 17 else 13
+        case.height < 330 -> if (case.width >= 320) 17 else if (case.width < 220 && !model.usesHourlyForecast) 12 else 13
         else -> if (case.width >= 320) 32 else 28
       }, texts.size)
       if (model.usesHourlyForecast) {

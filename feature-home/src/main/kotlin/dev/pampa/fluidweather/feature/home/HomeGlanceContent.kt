@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.feature.home
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -19,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.antigravity.fluidengine.ui.fluid.*
+import dev.antigravity.fluidengine.ui.theme.FluidListGroup
 import dev.pampa.fluidweather.core.model.*
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.strings.*
@@ -42,10 +44,21 @@ internal fun HomeMomentContent(a: RoutineWindowAssessment, now: Long, valid: Boo
   val units = rememberUnitFormatter()
   var details by rememberSaveable(a.occurrence) { mutableStateOf(false) }
   Column(Modifier.fillMaxWidth().testTag("moment_${a.occurrence.routine.id}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Text(a.occurrence.routine.name, style = MaterialTheme.typography.titleSmall)
-    Text(WeatherGlanceSummary.day(resources, a.occurrence, now, locale), style = MaterialTheme.typography.labelLarge)
-    GlanceMetric(Icons.Rounded.Schedule, WeatherGlanceSummary.time(a.occurrence, locale), stringResource(R.string.glance_time))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(a.occurrence.routine.name, style = MaterialTheme.typography.titleSmall)
+        Text(WeatherGlanceSummary.day(resources, a.occurrence, now, locale), style = MaterialTheme.typography.labelMedium)
+      }
+      FluidGlassIconButton(onClick = { details = !details }, size = 32.dp,
+        grip = FluidPressGrip.YieldsToScroll,
+        modifier = Modifier.testTag("moment_details_${a.occurrence.routine.id}")) {
+        Icon(Icons.Rounded.Info, stringResource(if (details) R.string.glance_less else R.string.glance_details),
+          Modifier.size(18.dp), tint = LocalContentColor.current)
+      }
+    }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      GlanceMetric(Icons.Rounded.Schedule, WeatherGlanceSummary.time(a.occurrence, locale), stringResource(R.string.glance_time))
       if (valid) a.maxProbabilityPercent?.let {
         GlanceMetric(Icons.Rounded.WaterDrop, units.num(it, 0) + "%", stringResource(R.string.glance_probability))
       }
@@ -59,12 +72,7 @@ internal fun HomeMomentContent(a: RoutineWindowAssessment, now: Long, valid: Boo
         R.string.glance_partial_dry else WeatherGlanceSummary.stateRes(if (valid) a.precipitation else PrecipitationState.UNAVAILABLE)),
         style = MaterialTheme.typography.labelLarge)
       if (WeatherGlanceSummary.partial(a)) Text(stringResource(R.string.glance_partial), style = MaterialTheme.typography.labelMedium)
-      if (valid && WeatherGlanceSummary.temperature(a, units) != null)
-        Text(stringResource(R.string.glance_samples), style = MaterialTheme.typography.labelMedium)
     }
-    FluidButton(stringResource(if (details) R.string.glance_less else R.string.glance_details), { details = !details },
-      style = FluidButtonStyle.Plain, grip = FluidPressGrip.YieldsToScroll,
-      modifier = Modifier.testTag("moment_details_${a.occurrence.routine.id}"))
     if (details) {
       Column(Modifier.testTag("moment_metadata_${a.occurrence.routine.id}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(routineOccurrenceLabel(a.occurrence, locale), style = MaterialTheme.typography.bodySmall)

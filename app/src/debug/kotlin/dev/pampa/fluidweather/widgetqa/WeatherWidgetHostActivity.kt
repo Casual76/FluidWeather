@@ -41,16 +41,31 @@ class WeatherWidgetHostActivity : Activity() {
     }
     val status = TextView(this).apply { text = "Rendering ${case.key}"; setTextColor(Color.WHITE) }
     root.addView(status)
-    val frame = FrameLayout(widgetContext)
+    val responsive = intent.getBooleanExtra("responsive", false)
+    require(!responsive || android.os.Build.VERSION.SDK_INT >= 31)
+    val native = if (responsive) android.appwidget.AppWidgetHostView(widgetContext).apply {
+      val provider = android.appwidget.AppWidgetManager.getInstance(widgetContext).installedProviders.first {
+        it.provider.packageName == this@WeatherWidgetHostActivity.packageName &&
+          it.provider.className.endsWith("FluidWeatherAppWidgetReceiver")
+      }
+      // View-only host: no app-widget IDs allocated/bound, no existing widget changed.
+      setAppWidget(0, provider)
+    } else null
+    val frame: FrameLayout = native ?: FrameLayout(widgetContext)
     val density = widgetContext.resources.displayMetrics.density
-    root.addView(frame, LinearLayout.LayoutParams((case.width * density).roundToInt(),
-      (case.height * density).roundToInt()))
+    val contentWidth = if (responsive) intent.getFloatExtra("hostWidth", 198.58824f) else case.width.toFloat()
+    val contentHeight = if (responsive) intent.getFloatExtra("hostHeight", 198.58824f) else case.height.toFloat()
+    root.addView(frame, LinearLayout.LayoutParams((contentWidth * density).roundToInt() + frame.paddingLeft + frame.paddingRight,
+      (contentHeight * density).roundToInt() + frame.paddingTop + frame.paddingBottom))
     setContentView(root)
     scope.launch {
       try {
-        val views = WeatherWidgetHostRenderer.render(widgetContext, case, model)
-        val child = views.apply(widgetContext, frame)
-        frame.addView(child, FrameLayout.LayoutParams(-1, -1))
+        val views = if (responsive) WeatherWidgetHostRenderer.responsive(widgetContext, case)
+          else WeatherWidgetHostRenderer.render(widgetContext, case, model)
+        val child = if (native != null) {
+          native.updateAppWidget(views)
+          native
+        } else views.apply(widgetContext, frame).also { frame.addView(it, FrameLayout.LayoutParams(-1, -1)) }
         widgetView = child
         status.text = case.key
         frame.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
