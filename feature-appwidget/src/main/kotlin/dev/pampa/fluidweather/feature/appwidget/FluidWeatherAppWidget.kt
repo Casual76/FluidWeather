@@ -94,7 +94,7 @@ class FluidWeatherAppWidget : GlanceAppWidget() {
       readToken == runtime.cachedWeatherBriefs.cachedInputUpdates.value
     // Only the stable resolved place may become a navigation target. No coordinates or IO.
     val targetPlaceId = place?.place?.id.takeIf { stable }
-    target.setData(AppDeepLink.uri(AppDestination.Widget(HomeWidget.NOWCAST, targetPlaceId)))
+    target.setData(AppDeepLink.uri(AppDestination.Home(targetPlaceId)))
     val now = System.currentTimeMillis()
     val snapshot = place?.snapshot.takeIf { stable }
     val sharedBrief = brief.takeIf { stable }

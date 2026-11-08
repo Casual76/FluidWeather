@@ -21,6 +21,7 @@ import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.ui.AppRequest
 import dev.pampa.fluidweather.core.ui.AppScreen
 import dev.pampa.fluidweather.core.ui.HomeWidget
+import dev.pampa.fluidweather.core.ui.WidgetPlaceTarget
 import dev.pampa.fluidweather.feature.assistant.AiSettingsDependencies
 import dev.pampa.fluidweather.feature.assistant.AiSettingsScreen
 import dev.pampa.fluidweather.feature.assistant.AssistantNavigator
@@ -131,6 +132,20 @@ private fun FluidWeatherRoutes(
   // limitarsi a portare avanti le Impostazioni.
   LaunchedEffect(request) {
     when (val destination = request?.destination ?: return@LaunchedEffect) {
+      is AppDestination.Home -> {
+        val placeId = try {
+          WidgetPlaceTarget.resolve(destination.placeId, graph.savedLocationsRepository.places.first())
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          dev.pampa.fluidweather.core.model.Place.GPS_ID
+        }
+        placeId?.let(graph.selectedPlaceStore::select)
+        if (navController.currentDestination?.route != Routes.Home) {
+          navController.popBackStack(Routes.Home, inclusive = false)
+        }
+        onRequestConsumed()
+      }
       is AppDestination.Widget ->
         if (navController.currentDestination?.route != Routes.Home) {
           navController.popBackStack(Routes.Home, inclusive = false)
@@ -211,6 +226,7 @@ private fun FluidWeatherRoutes(
       var requestedWidgetNonce by remember { mutableStateOf(0L) }
       LaunchedEffect(request) {
         when (val destination = request?.destination) {
+          is AppDestination.Home -> Unit // Selected by the route owner; no detail sheet.
           is AppDestination.Widget -> {
             requestedWidgetPlaceId = destination.placeId
             requestedWidgetNonce = request?.nonce ?: 0L

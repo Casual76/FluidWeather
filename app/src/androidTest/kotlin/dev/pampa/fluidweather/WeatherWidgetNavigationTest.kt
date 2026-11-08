@@ -30,6 +30,8 @@ class WeatherWidgetNavigationTest {
   private val graph get() = app.graph
 
   @Test fun uriIdentityAndLegacyCompatibility() {
+    assertEquals(AppDestination.Home(42), AppDeepLink.parse(AppDeepLink.uri(AppDestination.Home(42))))
+    assertFalse(intent(AppDestination.Home(42)).filterEquals(intent(AppDestination.Home(43))))
     for (widget in HomeWidget.entries) {
       val destination = AppDestination.Widget(widget, 42)
       assertEquals(destination, AppDeepLink.parse(AppDeepLink.uri(destination)))
@@ -57,7 +59,7 @@ class WeatherWidgetNavigationTest {
           .flatMap { monitor.getActivitiesInStage(it) }.none { it is MainActivity })
     }
     assertTrue("Complete onboarding before running", io { graph.onboardingStore.done.first() })
-    assertTrue("Disable tutorials before running", io { graph.tutorialStore.disabledAll.first() })
+    val previousTutorialsDisabled = io { graph.tutorialStore.disabledAll.first() }
     assertNull("Resolve release gate before running", io { ReleaseGate.of(graph.remoteConfig.config.first()) })
     val place = Place(-System.currentTimeMillis(), "SYNTHETIC-widget-${UUID.randomUUID()}", null, 44.0, 11.0, "Europe/Rome")
     val key = WeatherSnapshot.keyFor(place.id)
@@ -70,6 +72,7 @@ class WeatherWidgetNavigationTest {
     var scenario: ActivityScenario<MainActivity>? = null
     try {
       io {
+        graph.tutorialStore.setDisabledAll(true)
         graph.savedLocationsRepository.save(place)
         graph.weatherSnapshotStore.write(WeatherSnapshot(key, place.latitude, place.longitude,
           System.currentTimeMillis(), emptyList(), FusedForecast(listOf(FusedHour(hour,
@@ -90,6 +93,11 @@ class WeatherWidgetNavigationTest {
       awaitSavedHourly()
       compose.onNodeWithContentDescription(app.getString(R.string.common_close)).performClick()
       compose.waitUntil(5_000) { compose.onAllNodesWithTag("hourly_probability_$hour").fetchSemanticsNodes().isEmpty() }
+      graph.selectedPlaceStore.select(Place.GPS_ID)
+      instrumentation.targetContext.startActivity(intent(AppDestination.Home(place.id))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      compose.waitUntil(15_000) { graph.selectedPlaceStore.current() == place.id }
+      compose.onNodeWithTag("hourly_probability_$hour").assertDoesNotExist()
       // Actual singleTask delivery: identical URI must still generate a fresh AppRequest nonce.
       instrumentation.targetContext.startActivity(link.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       awaitSavedHourly()
@@ -105,15 +113,19 @@ class WeatherWidgetNavigationTest {
       compose.onNodeWithTag("hourly_probability_$hour").assertDoesNotExist()
       assertTrue(io { graph.savedLocationsRepository.places.first() }.none { it.id == place.id })
     } finally {
-      scenario?.close()
-      io { graph.savedLocationsRepository.remove(place.id) }
-      // Only the unique file owned by this fixture. No global cache clear/wipe.
-      if (file.exists()) assertTrue(file.delete())
-      graph.selectedPlaceStore.select(previous)
+      try {
+        scenario?.close()
+        io { graph.savedLocationsRepository.remove(place.id) }
+        // Only the unique file owned by this fixture. No global cache clear/wipe.
+        if (file.exists()) assertTrue(file.delete())
+      } finally {
+        graph.selectedPlaceStore.select(previous)
+        io { graph.tutorialStore.setDisabledAll(previousTutorialsDisabled) }
+      }
     }
   }
 
   private fun intent(destination: AppDestination) = Intent(Intent.ACTION_VIEW, AppDeepLink.uri(destination), app, MainActivity::class.java)
     .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-  private fun <T> io(block: suspend () -> T): T = runBlocking { block() }
+  private fun <T> io(block: suspend () -> T): T = runBlocking { kotlinx.coroutines.withTimeout(5_000) { block() } }
 }

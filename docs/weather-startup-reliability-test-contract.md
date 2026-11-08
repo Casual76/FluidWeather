@@ -4,6 +4,8 @@ Base: local unpublished `11659c9aae623646db98f6f11afff2f14da58c31` (HomeLocalHyd
 
 ## Test and evidence
 
+Root execution update: `premium-phone-startup-test-5.log` completed 1/1 in 3.363s on the authorized SM-S931B Debug package. GPS denial/no GPS cache preconditions held; no global network setting was changed. The method now exits the scrolled detail through the real Back key/dispatcher instead of assuming its close header stays visible. This supersedes the sub-agent's unrun status below. Exact later visual APK, process death and multi-day sensor behavior remain outside this run.
+
 `dev.pampa.fluidweather.WeatherStartupReliabilityTest#coldGpsDeniedHome_showsPersistedPressureAndHistory_thenConsumesRoomUpdateWithoutRefresh`
 
 This is one instrumentation method using `FluidWeatherApp.graph`, its real persisted pressure/history stores, `ActivityScenario<MainActivity>`, production Home, and native UiAutomation accessibility nodes. It installs no alternate graph, fake Home, helper-only consumer, provider source, or Compose test content.

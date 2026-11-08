@@ -16,7 +16,10 @@ so two places targeting Hourly remain distinct even if extras are ignored.
 cached-input checks pass. This also applies when a stable saved place has no
 weather cache yet. Unresolved/unstable reads carry no ID. `WeatherWidgetContent`
 preserves the base URI place ID when retargeting condition, hours and days. The
-outer widget tap opens Nowcast using the same target identity. No widget network
+outer widget tap opens Home using the same target identity. `AppDestination.Home`
+keeps this distinct from the condition's Nowcast target. Its route owner resolves
+the saved ID before returning to Home and consumes the request without opening a
+detail sheet. The Home URI also participates in PendingIntent identity. No widget network
 or GPS acquisition is introduced.
 
 ## Delivery and ordering
@@ -56,7 +59,8 @@ It checks the cached Hourly row as well as SelectedPlaceStore, not selection alo
 
 Tests are **UNRUN** in the implementation checkout. Parent owns all Gradle,
 build and physical-device work. The integration source requires an offline debug
-package, no existing MainActivity, completed onboarding, disabled tutorials and no release gate. It
+package, no existing MainActivity, completed onboarding and no release gate. It temporarily
+disables Debug tutorials and restores their prior setting in finally. It
 changes no global settings and does not wipe data. It removes only its unique
 saved-place row and snapshot file, restores session selection and closes its own
 Activity. Instrumentation shares the application process: this exercises a cold

@@ -48,6 +48,8 @@ Parent must use `device_list`, `device_open(hostId, id)` and the returned **devi
 
 ## Parent-owned builds and instrumentation
 
+Root execution update: the phone run `premium-phone-widget-host-test-4.log` completed 64/64 cases in 54.627s, terminal -1, after correcting compact/short layout clipping and long-condition wrapping. This supersedes the allocation's unrun status, not the host-vs-launcher limitations below. The phone was subsequently handed off; final tablet evidence is recorded in `weather-premium-verification.md`.
+
 Commands to run from the integrated checkout (not executed by this implementation agent):
 
 ```powershell

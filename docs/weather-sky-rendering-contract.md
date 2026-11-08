@@ -1,6 +1,14 @@
 ﻿# Sky rendering prototype contract (allocation B)
 
-Status: separate unbuilt prototype. No visual fidelity, real-world accuracy or performance approval is implied. Parent owns integration, independent review, rendering and device checks. No version, engine, dependency, lifecycle or glass-source changes are included.
+## Integrated override, 2026-11-08
+
+The allocation notes below describe the historical prototype. The candidate removes the entire optical Deck pass after the user's gray-stripe feedback. Overcast/wet scenes instead use four stratified soft Cumulus groups (three in REDUCED/STATIC), confined by the upper-sky coordinate space. No cloud atlas or experimental CloudVolume field remains. Existing multi-pass puff highlights/shadows are retained; these are procedural artwork, not physical volumetric simulation.
+
+`WeatherScene` prepares geometry on Dispatchers.Default and only draws a painter matching the current state/quality/day request. Its astronomical minute clock is independent of the draw-frame clock. Existing visibility, lifecycle and reduced-motion gates remain. The shared evidence adapter is used by Home and widget; a fresh hourly atmospheric sample keeps full valid-time weight within half an hour, then fades to zero at 90 minutes. Original download freshness is checked independently.
+
+Root rendered the nine-case/four-phase/three-quality matrix in `artifacts/quality-2.1.2/premium-upper-cloud-matrix`. STATIC pixel equality, no-flash and malformed-input finiteness assertions passed. These are synthetic artwork checks, not Android performance or local weather validation. The physical tablet Home capture `premium-tablet-upper-clouds.png` shows the current partly-cloudy scene and glass action. Final integrated verification is recorded separately.
+
+Historical allocation status: separate unbuilt prototype. The remainder records the original proposal, including rejected Deck details; the override above describes the current implementation.
 
 ## Input and compatibility
 
