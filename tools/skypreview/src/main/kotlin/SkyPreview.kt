@@ -62,6 +62,10 @@ private val kinds = listOf(
 
 fun main(args: Array<String>) {
   val out = File(System.getProperty("skypreview.out") ?: "out").apply { mkdirs() }
+  if ("--cloud-volume" in args) {
+    CloudVolumePreview.run(File(out, "cloud-volume"))
+    return
+  }
   val only = args.firstOrNull { it.startsWith("--only=") }?.removePrefix("--only=")?.split(',')?.toSet()
 
   val instants = instants()

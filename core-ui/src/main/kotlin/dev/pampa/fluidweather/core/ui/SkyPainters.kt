@@ -75,7 +75,7 @@ class SkyScenePainter(
 ) {
   private val state = state.forRendering()
   private val random = Random(seed.toLong())
-  private val clouds = CloudLayer.forState(this.state, quality, Random(random.nextLong()))
+  private val clouds = CloudVolumeLayer.forState(this.state, random.nextLong().toInt())
   private val stars = StarField(quality, Random(random.nextLong()))
   private val atmosphere = this.state.atmosphere?.boundedForPainting()
   private val precipitation = PrecipitationField(this.state.kind, quality, Random(random.nextLong()), atmosphere)
@@ -95,7 +95,7 @@ class SkyScenePainter(
     // L'ordine e' il punto: l'astro sta DIETRO le nuvole, come fuori dalla finestra.
     body?.let { CelestialPainter.draw(scope, it, sky, moon) }
     // Change the cloud coordinate space without hard-clipping its soft edges.
-    with(scope) { inset(0f, 0f, 0f, size.height * 0.48f) { clouds.draw(this, time, sky, body) } }
+    with(scope) { inset(0f, 0f, 0f, size.height * 0.48f) { clouds?.draw(this, time, sky, body, quality) } }
     fog?.draw(scope, time, sky)
     precipitation.draw(scope, time, sky)
   }
