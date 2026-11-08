@@ -16,6 +16,14 @@
     },
     "history": [
       {
+        "version": "2.1.0",
+        "releaseDate": "2026-11-08",
+        "changelog": "FluidWeather 2.1.0\n\n- La home mette in primo piano la pioggia presente e imminente, con una timeline compatta, transizioni approssimative e fonti consultabili.\n- Dati correnti, accumuli recenti e previsioni sono distinti. Età delle fonti, copertura radar, conflitti e informazioni mancanti vengono dichiarati senza trasformarli in tempo asciutto.\n- Aggiunti gli orari personali abituali: configura nome, giorni e fascia oraria per vedere rapidamente le condizioni previste nei prossimi momenti che ti interessano, anche attraverso mezzanotte e cambi di fuso.\n- Nuova sintesi rapida disponibile senza configurare un'IA; l'elaborazione IA resta facoltativa e su richiesta. Sintesi, chat, home e widget usano i fatti condivisi dell'app.\n- Widget e dettagli mostrano provenienza e orari dei dati. Migliorata la leggibilità delle previsioni giornaliere con caratteri grandi.\n- Corretto il recupero dopo la cancellazione dei dati: i vecchi aggiornamenti in corso non ripopolano le cache e la home può ricevere nuovi dati senza essere chiusa. Conservate località, personalizzazioni e configurazioni nella migrazione.\n\nLe indicazioni imminenti restano stime vincolate alla disponibilità e alla freschezza delle fonti. Il confronto sul campo dell'accuratezza e quello controllato delle prestazioni restano documentati tra le verifiche aperte.",
+        "releaseTag": "stable-fluidweather-v2.1.0",
+        "apkAsset": "fluidweather-2.1.0.apk",
+        "sizeBytes": 24968589
+      },
+      {
         "version": "2.0.2",
         "releaseDate": "2026-11-05",
         "changelog": "Corretto il problema che lasciava vuoti i pulsanti della barra durante il cambio pagina: le icone ora scompaiono e ricompaiono con la dissolvenza prevista.",
@@ -177,20 +185,20 @@
       }
     ],
     "beta": {
-      "version": "2.1.0",
+      "version": "2.1.1",
       "releaseDate": "2026-11-08",
-      "changelog": "FluidWeather 2.1.0\n\n- La home mette in primo piano la pioggia presente e imminente, con una timeline compatta, transizioni approssimative e fonti consultabili.\n- Dati correnti, accumuli recenti e previsioni sono distinti. Età delle fonti, copertura radar, conflitti e informazioni mancanti vengono dichiarati senza trasformarli in tempo asciutto.\n- Aggiunti gli orari personali abituali: configura nome, giorni e fascia oraria per vedere rapidamente le condizioni previste nei prossimi momenti che ti interessano, anche attraverso mezzanotte e cambi di fuso.\n- Nuova sintesi rapida disponibile senza configurare un'IA; l'elaborazione IA resta facoltativa e su richiesta. Sintesi, chat, home e widget usano i fatti condivisi dell'app.\n- Widget e dettagli mostrano provenienza e orari dei dati. Migliorata la leggibilità delle previsioni giornaliere con caratteri grandi.\n- Corretto il recupero dopo la cancellazione dei dati: i vecchi aggiornamenti in corso non ripopolano le cache e la home può ricevere nuovi dati senza essere chiusa. Conservate località, personalizzazioni e configurazioni nella migrazione.\n\nLe indicazioni imminenti restano stime vincolate alla disponibilità e alla freschezza delle fonti. Il confronto sul campo dell'accuratezza e quello controllato delle prestazioni restano documentati tra le verifiche aperte.",
-      "releaseTag": "stable-fluidweather-v2.1.0",
-      "apkAsset": "fluidweather-2.1.0.apk",
-      "sizeBytes": 24968589
+      "changelog": "FluidWeather 2.1.1\n\n- Ripristinata la home con temperatura grande, località, condizioni e cielo animato. La sintesi pioggia resta compatta sotto la testata.\n- Corretto il testo nero sulle tessere in vetro con il tema chiaro; eliminato il pannello opaco sopra il vetro.\n- Ripristinato il widget compatto con temperatura, località, prossime ore e orario dei dati. Le cache con previsioni orarie utilizzabili tornano a mostrare la temperatura, qualificata come previsione.\n- Previsioni giornaliere e precipitazioni tornano sintetiche nella home; fonti, limiti e diagnostica restano nei dettagli.\n- Ridotta la durata della cache Open-Meteo che contiene le condizioni correnti, evitando che scadano mentre la risposta resta in cache.\n\nQuesta versione corregge le regressioni di presentazione e del widget introdotte dalla 2.1.0. Le indicazioni sulla pioggia restano stime con i limiti delle fonti disponibili.",
+      "releaseTag": "stable-fluidweather-v2.1.1",
+      "apkAsset": "fluidweather-2.1.1.apk",
+      "sizeBytes": 24967980
     },
     "stable": {
-      "version": "2.1.0",
+      "version": "2.1.1",
       "releaseDate": "2026-11-08",
-      "changelog": "FluidWeather 2.1.0\n\n- La home mette in primo piano la pioggia presente e imminente, con una timeline compatta, transizioni approssimative e fonti consultabili.\n- Dati correnti, accumuli recenti e previsioni sono distinti. Età delle fonti, copertura radar, conflitti e informazioni mancanti vengono dichiarati senza trasformarli in tempo asciutto.\n- Aggiunti gli orari personali abituali: configura nome, giorni e fascia oraria per vedere rapidamente le condizioni previste nei prossimi momenti che ti interessano, anche attraverso mezzanotte e cambi di fuso.\n- Nuova sintesi rapida disponibile senza configurare un'IA; l'elaborazione IA resta facoltativa e su richiesta. Sintesi, chat, home e widget usano i fatti condivisi dell'app.\n- Widget e dettagli mostrano provenienza e orari dei dati. Migliorata la leggibilità delle previsioni giornaliere con caratteri grandi.\n- Corretto il recupero dopo la cancellazione dei dati: i vecchi aggiornamenti in corso non ripopolano le cache e la home può ricevere nuovi dati senza essere chiusa. Conservate località, personalizzazioni e configurazioni nella migrazione.\n\nLe indicazioni imminenti restano stime vincolate alla disponibilità e alla freschezza delle fonti. Il confronto sul campo dell'accuratezza e quello controllato delle prestazioni restano documentati tra le verifiche aperte.",
-      "releaseTag": "stable-fluidweather-v2.1.0",
-      "apkAsset": "fluidweather-2.1.0.apk",
-      "sizeBytes": 24968589
+      "changelog": "FluidWeather 2.1.1\n\n- Ripristinata la home con temperatura grande, località, condizioni e cielo animato. La sintesi pioggia resta compatta sotto la testata.\n- Corretto il testo nero sulle tessere in vetro con il tema chiaro; eliminato il pannello opaco sopra il vetro.\n- Ripristinato il widget compatto con temperatura, località, prossime ore e orario dei dati. Le cache con previsioni orarie utilizzabili tornano a mostrare la temperatura, qualificata come previsione.\n- Previsioni giornaliere e precipitazioni tornano sintetiche nella home; fonti, limiti e diagnostica restano nei dettagli.\n- Ridotta la durata della cache Open-Meteo che contiene le condizioni correnti, evitando che scadano mentre la risposta resta in cache.\n\nQuesta versione corregge le regressioni di presentazione e del widget introdotte dalla 2.1.0. Le indicazioni sulla pioggia restano stime con i limiti delle fonti disponibili.",
+      "releaseTag": "stable-fluidweather-v2.1.1",
+      "apkAsset": "fluidweather-2.1.1.apk",
+      "sizeBytes": 24967980
     }
   },
   "engine": {
