@@ -164,4 +164,27 @@ class HomeLocalHydrationTest {
     assertTrue(state.verdictHistory.isEmpty())
     assertEquals(now - 60_000, state.dataAtMillis)
   }
+
+  @Test fun `failed acquisition retains real cleaned history but confirmed empty pipeline output clears it`() = runTest {
+    val pipeline = dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline()
+    val samples = (0..840).map { minute -> PressureSample(
+      timestampMillis = now - (840 - minute) * 60_000L, pressureHpa = 1000.0,
+      source = SampleSource.PERIODIC,
+    ) }
+    val previous = pipeline.process(samples)
+    assertTrue(previous.historyHours > 13.0)
+    val empty = pipeline.process(emptyList())
+    var failed = true
+    var state = HomeUiState(cleaning = previous, readiness = ready, dataAtMillis = now - 60_000)
+    val local = HomeLocalHydration({ 0 }, { if (failed) throw IOException() else empty },
+      { null }, { emptyList() }, { if (failed) throw IOException() else ready.copy(historyHours = 0.0) })
+    local.refresh(now, 0) { state = it.applyTo(state) }
+    assertSame(previous, state.cleaning)
+    assertSame(ready, state.readiness)
+    failed = false
+    local.refresh(now, 0) { state = it.applyTo(state) }
+    assertTrue(state.cleaning!!.filtered.isEmpty())
+    assertEquals(0.0, state.readiness!!.historyHours, 0.0)
+    assertEquals(now - 60_000, state.dataAtMillis)
+  }
 }

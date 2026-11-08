@@ -149,18 +149,20 @@ class NowcastUseCase(
      */
     pointLatitude: Double? = null,
     pointLongitude: Double? = null,
+    /** UI acquisition must distinguish storage failure from confirmed empty data. */
+    failOnLocalReadError: Boolean = false,
   ): NowcastSnapshot {
-    val baseline = runCatching { baselineStore.current() }.getOrNull()
+    val baseline = localRead(failOnLocalReadError) { baselineStore.current() }
     // L'ultima temperatura nota, non i quindici gradi standard: offline e online devono ridurre
     // con lo stesso righello, altrimenti la stessa serie mostra due pressioni diverse.
     val temperature = snapshot?.fused?.hours
       ?.nearestHour(nowMillis)?.first
       ?.values?.get(FusionVariables.TEMPERATURE)?.value
       ?: baseline?.lastTemperatureC
-    val samples = runCatching { pressureRepository.samplesSince(nowMillis - HISTORY_WINDOW_MILLIS) }.getOrDefault(emptyList())
-    val calibration = runCatching { calibrationStore.current() }.getOrNull()
+    val samples = localRead(failOnLocalReadError) { pressureRepository.samplesSince(nowMillis - HISTORY_WINDOW_MILLIS) }.orEmpty()
+    val calibration = localRead(failOnLocalReadError) { calibrationStore.current() }
     val deviceCalibration = calibration?.toDeviceCalibration() ?: DeviceCalibration()
-    val cleaning = runCatching {
+    val cleaning = localRead(failOnLocalReadError) {
       cleaningPipeline.process(
         samples,
         calibration = deviceCalibration,
@@ -171,7 +173,7 @@ class NowcastUseCase(
         latitude = snapshot?.latitude ?: baseline?.latitude,
         longitude = snapshot?.longitude ?: baseline?.longitude,
       )
-    }.getOrNull()
+    }
 
     val normal = runCatching { normalHpa(baseline, deviceCalibration, cleaning, temperature, nowMillis) }.getOrNull()
     val point = pointOf(pointLatitude, pointLongitude, snapshot, baseline)
@@ -209,7 +211,7 @@ class NowcastUseCase(
     }
 
     val historyHours = cleaning?.historyHours ?: 0.0
-    val blocked = samplingBlocked(samples, nowMillis)
+    val blocked = samplingBlocked(samples, nowMillis, failOnLocalReadError)
     return NowcastSnapshot(
       nowMillis = nowMillis,
       samples = samples,
@@ -287,18 +289,20 @@ class NowcastUseCase(
   suspend fun clean(
     sinceMillis: Long,
     temperatureCelsius: Double? = null,
+    failOnLocalReadError: Boolean = false,
   ): CleaningResult? {
-    val samples = runCatching { pressureRepository.samplesSince(sinceMillis) }.getOrNull() ?: return null
-    return cleanSamples(samples, temperatureCelsius)
+    val samples = localRead(failOnLocalReadError) { pressureRepository.samplesSince(sinceMillis) } ?: return null
+    return cleanSamples(samples, temperatureCelsius, failOnLocalReadError)
   }
 
   private suspend fun cleanSamples(
     samples: List<PressureSample>,
     temperatureCelsius: Double? = null,
+    failOnLocalReadError: Boolean = false,
   ): CleaningResult? {
-    val calibration = runCatching { calibrationStore.current() }.getOrNull()
-    val baseline = runCatching { baselineStore.current() }.getOrNull()
-    return runCatching {
+    val calibration = localRead(failOnLocalReadError) { calibrationStore.current() }
+    val baseline = localRead(failOnLocalReadError) { baselineStore.current() }
+    return localRead(failOnLocalReadError) {
       cleaningPipeline.process(
         samples,
         calibration = calibration?.toDeviceCalibration() ?: DeviceCalibration(),
@@ -307,7 +311,7 @@ class NowcastUseCase(
         latitude = baseline?.latitude,
         longitude = baseline?.longitude,
       )
-    }.getOrNull()
+    }
   }
 
   /**
@@ -321,18 +325,19 @@ class NowcastUseCase(
   suspend fun readiness(
     nowMillis: Long,
     calibrationProgress: Pair<Int, Int>?,
+    failOnLocalReadError: Boolean = false,
   ): BarometerReadiness {
-    val calibration = runCatching { calibrationStore.current() }.getOrNull()
+    val calibration = localRead(failOnLocalReadError) { calibrationStore.current() }
     if (!sensorAvailable()) {
       return NowcastReadiness.of(calibration, calibrationProgress, historyHours = 0.0, sensorAvailable = false)
     }
-    val samples = runCatching { pressureRepository.samplesSince(nowMillis - HISTORY_WINDOW_MILLIS) }.getOrNull()
+    val samples = localRead(failOnLocalReadError) { pressureRepository.samplesSince(nowMillis - HISTORY_WINDOW_MILLIS) }
     return NowcastReadiness.of(
       calibration = calibration,
       calibrationProgress = calibrationProgress,
-      historyHours = samples?.let { cleanSamples(it) }?.historyHours ?: 0.0,
+      historyHours = samples?.let { cleanSamples(it, failOnLocalReadError = failOnLocalReadError) }?.historyHours ?: 0.0,
       requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
-      samplingBlocked = samples != null && samplingBlocked(samples, nowMillis),
+      samplingBlocked = samples != null && samplingBlocked(samples, nowMillis, failOnLocalReadError),
     )
   }
 
@@ -340,11 +345,16 @@ class NowcastUseCase(
    * L'archivio dice che il campionamento e' fermo (vedi [SamplingCoverage]). Non lancia: nel
    * dubbio la risposta e' "no", e la barra torna a dire quello che diceva prima.
    */
-  private suspend fun samplingBlocked(samples: List<PressureSample>, nowMillis: Long): Boolean {
+  private suspend fun samplingBlocked(samples: List<PressureSample>, nowMillis: Long,
+    failOnLocalReadError: Boolean = false): Boolean {
     if (!sensorAvailable()) return false
-    val oldest = runCatching { pressureRepository.oldestSampleMillis() }.getOrNull()
+    val oldest = localRead(failOnLocalReadError) { pressureRepository.oldestSampleMillis() }
     return SamplingCoverage.isBlocked(samples.map { it.timestampMillis }, nowMillis, oldest)
   }
+
+  /** Retain legacy optional reads by default; interactive readers preserve failure identity. */
+  private suspend fun <T> localRead(failOnError: Boolean, read: suspend () -> T): T? =
+    if (failOnError) read() else runCatching { read() }.getOrNull()
 
   /** La tendenza pulita delle ultime [hours] ore: il cambio di marcia della sorveglianza. */
   suspend fun cleanTrend(hours: Int, nowMillis: Long): Double? =

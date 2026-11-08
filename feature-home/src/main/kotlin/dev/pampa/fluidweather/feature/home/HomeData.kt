@@ -352,13 +352,14 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
             record = true,
             pointLatitude = latitude,
             pointLongitude = longitude,
+            failOnLocalReadError = true,
           ) }
           val history = homeCatching { deps.nowcastHistory.since(now - 24 * 3_600_000L) }.getOrElse { value.verdictHistory }
           value = value.copy(
             barometerApplies = true,
             verdict = nowcast.verdict,
-            cleaning = nowcast.cleaning ?: value.cleaning,
-            latestRawPressureHpa = nowcast.latestRawPressureHpa ?: value.latestRawPressureHpa,
+            cleaning = nowcast.cleaning,
+            latestRawPressureHpa = nowcast.latestRawPressureHpa,
             verdictHistory = history,
             nowcastExplanation = nowcast.explanation,
             readiness = nowcast.readiness,
@@ -511,12 +512,13 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
       val observed = deps.dataGeneration()
       val local = HomeLocalHydration(
         generation = deps.dataGeneration,
-        cleaning = { deps.nowcast.clean(it) },
+        cleaning = { deps.nowcast.clean(it, failOnLocalReadError = true) },
         rawPressure = { since -> deps.pressureRepository.samplesSince(since)
           .maxByOrNull { it.timestampMillis }?.pressureHpa },
         history = deps.nowcastHistory::since,
         readiness = { now -> deps.nowcast.readiness(now,
-          deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds }) },
+          deps.calibrationController.progress.value?.let { it.completedSeconds to it.totalSeconds },
+          failOnLocalReadError = true) },
       )
       // Room invalidations recover promptly after sampling starts; timer also picks up verdict
       // writes and ages readiness when no new samples arrive. Observation failure keeps polling.
