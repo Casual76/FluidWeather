@@ -1418,3 +1418,15 @@ Those are separate implementations and still need integration/runtime/review.
 Live model/training and feedback behavior remain unchanged; the source diagnosis
 and proposals are in `weather-startup-diagnosis.md`. Lock-screen feasibility was
 researched, not implemented or promised for Samsung.
+
+Premium extension update, 2026-11-08: upper soft clouds replace the rejected Deck stripe,
+the routine action has actual glass, widget composition is data-first and local hydration
+is independent of GPS/provider loading. Initial independent review of
+`Premium-R0-f1d8bb00bd6e` required widget valid-time restoration and same-place Home
+detail dismissal; individual scores and full reports are linked from
+[the premium ledger](weather-premium-status.md). Correction1 production inputs are
+`38323f9a9691db9ad5fea42831e79928c1bc5527`:66/66 physical-tablet methods pass,
+including all64 RemoteViews layouts and the corrected native navigation path.
+The signed release and pertinent JVM checks pass; three fresh correction reviews
+are still required before publication. No field-accuracy, multi-day sensor or
+controlled whole-app performance approval follows from these checks.
