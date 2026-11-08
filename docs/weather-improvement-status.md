@@ -1427,6 +1427,10 @@ detail dismissal; individual scores and full reports are linked from
 [the premium ledger](weather-premium-status.md). Correction1 production inputs are
 `38323f9a9691db9ad5fea42831e79928c1bc5527`:66/66 physical-tablet methods pass,
 including all64 RemoteViews layouts and the corrected native navigation path.
-The signed release and pertinent JVM checks pass; three fresh correction reviews
-are still required before publication. No field-accuracy, multi-day sensor or
-controlled whole-app performance approval follows from these checks.
+The signed release and pertinent JVM checks pass. All three correction1 reviews
+completed: P1/P2/P4/P5 each8, P3=7/8/8, so the mandatory P3 gate remains open.
+Correction2 distinguishes failed local acquisition from confirmed empty success
+at the actual NowcastUseCase boundary; three API methods and two native navigation
+methods passed on the tablet. Fresh correction2 review is required before
+publication. No field-accuracy, multi-day sensor or controlled whole-app performance
+approval follows from these checks.

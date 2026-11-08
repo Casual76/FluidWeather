@@ -41,7 +41,7 @@ Evidence lives under the parent workspace `artifacts/quality-2.1.2/`, outside Gi
 | P4.regression | Home/details/glass remain coherent; no model, feedback, migration or principal-app changes; source clocks/unknown/conflicts preserved. |
 | P5.delivery | Pertinent JVM/device checks, exact tested APK/source identities, doctor and signed release checks; three independent Sol-high reviews with each mandatory criterion >=8 and no blocker. |
 
-Three fresh independent Sol-high reviewers completed the initial round. Initial review plus at most three correction rounds remain the workflow; correction1 is underway, with two further rounds available afterward if needed.
+Three fresh independent Sol-high reviewers completed the initial round and correction1. Initial review plus at most three correction rounds remain the workflow; correction2 is underway, with one further round available afterward if needed.
 
 ## Independent review round0
 
@@ -59,7 +59,23 @@ Decision: CORRECT; no publication. P2/P4 fail the mandatory threshold and P5 col
 
 Required: (1) the hourly widget fallback lost its visible validity distinction; (2) root Home for the same place did not dismiss an already open detail. R3 additionally identified an essential-text ellipsis assertion checking only line0. R2 noted low-priority sun glow behind widget header text. Correction1 retains the user's concise-copy requirement: show the fallback's valid time rather than repeating Model/estimate prose, preserve stale download age separately, deliver a consumable Home nonce, inspect every text line and apply a widget-only header scrim. Home cloud artwork remains unchanged from the accepted upper soft-cloud correction.
 
-## Explicit limits
+## Independent review correction1
+
+Version `Premium-R1-73c919c3ff25`, reviewed HEAD `7834adf2ac96387e5745c6b3f16dac6fc1f26236`, production inputs `38323f9a9691db9ad5fea42831e79928c1bc5527`. All three independent Sol-high reports are preserved in `weather-premium-review-r1-r1.md`, `-r2.md`, `-r3.md`. They verified the same772-file manifest, external APKs and actual images without consulting one another. ZIP SHA256 `d953ec8f413c8ea6d446d39d845f12795fa4ab926645a21b187672f1c13f406c`.
+
+| Criterion | R1 technical | R2 visual | R3 widget/evidence | Mean | Minimum |
+|---|---:|---:|---:|---:|---:|
+| P1.sky | 8 | 8 | 8 | 8 | 8 |
+| P2.widget | 8 | 8 | 8 | 8 | 8 |
+| P3.reliability | 7 | 8 | 8 | 7.67 | 7 |
+| P4.regression | 8 | 8 | 8 | 8 | 8 |
+| P5.delivery | 8 | 8 | 8 | 8 | 8 |
+
+Decision: CORRECT; no publication. The four correction targets pass, but R1 found that the production `NowcastUseCase` catches local read failures before the hydration helper receives them, allowing successful-null/zero replacements to erase previous cleaning/readiness. P3 remains below8 despite the mean. Other reviewers' passes do not compensate. R2/R3 also identified stale historical wording in the host contract; it is updated in correction2. Optional residual celestial glow in one empty widget is nonblocking and the sky artwork remains unchanged.
+
+Correction2 uses an optional strict acquisition mode at the actual production API boundary, enabled by Home's polling and ordinary load. Failures preserve displayed data; confirmed empty reads and wipe still clear it. A new three-method real API Android suite passed; native navigation repeated2/2. No numerical model, cleaner, readiness formula, schema, cloud painter or widget content changed. Signed build and fresh independent review follow before acceptance.
+
+## Explicit limits (unchanged)
 
 Field forecast accuracy, controlled whole-app p95/memory comparison, process death, multi-day sensor continuity, exact-alarm delivery on other OEMs and live AI/audio are not established. PendingIntent existence still cannot prove an armed future exact alarm; rearm failure is reported and existing health recovery remains. No new accuracy, continuous-collection or broad hardware claim follows from short device tests.
 

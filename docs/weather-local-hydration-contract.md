@@ -16,9 +16,13 @@ Room `PressureRepository.latest(1)` invalidations and calibration start/end trig
 new reads. A 60-second timer also reads history written without a pressure change
 and ages readiness while sampling is stopped. An ordinary observation failure
 falls back to polling. Ordinary read failures preserve the corresponding displayed
-value; subsequent reads retry. A successful empty history remains empty. The
-cleaning API itself returns null on missing data or internal failure, so null does
-not discard an already displayed cleaning result. Wipe resets the holder instead.
+value; subsequent reads retry. Successful confirmed empty reads clear the old
+value, and wipe resets the holder. Home opts into `failOnLocalReadError = true`
+for `NowcastUseCase.clean`, `readiness`, and its ordinary `evaluate` call. This
+mode propagates acquisition/cleaning failures and cancellation to Home's existing
+failure boundary instead of returning a successful null or zero-hour fallback.
+Other callers retain the established optional-read behavior by default. The
+cleaning, readiness and model formulas are unchanged.
 
 Only read APIs are called by this consumer: `NowcastUseCase.clean`,
 `NowcastUseCase.readiness`, `PressureRepository.samplesSince`, and
@@ -54,7 +58,7 @@ Obsolete location jobs and pre-wipe reads cannot republish into the current hold
 The upstream snapshot-store generation policy remains authoritative; this change
 does not invent a second store generation or alter the existing invalidation cutoff.
 
-## Regression handoff (not executed)
+## Original regression handoff (historical implementation-agent scope)
 
 `HomeLocalHydrationTest` adds scenarios for blocked GPS/network and no location,
 local failure followed by sampling recovery, timer-only history/readiness updates,
@@ -68,3 +72,26 @@ and hardware checks. These unit regressions exercise extracted production helper
 they do not establish device behavior or execute the complete composable.
 No dependencies, engine files, versions, model, shared weather service, permission,
 notification, feedback, or persistence-policy files are changed.
+
+## Root correction2 validation
+
+The correction1 technical review identified the real swallowed-error boundary:
+an exception thrown inside the old `clean`/`readiness` APIs became a successful
+null/zero before reaching the hydration helper. The strict Home acquisition mode
+now preserves that exception identity. Successful empty acquisition remains a
+replacement, including in the ordinary weather-load path.
+
+`WeatherLocalReadFailureTest` exercises the actual `NowcastUseCase` and
+`PressureRepository` with a read-only synthetic DAO and the app graph's existing
+cleaner/stores. It reproduces the legacy fallback, checks strict clean/readiness/
+evaluate failure identity, successful empty results, unchanged cleaning numerics
+and recovery over 14 hours of synthetic samples, and cancellation identity.
+All three methods passed on the sensorless SM-X710 in 0.349s. The synthetic
+capability flag is API-boundary coverage, not a physical sensor test. The test
+does not write pressure, calibration or history into the real archive.
+
+`HomeLocalHydrationTest` also passes an actual CleaningPipeline result through
+failure-preserving merge and confirmed-empty replacement. Existing wipe,
+cancellation, generation and independent-read scenarios remain. Full execution
+accounting and APK identities are in `weather-premium-verification.md` and the
+frozen correction2 inputs; no process-death or multi-day continuity claim follows.
