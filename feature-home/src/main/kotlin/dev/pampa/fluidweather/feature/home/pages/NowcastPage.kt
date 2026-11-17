@@ -44,6 +44,7 @@ import dev.pampa.fluidweather.strings.windowLabelRes
  */
 @Composable
 fun NowcastPage(state: HomeUiState) {
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
   val verdict = state.verdict
   val units = rememberUnitFormatter()
 
@@ -157,8 +158,8 @@ fun NowcastPage(state: HomeUiState) {
       PageSection(stringResource(R.string.nowcast_clean_signal))
       CurveWithLabels(
         values = units.pressureSeries(cleaning.filtered.map { it.levelHpa }),
-        labels = timeLabels(cleaning.filtered.map { it.timestampMillis }),
-        timestamps = cleaning.filtered.map { it.timestampMillis },
+        labels = timeLabels(cleaning.filtered.map { it.timestampMillis }, zone),
+        timestamps = cleaning.filtered.map { it.timestampMillis }, zone = zone,
         color = PageBlue,
         unit = " " + units.pressureSymbol(),
         decimals = units.pressureChartDecimals() + 1,
@@ -188,8 +189,8 @@ fun NowcastPage(state: HomeUiState) {
     if (history.size >= 2) {
       CurveWithLabels(
         values = history.map { it.probability13 * 100 },
-        labels = timeLabels(history.map { it.timestampMillis }),
-        timestamps = history.map { it.timestampMillis }, maxGapMillis = 3 * 3_600_000L,
+        labels = timeLabels(history.map { it.timestampMillis }, zone),
+        timestamps = history.map { it.timestampMillis }, maxGapMillis = 3 * 3_600_000L, zone = zone,
         color = PageAmber,
         unit = "%",
       )
@@ -216,8 +217,8 @@ fun NowcastPage(state: HomeUiState) {
           .height(60.dp),
       )
       Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
-        Text(fmtTime(observed.first().first), style = MaterialTheme.typography.labelSmall, color = Faint)
-        Text(fmtTime(observed.last().first), style = MaterialTheme.typography.labelSmall, color = Faint)
+        Text(fmtTime(observed.first().first, zone), style = MaterialTheme.typography.labelSmall, color = Faint)
+        Text(fmtTime(observed.last().first, zone), style = MaterialTheme.typography.labelSmall, color = Faint)
       }
       StatRow(stringResource(R.string.nowcast_rain_observed), units.precipitation(observed.sumOf { it.second }), pluralStringResource(R.plurals.nowcast_last_hours, observed.size, observed.size))
       PageNote(

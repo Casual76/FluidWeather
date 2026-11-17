@@ -8,6 +8,7 @@ import dev.antigravity.fluidengine.ai.tools.Args.list
 import dev.antigravity.fluidengine.ai.tools.Args.str
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.nearestHour
+import dev.pampa.fluidweather.core.model.precipitationAt
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.math.abs
@@ -66,11 +67,12 @@ class ComparePlacesTool(private val resolver: WeatherPlaceResolver) : WeatherToo
       val place = resolver.resolve(name, ctx.selected)
       val snapshot = place?.let { resolver.snapshot(it) }
       val hour = snapshot?.fused?.nearestHour(at)?.first?.takeIf { abs(it.timestampMillis - at) <= 90 * 60_000L }
-      Triple(name, place, hour)
+      Triple(name, place, hour) to snapshot?.fused?.hours?.precipitationAt(at)
     }
     return ToolText.build {
       line("momento", if (offset == 0) "adesso" else "fra $offset ore (${ctx.dayTimeLabel(at)})")
-      rows.forEach { (name, place, hour) ->
+      rows.forEach { (row, rainHour) ->
+        val (name, place, hour) = row
         when {
           place == null -> line(ToolFailure.SEARCH_EMPTY.text(ctx))
           hour == null -> line(place.label, "nessun dato per quel momento")
@@ -79,16 +81,16 @@ class ComparePlacesTool(private val resolver: WeatherPlaceResolver) : WeatherToo
             listOfNotNull(
               ctx.kindLabel(hour.kind),
               hour.value(FusionVariables.TEMPERATURE)?.let { ctx.units.temperature(it) },
-              hour.value(FusionVariables.PRECIP_PROBABILITY)?.let { "pioggia ${it.roundToInt()}%" },
+              rainHour?.value(FusionVariables.PRECIP_PROBABILITY)?.let { "pioggia ${it.roundToInt()}% nell’intervallo previsto" },
               hour.value(FusionVariables.WIND_SPEED)?.let { "vento ${ctx.units.wind(it)}" },
               hour.value(FusionVariables.CLOUD_COVER)?.let { "nuvole ${it.roundToInt()}%" },
             ).joinToString(" · "),
           )
         }
       }
-      val warmest = rows.mapNotNull { (_, place, hour) -> place?.let { p -> hour?.value(FusionVariables.TEMPERATURE)?.let { p to it } } }.maxByOrNull { it.second }
+      val warmest = rows.mapNotNull { (row, _) -> row.second?.let { p -> row.third?.value(FusionVariables.TEMPERATURE)?.let { p to it } } }.maxByOrNull { it.second }
       warmest?.let { line("piu' caldo", "${it.first.label} (${ctx.units.temperature(it.second)})") }
-      val driest = rows.mapNotNull { (_, place, hour) -> place?.let { p -> hour?.value(FusionVariables.PRECIP_PROBABILITY)?.let { p to it } } }.minByOrNull { it.second }
+      val driest = rows.mapNotNull { (row, rainHour) -> row.second?.let { p -> rainHour?.value(FusionVariables.PRECIP_PROBABILITY)?.let { p to it } } }.minByOrNull { it.second }
       driest?.let { line("meno probabilita' di pioggia", "${it.first.label} (${it.second.roundToInt()}%)") }
     }
   }

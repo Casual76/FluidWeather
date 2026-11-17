@@ -79,6 +79,8 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
     value = runCatching { deps.observations.since(0L).size }.getOrDefault(0)
   }
   var confirmWipe by remember { mutableStateOf(false) }
+  var wiping by remember { mutableStateOf(false) }
+  var wipeMessage by remember { mutableStateOf<String?>(null) }
 
   FluidScreen(title = stringResource(R.string.data_title), onBack = onBack) {
     item { FluidSectionHeader(title = stringResource(R.string.data_on_phone)) }
@@ -153,9 +155,14 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
       FluidListGroup {
         FluidListRow(
           title = stringResource(R.string.data_delete_all),
-          subtitle = stringResource(R.string.data_delete_all_desc),
+          subtitle = wipeMessage ?: stringResource(R.string.data_delete_all_desc),
           badge = {
-            FluidButton(text = stringResource(R.string.data_delete), style = FluidButtonStyle.Tinted, onClick = { confirmWipe = true })
+            FluidButton(
+              text = stringResource(if (wiping) R.string.data_deleting else R.string.data_delete),
+              style = FluidButtonStyle.Tinted,
+              enabled = !wiping,
+              onClick = { confirmWipe = true },
+            )
           },
         )
       }
@@ -174,9 +181,20 @@ fun DataPrivacyScreen(deps: DataPrivacyDependencies, onBack: () -> Unit) {
           emphasis = FluidAlertAction.Emphasis.Destructive,
           onClick = {
             confirmWipe = false
+            wiping = true
+            wipeMessage = null
             scope.launch {
-              runCatching { deps.wipeAll() }
-              epoch++
+              try {
+                withContext(Dispatchers.IO) { deps.wipeAll() }
+                wipeMessage = context.getString(R.string.data_deleted)
+              } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+              } catch (_: Exception) {
+                wipeMessage = context.getString(R.string.data_delete_failed)
+              } finally {
+                epoch++
+                wiping = false
+              }
             }
           },
         ),

@@ -25,10 +25,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.precipitationHours
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.ui.rememberUnitFormatter
 import dev.pampa.fluidweather.core.ui.BlackSheetLazy
 import dev.pampa.fluidweather.feature.home.HomeUiState
+import dev.pampa.fluidweather.feature.home.homeWeatherZone
 import dev.pampa.fluidweather.feature.home.DetailClockNote
 import dev.pampa.fluidweather.feature.home.WeatherKindIcon
 import dev.pampa.fluidweather.feature.home.isNightAt
@@ -77,21 +79,25 @@ internal class HourlyModel(val days: List<HourlyDay>, val providers: Int) {
     ): HourlyModel? {
       val hours = state.fusedHours.filter { it.timestampMillis >= nowMillis - 3_600_000L }
       if (hours.isEmpty()) return null
-      val today = localDate(nowMillis)
+      val zone = homeWeatherZone(state).zoneId
+      val rainByStart = state.fusedHours.precipitationHours(Long.MIN_VALUE, Long.MAX_VALUE)
+        .associateBy { it.precipitationInterval!!.startMillis }
+      val today = localDate(nowMillis, zone)
       val days = hours
-        .groupBy { localDate(it.timestampMillis) }
+        .groupBy { localDate(it.timestampMillis, zone) }
         .toSortedMap()
         .map { (date, list) ->
           HourlyDay(
             label = if (date == today) todayLabel else fmtDate(date),
             rows = list.map { hour ->
               fun value(variable: String): Double? = hour.values[variable]?.value
-              val pop = value(FusionVariables.PRECIP_PROBABILITY)
-              val mm = value(FusionVariables.PRECIPITATION)
+              val rain = rainByStart[hour.timestampMillis]
+              val pop = rain?.values?.get(FusionVariables.PRECIP_PROBABILITY)?.value
+              val mm = rain?.values?.get(FusionVariables.PRECIPITATION)?.value
               val direction = hour.windDirectionDeg
               HourlyRow(
                 timestampMillis = hour.timestampMillis,
-                hour = fmtHour(hour.timestampMillis),
+                hour = fmtHour(hour.timestampMillis, zone),
                 kind = hour.kind,
                 night = isNightAt(hour.timestampMillis, state.latitude, state.longitude),
                 temperature = value(FusionVariables.TEMPERATURE)?.let { units.degrees(it) } ?: "—",
@@ -137,7 +143,10 @@ internal fun LazyListScope.hourlyPage(model: HourlyModel?) {
     items(day.rows, key = { it.timestampMillis }) { HourRow(it) }
   }
   item(key = "hourly-note") {
-    PageDisclosure { PageNote(stringResource(R.string.hourly_note, model.providers)) }
+    PageDisclosure {
+      PageNote(stringResource(R.string.quality_rain_interval_rows))
+      PageNote(stringResource(R.string.hourly_note, model.providers))
+    }
   }
 }
 
@@ -161,7 +170,8 @@ internal fun rememberHourlyModel(state: HomeUiState): HourlyModel? {
   // L'ora al passo dell'ora: `System.currentTimeMillis()` in composizione rendeva la chiave
   // sempre nuova, e con lei si rifaceva tutto.
   val hourStamp = remember(state.fusedHours) { System.currentTimeMillis() / 3_600_000L }
-  return remember(state.fusedHours, state.providersResponding, units, hourStamp, todayLabel) {
+  return remember(state.fusedHours, state.providersResponding, state.zoneId,
+    state.weatherBrief?.precipitation?.place?.zoneId, units, hourStamp, todayLabel) {
     HourlyModel.of(state, hourStamp * 3_600_000L, units, resources, todayLabel)
   }
 }

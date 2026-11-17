@@ -18,6 +18,7 @@ import dev.pampa.fluidweather.core.model.nearestHour
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningResult
 import dev.pampa.fluidweather.nowcast.features.ContextTier
+import dev.pampa.fluidweather.nowcast.features.CurrentSignalPolicy
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractor
 import dev.pampa.fluidweather.nowcast.climatology.LocalPriors
 import dev.pampa.fluidweather.nowcast.features.NowcastContext
@@ -164,7 +165,7 @@ class NowcastUseCase(
     val deviceCalibration = calibration?.toDeviceCalibration() ?: DeviceCalibration()
     val cleaning = localRead(failOnLocalReadError) {
       cleaningPipeline.process(
-        samples,
+        samples.filter { it.timestampMillis <= nowMillis },
         calibration = deviceCalibration,
         temperatureCelsius = temperature,
         // La quota di casa, la stessa a ogni giro. Passarla e' cio' che impedisce alla curva di
@@ -175,7 +176,7 @@ class NowcastUseCase(
       )
     }
 
-    val normal = runCatching { normalHpa(baseline, deviceCalibration, cleaning, temperature, nowMillis) }.getOrNull()
+    val normal = nowcastAttempt { normalHpa(baseline, deviceCalibration, cleaning, temperature, nowMillis) }.getOrNull()
     val point = pointOf(pointLatitude, pointLongitude, snapshot, baseline)
     val priors = priorsAt(point)
     val hasClimatology = priors.isLocal || climatologyKnownAt(point)
@@ -189,29 +190,32 @@ class NowcastUseCase(
     val context = usable?.takeIf { !engine.speaksV3 || it.rainSlotsMm?.firstOrNull() != null }
     val tier = if (detected.hasContext && context == null) noContextTier(priors) else detected
     val referenceKnown = (baseline?.referenceAltitudeMeters ?: calibration?.altitudeMeters) != null
-    val features = cleaning?.let { featuresOf(engine, it, context, normal, nowMillis, priors, referenceKnown) }
+    val features = cleaning?.takeIf { sensorAvailable() }
+      ?.let { featuresOf(engine, it, context, normal, nowMillis, priors, referenceKnown) }
 
-    val learning = learningState(nowMillis)
+    val learning = if (features != null) learningState(nowMillis) else LearningState.EMPTY
     // Due passate: la prima senza osservazione, per sapere se vale la pena accendere il radar;
     // la seconda con quello che si e' visto. Il motore e' aritmetica pura, e chiamarlo due volte
     // costa infinitamente meno che scaricare tile di radar a ogni giro.
     val blind = features?.let { engine.evaluate(it, learning, tier = tier) }
-    val observation = runCatching { observe(snapshot, blind, nowMillis) }.getOrNull()
+    val observation = if (features == null) null else nowcastAttempt { observe(snapshot, blind, nowMillis) }.getOrNull()
     val explanation = if (observation == null) blind else features?.let { engine.evaluate(it, learning, observation, tier) }
     val soloTier = noContextTier(priors)
-    val solo = if (withSoloShadow) cleaning?.let { soloOf(engine, it, normal, learning, nowMillis, soloTier, priors, referenceKnown) } else null
+    val solo = if (withSoloShadow && features != null) cleaning?.let { soloOf(engine, it, normal, learning, nowMillis, soloTier, priors, referenceKnown) } else null
 
-    if (record) explanation?.verdict?.let { runCatching { nowcastHistory.record(it.toRecord(nowMillis)) } }
-    runCatching { rememberAltitude(cleaning) }
+    if (record) explanation?.verdict?.let { nowcastAttempt { nowcastHistory.record(it.toRecord(nowMillis)) } }
+    nowcastAttempt { rememberAltitude(cleaning) }
     // Solo il posto del telefono: la memoria lenta del barometro (temperatura e coordinate di casa)
     // non deve imparare da una localita' salvata o da un posto chiesto all'assistente, dove il
     // sensore non c'e'.
     if (snapshot?.placeKey == WeatherSnapshot.GPS_KEY) {
-      runCatching { baselineStore.observePlace(temperature, snapshot.latitude, snapshot.longitude) }
+      nowcastAttempt { baselineStore.observePlace(temperature, snapshot.latitude, snapshot.longitude) }
     }
 
     val historyHours = cleaning?.historyHours ?: 0.0
-    val blocked = samplingBlocked(samples, nowMillis, failOnLocalReadError)
+    val blocked = samplingBlocked(samples, nowMillis, failOnLocalReadError) ||
+      (historyHours >= FeatureExtractor.MIN_HISTORY_HOURS &&
+        cleaning != null && !CurrentSignalPolicy.isCurrent(cleaning.filtered, nowMillis))
     return NowcastSnapshot(
       nowMillis = nowMillis,
       samples = samples,
@@ -246,7 +250,7 @@ class NowcastUseCase(
     pointLatitude: Double? = null,
     pointLongitude: Double? = null,
   ): ContextTier {
-    val baseline = runCatching { baselineStore.current() }.getOrNull()
+    val baseline = nowcastAttempt { baselineStore.current() }.getOrNull()
     val point = pointOf(pointLatitude, pointLongitude, snapshot, baseline)
     return ContextTierDetection.detect(
       snapshot?.context, point?.first, point?.second, nowMillis, climatologyKnownAt(point),
@@ -267,7 +271,7 @@ class NowcastUseCase(
   /** La climatologia si chiede per il punto; senza punto non si sa, e "non si sa" e' "non c'e'". */
   /** Le tabelle del punto per il v3: quelle locali se la cella e' su disco, altrimenti quelle di tutti. */
   private suspend fun priorsAt(point: Pair<Double, Double>?): LocalPriors {
-    val climate = point?.let { runCatching { localClimate(it.first, it.second) }.getOrNull() }
+    val climate = point?.let { nowcastAttempt { localClimate(it.first, it.second) }.getOrNull() }
     return V3Priors.of(climate)
   }
 
@@ -276,7 +280,7 @@ class NowcastUseCase(
     if (priors.isLocal) ContextTier.NONE else ContextTier.NONE_NOCLIMA
 
   private suspend fun climatologyKnownAt(point: Pair<Double, Double>?): Boolean =
-    point != null && runCatching { climatologyAvailable(point.first, point.second) }.getOrDefault(false)
+    point != null && nowcastAttempt { climatologyAvailable(point.first, point.second) }.getOrDefault(false)
 
   /**
    * Il segnale pulito su una finestra qualsiasi, con la taratura e la quota di casa.
@@ -332,12 +336,17 @@ class NowcastUseCase(
       return NowcastReadiness.of(calibration, calibrationProgress, historyHours = 0.0, sensorAvailable = false)
     }
     val samples = localRead(failOnLocalReadError) { pressureRepository.samplesSince(nowMillis - HISTORY_WINDOW_MILLIS) }
+    val cleaning = samples?.let {
+      cleanSamples(it.filter { sample -> sample.timestampMillis <= nowMillis }, failOnLocalReadError = failOnLocalReadError)
+    }
     return NowcastReadiness.of(
       calibration = calibration,
       calibrationProgress = calibrationProgress,
-      historyHours = samples?.let { cleanSamples(it, failOnLocalReadError = failOnLocalReadError) }?.historyHours ?: 0.0,
+      historyHours = cleaning?.historyHours ?: 0.0,
       requiredHours = FeatureExtractor.MIN_HISTORY_HOURS,
-      samplingBlocked = samples != null && samplingBlocked(samples, nowMillis, failOnLocalReadError),
+      samplingBlocked = samples != null && (samplingBlocked(samples, nowMillis, failOnLocalReadError) ||
+        (cleaning != null && cleaning.historyHours >= FeatureExtractor.MIN_HISTORY_HOURS &&
+          !CurrentSignalPolicy.isCurrent(cleaning.filtered, nowMillis))),
     )
   }
 
@@ -354,7 +363,7 @@ class NowcastUseCase(
 
   /** Retain legacy optional reads by default; interactive readers preserve failure identity. */
   private suspend fun <T> localRead(failOnError: Boolean, read: suspend () -> T): T? =
-    if (failOnError) read() else runCatching { read() }.getOrNull()
+    if (failOnError) read() else nowcastAttempt { read() }.getOrNull()
 
   /** La tendenza pulita delle ultime [hours] ore: il cambio di marcia della sorveglianza. */
   suspend fun cleanTrend(hours: Int, nowMillis: Long): Double? =
@@ -368,7 +377,7 @@ class NowcastUseCase(
   ): RainObservation? {
     val minutely = RainObservations.fromMinutely(snapshot?.context, nowMillis)
     if (snapshot == null || !worthLookingAtRadar(minutely, blind)) return minutely
-    val radar = runCatching { radarObservation(snapshot.latitude, snapshot.longitude) }.getOrNull()
+    val radar = nowcastAttempt { radarObservation(snapshot.latitude, snapshot.longitude) }.getOrNull()
     return RainObservations.merge(minutely, radar)
   }
 
@@ -400,7 +409,7 @@ class NowcastUseCase(
     temperatureCelsius: Double?,
     nowMillis: Long,
   ): Double? {
-    val fresh = baseline?.normalHpa?.takeIf { nowMillis - baseline.normalUpdatedAtMillis < NORMAL_REFRESH_MILLIS }
+    val fresh = baseline?.normalHpa?.takeIf { nowMillis - baseline.normalUpdatedAtMillis in 0 until NORMAL_REFRESH_MILLIS }
     if (fresh != null) return fresh
 
     val oldest = pressureRepository.oldestSampleMillis() ?: return baseline?.normalHpa
@@ -418,7 +427,7 @@ class NowcastUseCase(
       altitude,
       temperatureCelsius ?: SeaLevel.STANDARD_TEMPERATURE_CELSIUS,
     )
-    runCatching { baselineStore.saveNormal(normal, nowMillis) }
+    nowcastAttempt { baselineStore.saveNormal(normal, nowMillis) }
     return normal
   }
 
@@ -447,7 +456,7 @@ class NowcastUseCase(
     return learningMutex.withLock {
       // Ricontrollo dentro il lucchetto: chi ha aspettato in coda trova il lavoro gia' fatto.
       fresh(nowMillis)?.let { return@withLock it }
-      val state = runCatching {
+      val state = nowcastAttempt {
         val maps = learningStore.snapshot()
         val records = if (maps.version == PlattRefitPolicy.VERSION) maps.records else emptyList()
         val withAnalogs = engine.analogPolicy.enabled
@@ -466,7 +475,7 @@ class NowcastUseCase(
   }
 
   private fun fresh(nowMillis: Long): LearningState? =
-    learningCache?.takeIf { nowMillis - it.first < learningCacheMillis }?.second
+    learningCache?.takeIf { nowMillis - it.first in 0 until learningCacheMillis }?.second
 
   fun invalidateLearning() {
     learningCache = null
@@ -538,4 +547,13 @@ class NowcastUseCase(
       FeatureExtractor.extract(cleaning, context, normalHpa = normalHpa, nowMillis = nowMillis)
     }
   }
+}
+
+/** Optional IO may fail; cancellation still belongs to its caller (background stop or wipe). */
+private suspend fun <T> nowcastAttempt(read: suspend () -> T): Result<T> = try {
+  Result.success(read())
+} catch (cancelled: kotlinx.coroutines.CancellationException) {
+  throw cancelled
+} catch (failure: Exception) {
+  Result.failure(failure)
 }

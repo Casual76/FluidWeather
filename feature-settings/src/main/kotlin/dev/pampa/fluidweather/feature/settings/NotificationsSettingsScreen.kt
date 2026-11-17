@@ -9,6 +9,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,6 +44,9 @@ import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.descriptionRes
 import dev.pampa.fluidweather.strings.labelRes
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /** Tutto quello che la pagina delle notifiche tocca; lo costruisce :app dal suo grafo. */
 class NotificationsDependencies(
@@ -68,6 +72,14 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
   val ledger by deps.ledgerStore.ledger.collectAsState(initial = NotificationLedger())
 
   var permissionEpoch by remember { mutableIntStateOf(0) }
+  val lifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(lifecycleOwner) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) permissionEpoch++
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
   val permissionLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.RequestPermission(),
   ) { permissionEpoch++ }
@@ -76,6 +88,11 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
       context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
   }
   var cycleNote by remember { mutableStateOf<String?>(null) }
+  var testNote by remember { mutableStateOf<String?>(null) }
+  val appAllowed = remember(permissionEpoch) { deps.notifier.canPost() }
+  val channelAllowed = remember(permissionEpoch) {
+    NotificationChannelKind.entries.associateWith { deps.notifier.canPost(it) }
+  }
   var running by remember { mutableStateOf(false) }
 
   fun setEnabled(kind: NotificationChannelKind, enabled: Boolean) {
@@ -105,6 +122,21 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
       }
     }
 
+    if (!permissionMissing && !appAllowed) {
+      item {
+        FluidListGroup {
+          FluidListRow(
+            title = stringResource(R.string.notif_android_blocked),
+            subtitle = stringResource(R.string.notif_android_blocked_desc),
+            onClick = {
+              context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+            },
+          )
+        }
+      }
+    }
+
     item { FluidSectionHeader(title = stringResource(R.string.notif_channels)) }
     item {
       FluidListGroup {
@@ -112,7 +144,9 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
           if (index > 0) FluidListDivider()
           FluidToggleRow(
             title = stringResource(kind.labelRes()),
-            subtitle = stringResource(kind.descriptionRes()),
+            subtitle = if (appAllowed && settings.enabled(kind) && channelAllowed[kind] != true) {
+              stringResource(R.string.notif_android_channel_blocked)
+            } else stringResource(kind.descriptionRes()),
             checked = settings.enabled(kind),
             onCheckedChange = { setEnabled(kind, it) },
           )
@@ -147,7 +181,7 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
       FluidListGroup {
         FluidListRow(
           title = stringResource(R.string.notif_test),
-          subtitle = stringResource(R.string.notif_test_desc),
+          subtitle = testNote ?: stringResource(R.string.notif_test_desc),
           badge = {
             // Le parole si leggono qui, nel composable: il click non e' un contesto composable.
             val testTitle = stringResource(R.string.notif_test_notification_title)
@@ -157,7 +191,7 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
               text = stringResource(R.string.notif_test_button),
               style = FluidButtonStyle.Tinted,
               onClick = {
-                deps.notifier.post(
+                val accepted = deps.notifier.post(
                   AppNotification(
                     channel = NotificationChannelKind.NOWCAST_ALERT,
                     id = AlertPolicy.NOWCAST_ID + 1,
@@ -166,6 +200,8 @@ fun NotificationsSettingsScreen(deps: NotificationsDependencies, onBack: () -> U
                     bigText = testBigText,
                   ),
                 )
+                testNote = context.getString(if (accepted) R.string.notif_test_sent else R.string.notif_test_blocked)
+                permissionEpoch++
               },
             )
           },

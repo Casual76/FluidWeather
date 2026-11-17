@@ -6,6 +6,7 @@ import dev.pampa.fluidweather.core.model.DataFreshness
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
+import dev.pampa.fluidweather.core.model.precipitationHours
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
 import java.time.Instant
@@ -42,9 +43,11 @@ object DailySummary {
     val daytime = todayHours.filter { Instant.ofEpochMilli(it.timestampMillis).atZone(zone).hour in 8..20 }
       .ifEmpty { todayHours }
     val kind = daytime.mapNotNull { it.kind }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
-    val rainiest = todayHours
-      .filter { it.timestampMillis >= nowMillis - 3_600_000L }
-      .maxByOrNull { it.values[FusionVariables.PRECIP_PROBABILITY]?.value ?: 0.0 }
+    val rainiest = hours.precipitationHours(today.atStartOfDay(zone).toInstant().toEpochMilli(),
+      today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
+      .filter { it.precipitationInterval!!.endMillis > nowMillis }
+      .filter { it.values[FusionVariables.PRECIP_PROBABILITY]?.value?.let { value -> value.isFinite() && value in 0.0..100.0 } == true }
+      .maxByOrNull { it.values[FusionVariables.PRECIP_PROBABILITY]!!.value }
     val rainProbability = rainiest?.values?.get(FusionVariables.PRECIP_PROBABILITY)?.value
 
     val parts = mutableListOf<String>()
@@ -53,7 +56,7 @@ object DailySummary {
       parts += texts.summaryTemperatures(temperatures.max(), temperatures.min())
     }
     if (rainProbability != null && rainProbability >= 30 && rainiest != null) {
-      parts += texts.summaryRain(rainProbability.toInt(), texts.hour(rainiest.timestampMillis, zone))
+      parts += texts.summaryRain(rainProbability.toInt(), texts.hour(rainiest.precipitationInterval!!.startMillis, zone))
     }
     if (parts.isEmpty()) return null
 

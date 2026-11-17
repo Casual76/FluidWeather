@@ -131,13 +131,13 @@
   <string name="bench_rain_note">Qui il barometro del telefono, i provider e due riferimenti (sempre 0% e la climatologia del posto) rispondono alla stessa domanda: piove nella finestra? Ogni finestra si giudica un giorno dopo, quando i dati dei giudici non cambiano più: le prime righe arrivano dopo un paio di giorni di uso.</string>
   <string name="bench_rain_rounds">Stessi %1$s giri per tutti, in %2$s giorni</string>
   <string name="bench_rain_title">La pioggia arriva? Il barometro alla pari</string>
-  <string name="bench_ranking">Classifica per la zona</string>
-  <string name="bench_ranking_empty">La classifica compare con le prime verifiche.</string>
+  <string name="bench_ranking">Contributi all\'ultima previsione</string>
+  <string name="bench_ranking_empty">I contributi compaiono dopo il salvataggio di una previsione.</string>
   <string name="bench_since">dal %1$s</string>
   <string name="bench_threshold">Soglia per pesare</string>
   <string name="bench_title">Benchmark</string>
   <string name="bench_use_only">Usa solo questo dove è supportato</string>
-  <string name="bench_weight_note">La quota è il peso appreso (1/(MAE+0,3)², MAE decaduto con dimezzamento a 14 giorni) normalizzato fra chi ha verifiche, mediato sulle variabili: è la stessa matematica che comanda la fusione.</string>
+  <string name="bench_weight_note">La quota è il contributo effettivo di ogni provider all\'ultima previsione, mediato sulle sue ore e variabili. Sotto, gli errori mostrano l\'accordo locale con analisi di modelli; finché mancano verifiche locali sufficienti valgono i priori regionali.</string>
   <string name="bg_access_battery">Batteria senza restrizioni</string>
   <string name="bg_access_battery_desc">Tocca e conferma: il sistema smette di rimandare le letture.</string>
   <string name="bg_access_battery_ok">Batteria senza restrizioni: fatto</string>
@@ -222,6 +222,9 @@
   <string name="daily_wind_suffix"> · vento %1$s</string>
   <string name="data_create_failed">Impossibile creare il file in Download.</string>
   <string name="data_delete">Cancella</string>
+  <string name="data_deleting">Eliminazione…</string>
+  <string name="data_deleted">Dati locali eliminati.</string>
+  <string name="data_delete_failed">Non è stato possibile eliminare tutti i dati locali. Riprova.</string>
   <string name="data_delete_all">Cancella tutti i dati</string>
   <string name="data_delete_all_desc">Letture, verifiche, storico, osservazioni, taratura, istantanee, ultima posizione. Le impostazioni restano.</string>
   <string name="data_delete_confirm">Cancellare tutto?</string>
@@ -822,7 +825,11 @@
   <string name="radar_legend_very_heavy">molto forte</string>
   <string name="radar_loading">radar…</string>
   <string name="radar_map_failed">La mappa non si carica</string>
-  <string name="radar_map_failed_desc">I tile della mappa (OpenFreeMap) non arrivano: controlla la connessione e riapri il radar.</string>
+  <string name="radar_map_failed_desc">I tile della mappa (OpenFreeMap) non arrivano. Controlla la connessione e riprova.</string>
+  <string name="radar_retry">Riprova</string>
+  <string name="radar_frames_failed">Radar non disponibile. Riprova.</string>
+  <string name="radar_frames_updating">Aggiornamento radar…</string>
+  <string name="radar_frames_stale">Ultimo fotogramma radar: %1$s</string>
   <string name="radar_now">adesso</string>
   <string name="radar_offset_h">%1$s%2$s h</string>
   <string name="radar_offset_h_min">%1$s%2$s h %3$s min</string>
@@ -1260,4 +1267,13 @@
   <string name="onb_ai_yes_desc">Basta una chiave gratuita</string>
   <string name="onb_step_ai">Assistente</string>
   <string name="onb_page_label">Pagina %1$d di %2$d</string>
+  <string name="notif_onset_place_text">Inizia verso le %1$s a %2$s.</string>
+  <string name="notif_end_place_text">Termina verso le %1$s a %2$s.</string>
+  <string name="notif_android_blocked">Notifiche bloccate da Android</string>
+  <string name="notif_android_blocked_desc">Apri le impostazioni di sistema per consentire le notifiche.</string>
+  <string name="notif_android_channel_blocked">Questo canale è bloccato nelle impostazioni di sistema.</string>
+  <string name="notif_test_sent">Notifica di prova inviata.</string>
+  <string name="notif_test_blocked">Prova non inviata. Controlla il permesso e questo canale nelle impostazioni di sistema.</string>
+  <string name="calib_reference_expired">La taratura precedente è troppo vecchia. Ripeti la taratura.</string>
+  <string name="quality_rain_interval_rows">Pioggia: l’ora che inizia all’orario indicato. — indica dato non disponibile.</string>
 </resources>

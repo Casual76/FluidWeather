@@ -40,8 +40,10 @@ class DailyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
         val temperatures = day.hours.mapNotNull { it.value(FusionVariables.TEMPERATURE) }
         if (temperatures.isNotEmpty()) parts += "min ${u.temperature(temperatures.min())} max ${u.temperature(temperatures.max())} (available samples)"
         day.precipitationProbabilityMaxPercent?.let { parts += "pioggia fino a ${it.roundToInt()}%" }
-        day.hours.mapNotNull { it.value(FusionVariables.PRECIPITATION) }.takeIf { it.isNotEmpty() }?.let {
-          parts += "somma dei soli campioni disponibili (${it.size}/${day.hours.size}): ${u.precipitation(it.sum())}"
+        day.precipitationMm?.let { parts += "pioggia prevista nel giorno: ${u.precipitation(it)}" }
+        val sampleSum = day.precipitationSampleSumMm
+        if (day.precipitationMm == null && sampleSum != null) {
+          parts += "somma dei soli intervalli disponibili (${day.precipitationSamples}/${day.precipitationExpectedSamples}): ${u.precipitation(sampleSum)}"
         }
         day.windMaxKmh?.let { parts += "vento max ${u.wind(it)}" }
         val sunrise = day.sunriseMillis
@@ -98,9 +100,11 @@ class DayDetailTool(private val resolver: WeatherPlaceResolver) : WeatherTool() 
         part.windMaxKmh?.let { bits += "vento ${u.wind(it)}" }
         line(label, bits.joinToString(" · "))
       }
-      val wettest = day.hours.maxByOrNull { it.value(FusionVariables.PRECIP_PROBABILITY) ?: 0.0 }
+      val wettest = day.rainHours.maxByOrNull { it.value(FusionVariables.PRECIP_PROBABILITY) ?: 0.0 }
       wettest?.value(FusionVariables.PRECIP_PROBABILITY)?.takeIf { it >= 30 }?.let {
-        line("ora piu' a rischio pioggia", "${ctx.timeLabel(wettest.timestampMillis)} (${it.roundToInt()}%)")
+        wettest.precipitationInterval?.let { interval ->
+          line("intervallo piu' a rischio pioggia", "${ctx.timeLabel(interval.startMillis)}–${ctx.timeLabel(interval.endMillis)} (${it.roundToInt()}%)")
+        }
       }
       val windiest = day.hours.maxByOrNull { it.value(FusionVariables.WIND_SPEED) ?: 0.0 }
       windiest?.value(FusionVariables.WIND_SPEED)?.let { line("ora piu' ventosa", "${ctx.timeLabel(windiest.timestampMillis)} (${u.wind(it)})") }

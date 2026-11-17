@@ -5,12 +5,12 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /**
  * Quello che i receiver, istanziati dal sistema, devono poter raggiungere: il ciclo e la
@@ -21,6 +21,10 @@ interface CycleRuntime {
 
   /** Rilegge l'impostazione e programma (o cancella) il prossimo riepilogo. */
   suspend fun rescheduleDailySummary()
+
+  /** True when completed or no longer relevant; false requests durable, bounded retry. */
+  suspend fun runDailySummary(dueAtMillis: Long): Boolean =
+    !backgroundCycle.run(CycleTrigger.DAILY_SUMMARY, dueAtMillis).dailySummaryPending
 }
 
 fun Context.cycleRuntime(): CycleRuntime = applicationContext as CycleRuntime
@@ -45,11 +49,7 @@ object DailySummaryAlarm {
 
   /** La prossima occorrenza di hh:mm nel fuso: oggi se deve ancora venire, altrimenti domani. */
   fun nextTriggerMillis(nowMillis: Long, hour: Int, minute: Int, zone: ZoneId): Long {
-    val now = Instant.ofEpochMilli(nowMillis).atZone(zone)
-    val time = LocalTime.of(hour.coerceIn(0, 23), minute.coerceIn(0, 59))
-    var candidate = now.toLocalDate().atTime(time).atZone(zone)
-    if (!candidate.isAfter(now)) candidate = candidate.plusDays(1)
-    return candidate.toInstant().toEpochMilli()
+    return DailySummarySchedule.nextOccurrence(nowMillis, hour, minute, zone)
   }
 
   private fun pendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
@@ -67,28 +67,46 @@ class DailySummaryReceiver : BroadcastReceiver() {
     val runtime = context.cycleRuntime()
     CoroutineScope(Dispatchers.Default).launch {
       try {
-        runCatching { runtime.backgroundCycle.run(CycleTrigger.DAILY_SUMMARY) }
-        runtime.rescheduleDailySummary()
+        // Only settings/ledger reads and durable WorkManager enqueue belong in this receiver.
+        // The worker owns location, providers, notification delivery and retries.
+        withTimeout(HANDOFF_TIMEOUT_MILLIS) { runtime.rescheduleDailySummary() }
+      } catch (failure: Exception) {
+        if (failure is CancellationException && failure !is kotlinx.coroutines.TimeoutCancellationException) throw failure
+        android.util.Log.e("DailySummary", "Could not hand off daily summary", failure)
       } finally {
         pending.finish()
       }
     }
   }
+
+  private companion object { const val HANDOFF_TIMEOUT_MILLIS = 8_000L }
 }
 
 /** Gli allarmi muoiono col riavvio: il riepilogo si riprogramma da solo. */
 class CycleBootReceiver : BroadcastReceiver() {
 
   override fun onReceive(context: Context, intent: Intent) {
-    if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+    if (intent.action !in RECONCILE_ACTIONS) return
     val pending = goAsync()
     val runtime = context.cycleRuntime()
     CoroutineScope(Dispatchers.Default).launch {
       try {
-        runtime.rescheduleDailySummary()
+        withTimeout(8_000L) { runtime.rescheduleDailySummary() }
+      } catch (failure: Exception) {
+        if (failure is CancellationException && failure !is kotlinx.coroutines.TimeoutCancellationException) throw failure
+        android.util.Log.e("DailySummary", "Could not restore daily summary schedule", failure)
       } finally {
         pending.finish()
       }
     }
+  }
+
+  private companion object {
+    val RECONCILE_ACTIONS = setOf(
+      Intent.ACTION_BOOT_COMPLETED,
+      Intent.ACTION_TIME_CHANGED,
+      Intent.ACTION_TIMEZONE_CHANGED,
+      Intent.ACTION_MY_PACKAGE_REPLACED,
+    )
   }
 }

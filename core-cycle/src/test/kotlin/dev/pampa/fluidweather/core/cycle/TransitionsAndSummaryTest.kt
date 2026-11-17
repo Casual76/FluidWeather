@@ -29,13 +29,16 @@ class TransitionsAndSummaryTest {
     temperature: Double? = null,
     kind: WeatherKind? = null,
   ) = FusedHour(
-    timestampMillis = base + offsetHours * 3_600_000L,
+    timestampMillis = base + (offsetHours + if (temperature == null) 1 else 0) * 3_600_000L,
     values = buildMap {
       probability?.let { put(FusionVariables.PRECIP_PROBABILITY, FusedValue(it, emptyList())) }
       amount?.let { put(FusionVariables.PRECIPITATION, FusedValue(it, emptyList())) }
       temperature?.let { put(FusionVariables.TEMPERATURE, FusedValue(it, emptyList())) }
     },
     kind = kind,
+    precipitationInterval = dev.pampa.fluidweather.core.model.WeatherInterval(
+      base + (offsetHours - if (temperature == null) 0 else 1) * 3_600_000L,
+      base + (offsetHours + if (temperature == null) 1 else 0) * 3_600_000L),
   )
 
   // ------------------------------------------------------------------- transizioni
@@ -82,7 +85,7 @@ class TransitionsAndSummaryTest {
       hour(
         noon - 12 * 3_600_000L,
         h,
-        probability = if (h == 16) 55.0 else 10.0,
+        probability = if (h == 17) 55.0 else 10.0,
         temperature = 14.0 + h * 0.5,
         kind = if (h in 8..20) WeatherKind.PARTLY_CLOUDY else WeatherKind.CLEAR,
       )

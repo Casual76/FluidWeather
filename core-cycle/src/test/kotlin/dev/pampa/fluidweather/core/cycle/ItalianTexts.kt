@@ -33,8 +33,10 @@ object ItalianTexts : NotificationTexts {
   override fun factorLabel(name: String) = name
   override fun onsetTitle(kind: WeatherKind?) = "${noun(kind)} in arrivo"
   override fun onsetText(time: String) = "Inizia verso le $time dove sei."
+  override fun onsetText(time: String, locationName: String) = "Inizia verso le $time a $locationName."
   override fun endTitle(kind: WeatherKind?) = "${noun(kind)} in esaurimento"
   override fun endText(time: String) = "Smette verso le $time."
+  override fun endText(time: String, locationName: String) = "Smette verso le $time a $locationName."
   override fun officialArea() = "Area: "
   override fun officialSource() = "Fonte: "
   override fun officialVerbatim() = "\nTesto riportato com'e' stato emesso, senza reinterpretazione."

@@ -131,13 +131,13 @@
   <string name="bench_rain_note">Here the phone barometer, the providers and two references (always 0% and the local climatology) answer the same question: does it rain in the window? Each window is judged a day later, once the judges\' data stop changing: the first rows arrive after a couple of days of use.</string>
   <string name="bench_rain_rounds">Same %1$s rounds for everyone, over %2$s days</string>
   <string name="bench_rain_title">Is rain coming? The barometer on equal terms</string>
-  <string name="bench_ranking">Ranking for the area</string>
-  <string name="bench_ranking_empty">The ranking appears with the first verifications.</string>
+  <string name="bench_ranking">Latest forecast contributions</string>
+  <string name="bench_ranking_empty">Contributions appear after a forecast is saved.</string>
   <string name="bench_since">since %1$s</string>
   <string name="bench_threshold">Threshold to weigh</string>
   <string name="bench_title">Benchmark</string>
   <string name="bench_use_only">Use only this where supported</string>
-  <string name="bench_weight_note">The share is the learned weight (1/(MAE+0.3)², MAE decayed with a 14-day half-life) normalised among those with verifications, averaged over the variables: it is the same maths that drives the fusion.</string>
+  <string name="bench_weight_note">The share is each provider\'s actual contribution to the latest forecast, averaged over its hours and variables. Below, errors show local agreement with model analyses; regional priors apply until enough local checks are available.</string>
   <string name="bg_access_battery">Unrestricted battery</string>
   <string name="bg_access_battery_desc">Tap and confirm: the system stops postponing the readings.</string>
   <string name="bg_access_battery_ok">Unrestricted battery: done</string>
@@ -222,6 +222,9 @@
   <string name="daily_wind_suffix"> · wind %1$s</string>
   <string name="data_create_failed">Could not create the file in Download.</string>
   <string name="data_delete">Delete</string>
+  <string name="data_deleting">Deleting…</string>
+  <string name="data_deleted">Local data deleted.</string>
+  <string name="data_delete_failed">Some local data could not be deleted. Try again.</string>
   <string name="data_delete_all">Delete all data</string>
   <string name="data_delete_all_desc">Readings, verifications, history, observations, calibration, snapshots, last position. Settings stay.</string>
   <string name="data_delete_confirm">Delete everything?</string>
@@ -822,7 +825,11 @@
   <string name="radar_legend_very_heavy">very heavy</string>
   <string name="radar_loading">radar…</string>
   <string name="radar_map_failed">The map is not loading</string>
-  <string name="radar_map_failed_desc">The map tiles (OpenFreeMap) are not arriving: check the connection and open the radar again.</string>
+  <string name="radar_map_failed_desc">The map tiles (OpenFreeMap) are not arriving. Check the connection and try again.</string>
+  <string name="radar_retry">Try again</string>
+  <string name="radar_frames_failed">Radar unavailable. Try again.</string>
+  <string name="radar_frames_updating">Updating radar…</string>
+  <string name="radar_frames_stale">Last radar frame: %1$s</string>
   <string name="radar_now">now</string>
   <string name="radar_offset_h">%1$s%2$s h</string>
   <string name="radar_offset_h_min">%1$s%2$s h %3$s min</string>
@@ -1260,4 +1267,13 @@
   <string name="onb_ai_yes_desc">One free key is enough</string>
   <string name="onb_step_ai">Assistant</string>
   <string name="onb_page_label">Page %1$d of %2$d</string>
+  <string name="notif_onset_place_text">Starts around %1$s in %2$s.</string>
+  <string name="notif_end_place_text">Stops around %1$s in %2$s.</string>
+  <string name="notif_android_blocked">Notifications blocked by Android</string>
+  <string name="notif_android_blocked_desc">Open system settings to allow notifications.</string>
+  <string name="notif_android_channel_blocked">This channel is blocked in system settings.</string>
+  <string name="notif_test_sent">Test notification sent.</string>
+  <string name="notif_test_blocked">Test not sent. Check notification permission and this channel in system settings.</string>
+  <string name="calib_reference_expired">The previous calibration is too old. Calibrate again.</string>
+  <string name="quality_rain_interval_rows">Rain: the hour starting at the time shown. — means unavailable.</string>
 </resources>

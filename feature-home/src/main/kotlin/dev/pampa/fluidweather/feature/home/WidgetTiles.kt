@@ -47,6 +47,7 @@ import dev.pampa.fluidweather.core.model.MoonPhase
 import dev.pampa.fluidweather.core.model.SolarEphemeris
 import dev.pampa.fluidweather.core.model.WeatherKind
 import dev.pampa.fluidweather.core.model.nearestHour
+import dev.pampa.fluidweather.core.model.precipitationHours
 import dev.pampa.fluidweather.core.ui.Charts
 import dev.antigravity.fluidengine.ui.fluid.FluidProgressBar
 import dev.pampa.fluidweather.core.ui.HomeWidget
@@ -189,6 +190,10 @@ private val HourTempTextHeight = 22.dp
  */
 @Composable
 private fun HourlyTile(state: HomeUiState) {
+  val rainByStart = remember(state.fusedHours) {
+    state.fusedHours.precipitationHours(Long.MIN_VALUE, Long.MAX_VALUE)
+      .associateBy { it.precipitationInterval!!.startMillis }
+  }
   val now = System.currentTimeMillis()
   val hours = state.fusedHours
     .filter {
@@ -199,7 +204,7 @@ private fun HourlyTile(state: HomeUiState) {
     EmptyTileBody(stringResource(R.string.common_waiting_providers))
     return
   }
-  val zone = ZoneId.systemDefault()
+  val zone = homeWeatherZone(state).zoneId
   val units = rememberUnitFormatter()
   val temps = hours.map { it.values.getValue(FusionVariables.TEMPERATURE).value }
   val min = temps.min()
@@ -281,7 +286,8 @@ private fun HourlyTile(state: HomeUiState) {
     // Riga 3: la probabilita' di pioggia, solo dove conta.
     Row {
       hours.forEach { hour ->
-        val pop = hour.values[FusionVariables.PRECIP_PROBABILITY]?.value
+        val pop = rainByStart[hour.timestampMillis]
+          ?.values?.get(FusionVariables.PRECIP_PROBABILITY)?.value
         Column(Modifier.width(hourColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
           Text(
             text = if (pop != null && pop >= 5) "${pop.toInt()}%" else " ",
@@ -329,7 +335,7 @@ private class DailyTileModel(
 
 @Composable
 private fun DailyTile(state: HomeUiState) {
-  val zone = remember { ZoneId.systemDefault() }
+  val zone = homeWeatherZone(state).zoneId
   // L'ora al passo dell'ora, non del fotogramma: `System.currentTimeMillis()` in composizione
   // rendeva la chiave sempre diversa, e con lei si rifacevano raggruppamento e ordinamento.
   val hourStamp = remember(state.fusedHours) { System.currentTimeMillis() / 3_600_000L }
@@ -464,7 +470,7 @@ private fun SunTile(state: HomeUiState) {
     )
     return
   }
-  val zone = ZoneId.systemDefault()
+  val zone = homeWeatherZone(state).zoneId
   val now = System.currentTimeMillis()
   val progress = ((now - times.sunriseMillis!!).toFloat() /
     (times.sunsetMillis!! - times.sunriseMillis!!).toFloat()).takeIf { it in 0f..1f }
@@ -537,7 +543,7 @@ private fun MoonTile(state: HomeUiState) {
   val illumination = Moon.illuminatedFraction(now)
   val waxing = Moon.ageDays(now) < Moon.SYNODIC_MONTH_DAYS / 2
   val nextFull = Moon.nextFullMoonMillis(now)
-  val zone = ZoneId.systemDefault()
+  val zone = homeWeatherZone(state).zoneId
 
   val moonDescription = stringResource(R.string.a11y_moon, moonPhaseLabel(phase))
   Row(verticalAlignment = Alignment.CenterVertically) {

@@ -48,6 +48,8 @@ data class ProviderFetchSummary(
   val providerId: String,
   val hours: Int,
   val error: String?,
+  /** Real provider download clock, including cache hits; absent in legacy snapshots. */
+  val downloadedAtMillis: Long? = null,
 ) {
   val ok: Boolean get() = error == null
 }
@@ -81,7 +83,32 @@ data class WeatherSnapshot(
 ) {
   val providersResponding: Int get() = fetches.count { it.ok }
 
-  fun ageMillis(nowMillis: Long): Long = nowMillis - fetchedAtMillis
+  /**
+   * Acquisition age of the sources that actually supplied the fused product. fetchedAtMillis
+   * remains the round identity and must not renew a cached provider response. Unknown legacy
+   * provenance stays unknown; it never acquires the round's clock as a substitute.
+   */
+  val sourceDataAtMillis: Long? get() {
+    val scalarSources = fused.hours.flatMap { it.values.values }.flatMap { it.contributions }.map { it.providerId }.toSet()
+    val categoricalSources = fused.hours.flatMap { listOfNotNull(it.kindProviderId, it.windDirectionProviderId) }.toSet()
+    val unknownCategorical = fused.hours.any { it.kind != null && it.kindProviderId == null ||
+      it.windDirectionDeg != null && it.windDirectionProviderId == null }
+    // Legacy categorical values do not identify their provider. All declared successes are
+    // the conservative upper bound; new products name their actual categorical contributors.
+    val explicitSources = scalarSources + categoricalSources
+    val sources = if (explicitSources.isEmpty() && fused.hours.isNotEmpty() || unknownCategorical)
+      explicitSources + fetches.filter { it.ok }.map { it.providerId } else explicitSources
+    if (sources.isEmpty()) return if (fused.hours.isEmpty()) context?.fetchedAtMillis?.takeIf { it >= 0L } else null
+    val times = sources.map { id ->
+      fetches.filter { it.providerId == id && it.ok }.mapNotNull { it.downloadedAtMillis }
+        .minOrNull() ?: context?.takeIf { it.providerId == id }?.fetchedAtMillis ?: return null
+    }
+    return times.takeIf { it.all { at -> at >= 0L } }?.minOrNull()
+  }
+
+  /** Unknown/future acquisition cannot pass freshness gates; presentation can use the nullable clock. */
+  fun ageMillis(nowMillis: Long): Long = sourceDataAtMillis?.takeIf { it <= nowMillis }
+    ?.let { nowMillis - it } ?: Long.MAX_VALUE
 
   /** Distanza in km dal punto dell'istantanea: un'istantanea di un altro posto non vale. */
   fun distanceKmTo(latitude: Double, longitude: Double): Double =
@@ -99,7 +126,7 @@ data class WeatherSnapshot(
         longitude = longitude,
         fetchedAtMillis = fetchedAtMillis,
         fetches = round.fetches.map {
-          ProviderFetchSummary(it.descriptor.id, it.bundle?.hourly?.size ?: 0, it.error)
+          ProviderFetchSummary(it.descriptor.id, it.bundle?.hourly?.size ?: 0, it.error, it.bundle?.fetchedAtMillis)
         },
         fused = round.fused,
         zoneId = round.fetches.firstNotNullOfOrNull { WeatherZones.validId(it.bundle?.zoneId) },
@@ -149,6 +176,7 @@ object WeatherSnapshotCodec {
               put("id", fetch.providerId)
               put("hours", fetch.hours)
               fetch.error?.let { put("error", it) }
+              fetch.downloadedAtMillis?.let { put("downloadedAtMillis", it) }
             },
           )
         }
@@ -178,6 +206,7 @@ object WeatherSnapshotCodec {
         providerId = fetch["id"].string() ?: return@mapNotNull null,
         hours = fetch["hours"].double()?.toInt() ?: 0,
         error = fetch["error"].string(),
+        downloadedAtMillis = (fetch["downloadedAtMillis"] as? JsonPrimitive)?.longOrNull,
       )
     }
     val weights = (root["weights"] as? JsonObject)?.mapNotNull { (id, value) ->
@@ -204,6 +233,12 @@ object WeatherSnapshotCodec {
     put("t", hour.timestampMillis)
     hour.kind?.let { put("kind", it.name) }
     hour.windDirectionDeg?.let { put("wd", it) }
+    hour.kindProviderId?.let { put("kindProviderId", it) }
+    hour.windDirectionProviderId?.let { put("windDirectionProviderId", it) }
+    hour.precipitationInterval?.let { interval ->
+      put("precipitationStartMillis", interval.startMillis)
+      put("precipitationEndMillis", interval.endMillis)
+    }
     put(
       "v",
       buildJsonObject {
@@ -251,6 +286,13 @@ object WeatherSnapshotCodec {
       values = values,
       kind = element["kind"].string()?.let { name -> WeatherKind.entries.firstOrNull { it.name == name } },
       windDirectionDeg = element["wd"].double(),
+      kindProviderId = element["kindProviderId"].string(),
+      windDirectionProviderId = element["windDirectionProviderId"].string(),
+      precipitationInterval = run {
+        val start = (element["precipitationStartMillis"] as? JsonPrimitive)?.longOrNull
+        val end = (element["precipitationEndMillis"] as? JsonPrimitive)?.longOrNull
+        if (start != null && end != null && end > start && end == timestamp) WeatherInterval(start, end) else null
+      },
     )
   }
 
@@ -594,6 +636,7 @@ class WeatherSnapshotRefresher(
       val lastRegistration = previous?.predictionsRegisteredAtMillis
       val register = registerPredictions ?: (lastRegistration == null || now - lastRegistration >= REGISTRATION_INTERVAL_MILLIS)
       val round = coordinator.refresh(latitude, longitude, registerPredictions = register)
+        .usableAt(clock(), latitude, longitude)
       currentCoroutineContext().ensureActive()
       generation?.checkCurrent()
       val fresh = WeatherSnapshot.from(placeKey, latitude, longitude, round, now).copy(

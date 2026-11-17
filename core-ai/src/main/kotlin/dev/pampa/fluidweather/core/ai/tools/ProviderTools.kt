@@ -77,7 +77,11 @@ class ProviderComparisonTool(private val resolver: PlaceResolver) : WeatherTool(
     val variable = VARIABLES[args.str("variabile")?.lowercase()] ?: return "errore: variabile non capita (${VARIABLES.keys.joinToString(", ")})"
     val hours = (args.int("ore") ?: 6).coerceIn(1, 24)
     val end = ctx.nowMillis + hours * 3_600_000L
-    val fused = snapshot.fused.hours.filter { it.timestampMillis >= ctx.nowMillis - 30 * 60_000L && it.timestampMillis <= end }.sortedBy { it.timestampMillis }
+    val rainVariable = variable == FusionVariables.PRECIPITATION || variable == FusionVariables.PRECIP_PROBABILITY
+    val fused = snapshot.fused.hours.filter {
+      if (rainVariable) it.precipitationInterval?.let { interval -> interval.endMillis > ctx.nowMillis && interval.startMillis < end } == true
+      else it.timestampMillis >= ctx.nowMillis - 30 * 60_000L && it.timestampMillis <= end
+    }.sortedBy { if (rainVariable) it.precipitationInterval!!.startMillis else it.timestampMillis }
     if (fused.isEmpty()) return ToolPhrases.NO_DATA
     val step = if (fused.size <= 8) 1 else if (fused.size <= 16) 2 else 3
     val u = ctx.units
@@ -103,7 +107,10 @@ class ProviderComparisonTool(private val resolver: PlaceResolver) : WeatherTool(
           spread <= agreementTolerance(variable) -> " · concordano"
           else -> " · divergono (${format(values.min())}-${format(values.max())})"
         }
-        line("${ctx.timeLabel(hour.timestampMillis)} fuso ${format(fusedValue.value)}$agreement")
+        val label = if (rainVariable) hour.precipitationInterval!!.let {
+          "${ctx.timeLabel(it.startMillis)}–${ctx.timeLabel(it.endMillis)}"
+        } else ctx.timeLabel(hour.timestampMillis)
+        line("$label fuso ${format(fusedValue.value)}$agreement")
         line("  " + contributions.joinToString(", ") { "${providerLabel(it.providerId)} ${format(it.value)}" })
       }
     }
@@ -136,13 +143,19 @@ class ProviderComparisonTool(private val resolver: PlaceResolver) : WeatherTool(
 class BenchmarkTool : WeatherTool() {
   override val name = "benchmark"
   override val group = ToolGroup.PROVIDERS
-  override val description = "La classifica dei servizi sulle verifiche locali (ultimi 14 giorni): quota di peso, numero di verifiche, dove sono i migliori, errore medio per variabile a 0-6 h. E la classifica della pioggia, dove il barometro del telefono gareggia con i provider: punteggio di Brier (0 e' perfetto, piu' basso e' meglio), stessi giri per tutti, giudici fuori classifica."
+  override val description = "I contributi effettivi dei servizi all'ultima previsione e gli errori storici locali contro analisi di modelli: numero di verifiche, migliori per variabile, errore medio a 0-6 h. E la classifica della pioggia, dove il barometro gareggia con i provider: Brier (piu' basso e' meglio), stessi giri per tutti, giudici fuori classifica."
   override val parameters = Schema.obj(emptyMap())
 
   override suspend fun answer(args: JsonObject, ctx: ToolContext): String {
-    val since = ctx.nowMillis - Benchmark.DAYS * 86_400_000L
-    val verifications = runCatching { ctx.sources.verificationStore.allVerifications(since) }.getOrDefault(emptyList())
-    val report = Benchmark.build(verifications, ctx.nowMillis)
+    val verifications = runCatching { ctx.sources.verificationStore.allVerifications(Long.MIN_VALUE) }.getOrDefault(emptyList())
+    val selected = ctx.selected
+    val snapshot = ctx.sources.snapshotStore.read(selected?.snapshotKey ?: dev.pampa.fluidweather.core.weather.WeatherSnapshot.GPS_KEY)
+    val latitude = selected?.latitude ?: snapshot?.latitude
+    val longitude = selected?.longitude ?: snapshot?.longitude
+    val samePlace = snapshot != null && latitude != null && longitude != null &&
+      dev.pampa.fluidweather.core.weather.haversineKm(latitude, longitude, snapshot.latitude, snapshot.longitude) <=
+        dev.pampa.fluidweather.core.model.ForecastLearning.LOCAL_RADIUS_KM
+    val report = Benchmark.build(verifications, ctx.nowMillis, latitude, longitude, snapshot?.fused?.takeIf { samePlace })
     val rain = runCatching {
       RainBoard.build(
         ctx.sources.rainEventStore.verifications(ModelVersions.TAG, ctx.nowMillis - RainBoard.WINDOW_MILLIS),
@@ -150,13 +163,14 @@ class BenchmarkTool : WeatherTool() {
         ctx.sources.barometerAvailable(),
       )
     }.getOrNull()?.takeIf { board -> board.windows.any { it.rows.isNotEmpty() } }
-    if (report.totalVerifications == 0 && rain == null) return "nessuna verifica ancora: la pagella si forma dopo qualche giorno di uso"
+    if (report.totalVerifications == 0 && report.ranking.isEmpty() && rain == null) return "nessuna previsione salvata o verifica locale disponibile"
     val u = ctx.units
     return ToolText.build {
-      line("verifiche negli ultimi ${Benchmark.DAYS} giorni", report.totalVerifications)
+      selected?.let { line("luogo", it.label) }
+      line("verifiche storiche locali", report.totalVerifications)
       report.firstVerificationMillis?.let { line("prima verifica", ctx.dayTimeLabel(it)) }
       line("soglia per i pesi appresi", "${Benchmark.MIN_VERIFICATIONS} verifiche per variabile")
-      line("classifica (quota di peso, verifiche, migliore su)")
+      line("contributi effettivi all'ultima previsione (quota, verifiche locali, migliore su)")
       report.ranking.forEachIndexed { index, rank ->
         line("${index + 1}. ${providerLabel(rank.providerId)}: ${(rank.share * 100).roundToInt()}%, ${rank.verifications} verifiche" + if (rank.bestAt.isNotEmpty()) ", migliore su ${rank.bestAt.joinToString(", ") { variableLabel(it) }}" else "")
       }
@@ -166,6 +180,7 @@ class BenchmarkTool : WeatherTool() {
           line("errore medio ${variableLabel(variable)} (0-6 h)", best.joinToString(", ") { "${providerLabel(it.providerId)} ${formatError(u, variable, it.decayedMae)}${if (!it.learned) " (poche verifiche)" else ""}" })
         }
       }
+      line("nota", "le quote includono prior regionali, copertura e override; gli errori locali confrontano analisi di modelli, non misure sul terreno")
       rain?.let { rainLines(it, ctx) }
     }
   }

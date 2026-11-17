@@ -115,9 +115,9 @@ class SamplingEngine(
           motionDeferred.cancel()
           return@coroutineScope 0
         }
-        val location = locationDeferred.await()
+        val location = locationDeferred.await().forMeasurementAt(reading.timestampMillis)
         context = context.copy(activity = judgedActivity(motionDeferred.await(), location))
-        repository.record(listOf(reading.toSample(source, burstId = null, location, context.activity)))
+        repository.record(listOf(reading.toPressureSample(source, burstId = null, location, context.activity)))
         stored = 1
       } else {
         val id = burstId ?: UUID.randomUUID().toString()
@@ -128,14 +128,15 @@ class SamplingEngine(
         // cammina, o guida, in quei minuti cambia quota e paese, e ogni campione finirebbe in
         // archivio alla quota di partenza. Non un dato impreciso — un dato *falso*, e nessuna
         // matematica a valle puo' rimediare a un contesto che non e' mai stato registrato.
-        val firstFix = locationDeferred.await()
+        val firstFix = locationDeferred.await().forMeasurementAt(System.currentTimeMillis())
         context = context.copy(location = firstFix, activity = judgedActivity(motionDeferred.await(), firstFix))
         val refresher = contextRefreshSeconds?.takeIf { it > 0 }?.let { seconds ->
           launch {
             while (true) {
               delay(seconds * 1_000L)
               val motion = async { measureMotion() }
-              val fix = optionalContext { withTimeoutOrNull(10_000L) { locationProvider.snapshot() } } ?: context.location
+              val fix = optionalContext { withTimeoutOrNull(10_000L) { locationProvider.snapshot() } }
+                .forMeasurementAt(System.currentTimeMillis())
               context = BurstContext(location = fix, activity = judgedActivity(motion.await(), fix))
             }
           }
@@ -144,7 +145,7 @@ class SamplingEngine(
           withTimeoutOrNull((durationSeconds + BURST_GRACE_SECONDS) * 1_000L) {
             barometer.burst(durationSeconds).collect { reading ->
               val now = context
-              repository.record(listOf(reading.toSample(source, id, now.location, now.activity)))
+              repository.record(listOf(reading.toPressureSample(source, id, now.location, now.activity)))
               stored++
               onProgress?.invoke(stored, durationSeconds)
             }
@@ -204,26 +205,9 @@ class SamplingEngine(
 
   private suspend fun freshActivity(): Pair<ActivityKind, Int?> {
     val latest = activityStore.current() ?: return ActivityKind.UNKNOWN to null
-    val stale = System.currentTimeMillis() - latest.observedAtMillis > ACTIVITY_FRESHNESS_MILLIS
+    val stale = System.currentTimeMillis() - latest.observedAtMillis !in 0..ACTIVITY_FRESHNESS_MILLIS
     return if (stale) ActivityKind.UNKNOWN to null else latest.kind to latest.confidence
   }
-
-  private fun TimedReading.toSample(
-    source: SampleSource,
-    burstId: String?,
-    location: LocationSnapshot?,
-    activity: Pair<ActivityKind, Int?>,
-  ) = PressureSample(
-    timestampMillis = timestampMillis,
-    pressureHpa = pressureHpa,
-    source = source,
-    burstId = burstId,
-    altitudeMeters = location?.altitudeMeters,
-    latitude = location?.latitude,
-    longitude = location?.longitude,
-    activity = activity.first,
-    activityConfidence = activity.second,
-  )
 
   private companion object {
     /** Un riconoscimento piu' vecchio di cosi' non descrive piu' questo campione. */
@@ -235,4 +219,33 @@ class SamplingEngine(
     /** Margine oltre la durata nominale prima di considerare il sensore ammutolito. */
     const val BURST_GRACE_SECONDS = 10
   }
+}
+
+/** A weather fallback fix is not proof of the current altitude or movement. */
+internal fun LocationSnapshot?.forMeasurementAt(atMillis: Long): LocationSnapshot? = this?.takeIf {
+  val fixedAt = it.fixedAtMillis
+  fixedAt != null && atMillis - fixedAt in 0..LocationSnapshot.FRESH_MAX_AGE_MILLIS &&
+    it.latitude.isFinite() && it.longitude.isFinite() &&
+    it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0
+}
+
+/** Retain the pressure even when the optional position expires during a long burst. */
+internal fun TimedReading.toPressureSample(
+  source: SampleSource,
+  burstId: String?,
+  location: LocationSnapshot?,
+  activity: Pair<ActivityKind, Int?>,
+): PressureSample {
+  val measuredLocation = location.forMeasurementAt(timestampMillis)
+  return PressureSample(
+    timestampMillis = timestampMillis,
+    pressureHpa = pressureHpa,
+    source = source,
+    burstId = burstId,
+    altitudeMeters = measuredLocation?.altitudeMeters?.takeIf { it.isFinite() },
+    latitude = measuredLocation?.latitude,
+    longitude = measuredLocation?.longitude,
+    activity = activity.first,
+    activityConfidence = activity.second,
+  )
 }

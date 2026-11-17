@@ -57,8 +57,9 @@ fun SunPage(state: HomeUiState) {
   }
   val now = System.currentTimeMillis()
   val locale = LocalConfiguration.current.locales[0]
-  val time: (Long) -> String = { TimeFormats.time(it, zone(), locale) }
-  val today = localDate(now)
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
+  val time: (Long) -> String = { TimeFormats.time(it, zone, locale) }
+  val today = localDate(now, zone)
   val dayStart = today.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
   val day = remember(today, latitude, longitude) {
     val (noon, elevation) = SunTimes.solarNoon(dayStart, latitude, longitude)

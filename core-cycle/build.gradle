@@ -14,6 +14,8 @@ android {
     minSdk engine.minSdk
   }
 
+  testOptions { unitTests.includeAndroidResources = true }
+
   compileOptions {
     sourceCompatibility engine.javaVersion
     targetCompatibility engine.javaVersion
@@ -34,7 +36,11 @@ dependencies {
 
   implementation "androidx.core:core-ktx:${engine.coreKtx}"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
+  implementation "androidx.work:work-runtime-ktx:${appVersions.work}"
 
   testImplementation "junit:junit:${engine.junit}"
   testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"
+  testImplementation "org.robolectric:robolectric:${engine.robolectric}"
+  testImplementation "androidx.work:work-testing:${appVersions.work}"
+  testImplementation project(':engine-net')
 }

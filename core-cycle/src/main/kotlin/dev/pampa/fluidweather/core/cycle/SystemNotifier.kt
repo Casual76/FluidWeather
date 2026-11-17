@@ -41,18 +41,25 @@ object NotificationChannels {
 /** Consegna nella tendina di sistema. Sa quando NON puo' (permesso, notifiche spente) e lo dice. */
 class SystemNotifier(private val context: Context) {
 
-  fun canPost(): Boolean {
+  fun canPost(channelKind: NotificationChannelKind? = null): Boolean {
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-        PackageManager.PERMISSION_GRANTED
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+        PackageManager.PERMISSION_GRANTED) return false
+    }
+    if (channelKind != null) {
+      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val channel = manager.getNotificationChannel(channelKind.id) ?: return false
+      if (channel.importance == NotificationManager.IMPORTANCE_NONE) return false
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && channel.group != null &&
+        manager.getNotificationChannelGroup(channel.group)?.isBlocked == true) return false
     }
     return true
   }
 
   /** Vero se consegnata; falso se Android non ce lo lascia fare. */
   fun post(notification: AppNotification): Boolean {
-    if (!canPost()) return false
+    if (!canPost(notification.channel)) return false
     val builder = NotificationCompat.Builder(context, notification.channel.id)
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(notification.title)

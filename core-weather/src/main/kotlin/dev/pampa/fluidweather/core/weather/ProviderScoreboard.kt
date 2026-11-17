@@ -1,6 +1,5 @@
 package dev.pampa.fluidweather.core.weather
 
-import dev.pampa.fluidweather.core.model.ForecastVerification
 import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.VerificationStore
 import kotlin.math.pow
@@ -26,13 +25,16 @@ data class ProviderWeight(
  *     sbanda viene raggiunto dai fatti in fretta.
  *  2. PRIOR — sotto soglia si usa l'editoriale per macro-regione ([RegionalPriors]).
  *
+ * Locale significa entro 3 km, con la versione corrente del consenso di analisi. Nessun fallback
+ * globale: righe legacy/senza luogo e giudizi di altre citta' non allenano questo punto.
+ *
  * Il "provider predefinito" del piano e' il gradino zero: anche senza priori nominati, il
  * floor dei priori garantisce che open-meteo (e chiunque altro) abbia un peso non nullo.
  */
 class ProviderScoreboard(
   private val store: VerificationStore,
-  private val minVerifications: Int = 20,
-  private val halfLifeDays: Double = 14.0,
+  private val minVerifications: Int = LocalProviderLearning.MIN_VERIFICATIONS,
+  private val halfLifeDays: Double = LocalProviderLearning.HALF_LIFE_DAYS,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -44,13 +46,15 @@ class ProviderScoreboard(
     providerIds: List<String>,
   ): Map<String, ProviderWeight> {
     val region = MacroRegion.of(latitude, longitude)
-    val verifications = store.verificationsFor(variable, bucket).groupBy { it.providerId }
+    val now = clock()
+    val verifications = LocalProviderLearning.eligible(store.verificationsFor(variable, bucket), latitude, longitude, now)
+      .groupBy { it.providerId }
 
     return providerIds.associateWith { providerId ->
       val own = verifications[providerId].orEmpty()
-      val decayedCount = own.sumOf { decay(it) }
-      if (own.size >= minVerifications && decayedCount > 1.0) {
-        val mae = own.sumOf { decay(it) * it.absoluteError } / decayedCount
+      val stats = LocalProviderLearning.statistics(own, now, minVerifications, halfLifeDays)
+      if (stats.learned) {
+        val mae = stats.mae
         ProviderWeight(
           providerId = providerId,
           weight = 1.0 / (mae + MAE_EPSILON).pow(2),
@@ -70,16 +74,11 @@ class ProviderScoreboard(
     }
   }
 
-  private fun decay(verification: ForecastVerification): Double {
-    val ageDays = (clock() - verification.verifiedAtMillis) / 86_400_000.0
-    return 0.5.pow(ageDays / halfLifeDays)
-  }
-
   private companion object {
     /**
      * Evita il peso infinito del provider perfetto e fissa la scala: con eps pari al rumore
      * tipico della variabile piu' fine (0,3), un MAE nullo vale ~11 e un MAE di 1,0 vale ~0,6.
      */
-    const val MAE_EPSILON = 0.3
+    const val MAE_EPSILON = LocalProviderLearning.MAE_EPSILON
   }
 }

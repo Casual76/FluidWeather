@@ -1,6 +1,7 @@
 package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.model.ForecastVerification
+import dev.pampa.fluidweather.core.model.ForecastLearning
 import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.FusionVariables
 import kotlinx.coroutines.test.runTest
@@ -27,6 +28,9 @@ class ScoreboardTest {
     horizonBucket = HorizonBucket.SHORT,
     absoluteError = error,
     verifiedAtMillis = now - (ageDays * 86_400_000).toLong(),
+    latitude = 43.83,
+    longitude = 11.2,
+    semanticsVersion = ForecastLearning.CURRENT_SEMANTICS,
   )
 
   @Test

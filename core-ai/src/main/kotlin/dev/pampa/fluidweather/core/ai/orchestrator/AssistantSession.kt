@@ -300,7 +300,7 @@ class AssistantSession(
     for ((key, used) in grounding.observations()) {
       if (sources.snapshotStore.read(key) != used) valid = false
     }
-    if (currentSelected != selected) valid = false
+    if (!sameSelectedWeatherPlace(selected, currentSelected)) valid = false
     currentCoroutineContext().ensureActive()
     if (generation != sources.generation() || locale != Locale.getDefault()) valid = false
     val safeAnswer = grounding.render(result.answer, clock(), valid)
@@ -350,7 +350,7 @@ class AssistantSession(
       barometerReady = readiness?.ready == true,
       barometerCalibrated = readiness?.calibrated == true,
       historyHours = readiness?.historyHours ?: 0.0,
-      snapshotAgeMinutes = snapshot?.let { ((ctx.nowMillis - it.fetchedAtMillis) / 60_000.0).roundToInt() },
+      snapshotAgeMinutes = dev.pampa.fluidweather.core.ai.data.weatherDataAgeMinutes(snapshot, ctx.nowMillis),
       actionsEnabled = actionsEnabled,
       mode = mode,
       temperatureSymbol = units.temperatureSymbol(),

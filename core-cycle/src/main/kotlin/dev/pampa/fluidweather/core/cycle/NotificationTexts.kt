@@ -24,8 +24,10 @@ interface NotificationTexts {
   fun factorLabel(name: String): String
   fun onsetTitle(kind: WeatherKind?): String
   fun onsetText(time: String): String
+  fun onsetText(time: String, locationName: String): String
   fun endTitle(kind: WeatherKind?): String
   fun endText(time: String): String
+  fun endText(time: String, locationName: String): String
   fun officialArea(): String
   fun officialSource(): String
   fun officialVerbatim(): String
@@ -77,10 +79,12 @@ class ResourceNotificationTexts(
   override fun onsetTitle(kind: WeatherKind?) = s(R.string.notif_onset_title, s(kind.precipitationNounRes()))
 
   override fun onsetText(time: String) = s(R.string.notif_onset_text, time)
+  override fun onsetText(time: String, locationName: String) = s(R.string.notif_onset_place_text, time, locationName)
 
   override fun endTitle(kind: WeatherKind?) = s(R.string.notif_end_title, s(kind.precipitationNounRes()))
 
   override fun endText(time: String) = s(R.string.notif_end_text, time)
+  override fun endText(time: String, locationName: String) = s(R.string.notif_end_place_text, time, locationName)
 
   override fun officialArea() = s(R.string.notif_official_area)
 

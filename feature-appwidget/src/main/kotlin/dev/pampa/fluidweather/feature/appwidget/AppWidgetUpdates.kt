@@ -30,12 +30,30 @@ fun installAppWidgetUpdates(
   engineSettings: Flow<*>,
   unitPreferences: Flow<*>,
   cachedInputUpdates: Flow<*>? = null,
+  savedPlaces: Flow<*>? = null,
 ) {
   scope.launch {
+    collectAppWidgetUpdates(snapshotUpdates, engineSettings, unitPreferences, cachedInputUpdates,
+      savedPlaces) { FluidWeatherAppWidget().updateAll(context) }
+  }
+}
+
+/** The production invalidation collector, with only the Android delivery replaced in JVM tests. */
+internal suspend fun collectAppWidgetUpdates(
+  snapshotUpdates: Flow<Map<String, Long>>,
+  engineSettings: Flow<*>,
+  unitPreferences: Flow<*>,
+  cachedInputUpdates: Flow<*>? = null,
+  savedPlaces: Flow<*>? = null,
+  update: suspend () -> Unit,
+) {
     merge(
       // I dati: il ciclo ha appena scritto un'istantanea nuova.
       snapshotUpdates.map { },
       (cachedInputUpdates ?: emptyFlow<Any>()).map { },
+      // The fallback place is the first saved row. Removing it changes both content and URI,
+      // even when no snapshot has been fetched and no other settings have changed.
+      (savedPlaces ?: emptyFlow<Any>()).distinctUntilChanged().map { },
       // L'aspetto.
       engineSettings.distinctUntilChanged().drop(1).map { },
       // Le unita'.
@@ -44,6 +62,5 @@ fun installAppWidgetUpdates(
       // Tre sorgenti che possono muoversi insieme (un giro del ciclo mentre si cambia tema): un
       // ridisegno solo, non tre.
       .conflate()
-      .collect { widgetLocalRead { FluidWeatherAppWidget().updateAll(context) } }
-  }
+      .collect { widgetLocalRead { update() } }
 }

@@ -25,6 +25,8 @@ android {
   kotlinOptions {
     jvmTarget = engine.jvmTarget
   }
+  testOptions { unitTests.includeAndroidResources = true }
+  sourceSets { test.resources.srcDir "$projectDir/schemas" }
 }
 
 // Le fotografie dello schema, una per versione, SOTTO controllo di versione: sono il riferimento
@@ -46,6 +48,7 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${engine.coroutines}"
 
   testImplementation "junit:junit:${engine.junit}"
+  testImplementation "org.robolectric:robolectric:${engine.robolectric}"
 
   androidTestImplementation "androidx.room:room-testing:${appVersions.room}"
   androidTestImplementation "androidx.test.ext:junit:${appVersions.androidxTestExtJunit}"

@@ -130,6 +130,7 @@ internal class RadarMapController(private val context: Context) {
       shownFrame = -1
       shownPrecipitation = null
       m.setStyle(Style.Builder().fromUri(RadarMapCatalog.styleUrl(scene.dark))) { style ->
+        if (map !== m || styleDark != scene.dark) return@setStyle
         localizeLabels(style, scene.language)
         sync(style, desired)
         cameraTick.intValue++
@@ -360,9 +361,9 @@ internal fun RadarMap(
         onCreate(null)
         // Lo stile che non arriva (rete assente al primo avvio, OpenFreeMap giu'): la schermata
         // lo dice invece di restare un rettangolo vuoto.
-        addOnDidFailLoadingMapListener { currentOnFailed() }
+        addOnDidFailLoadingMapListener { if (holder[0] === this) currentOnFailed() }
         controller.attach(this)
-        getMapAsync { map -> controller.bind(map) }
+        getMapAsync { map -> if (holder[0] === this) controller.bind(map) }
       }
     },
   )
@@ -377,7 +378,11 @@ internal fun RadarMap(
         Lifecycle.Event.ON_RESUME -> view.onResume()
         Lifecycle.Event.ON_PAUSE -> view.onPause()
         Lifecycle.Event.ON_STOP -> view.onStop()
-        Lifecycle.Event.ON_DESTROY -> view.onDestroy()
+        Lifecycle.Event.ON_DESTROY -> {
+          holder[0] = null
+          controller.unbind()
+          view.onDestroy()
+        }
         else -> Unit
       }
     }
@@ -400,13 +405,14 @@ internal fun RadarMap(
       lifecycleOwner.lifecycle.removeObserver(observer)
       appContext?.unregisterComponentCallbacks(memory)
       controller.unbind()
-      holder[0]?.let { view ->
+      val closing = holder[0]
+      holder[0] = null
+      closing?.let { view ->
         val state = lifecycleOwner.lifecycle.currentState
         if (state.isAtLeast(Lifecycle.State.RESUMED)) view.onPause()
         if (state.isAtLeast(Lifecycle.State.STARTED)) view.onStop()
         view.onDestroy()
       }
-      holder[0] = null
     }
   }
 }

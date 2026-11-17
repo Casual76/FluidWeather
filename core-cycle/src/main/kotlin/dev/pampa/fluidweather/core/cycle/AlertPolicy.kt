@@ -6,6 +6,7 @@ import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NotificationSettings
 import dev.pampa.fluidweather.core.model.NotificationUrgency
+import dev.pampa.fluidweather.core.model.NotificationLocation
 import dev.pampa.fluidweather.core.model.OfficialAlert
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import dev.pampa.fluidweather.nowcast.verdict.NowcastVerdict
@@ -23,14 +24,38 @@ data class AlertInputs(
   val officialAlerts: List<OfficialAlert>,
   /** Sta piovendo adesso, secondo cio' che si e' visto (quarto d'ora, radar). */
   val rainingNow: Boolean = false,
+  /** A remote fallback is still the same chosen place, explicitly identified in its alert. */
+  val location: NotificationLocation? = null,
+  val locationName: String? = null,
 )
 
 /** Cosa consegnare, cosa ritirare, e la memoria aggiornata da scrivere. */
-data class AlertDecision(
+class AlertDecision internal constructor(
   val notifications: List<AppNotification>,
   /** L'allerta del barometro e' rientrata: la notifica in tendina va tolta. */
   val cancelNowcastAlert: Boolean,
   val ledger: NotificationLedger,
+  private val deliveryBase: NotificationLedger,
+  private val deliveryEffects: List<(NotificationLedger) -> NotificationLedger>,
+) {
+  /** Commit only the effects of accepted posts, independently for every official alert. */
+  fun deliver(post: (AppNotification) -> Boolean): AlertDeliveryResult {
+    var confirmed = deliveryBase
+    val delivered = mutableListOf<AppNotification>()
+    notifications.forEachIndexed { index, notification ->
+      if (post(notification)) {
+        delivered += notification
+        confirmed = deliveryEffects[index](confirmed)
+      }
+    }
+    return AlertDeliveryResult(delivered, confirmed, delivered.size != notifications.size)
+  }
+}
+
+data class AlertDeliveryResult(
+  val delivered: List<AppNotification>,
+  val ledger: NotificationLedger,
+  val pending: Boolean,
 )
 
 /**
@@ -81,13 +106,20 @@ object AlertPolicy {
 
   fun decide(inputs: AlertInputs, texts: NotificationTexts): AlertDecision {
     val notifications = mutableListOf<AppNotification>()
-    var ledger = inputs.ledger
-    var cancelNowcast = false
+    var ledger = inputs.ledger.atLocation(inputs.location)
+    var cancelNowcast = inputs.ledger.nowcastAlertActive && inputs.location != null &&
+      inputs.ledger.location?.matches(inputs.location) != true
+    val effects = mutableListOf<(NotificationLedger) -> NotificationLedger>()
+    fun offer(notification: AppNotification, effect: (NotificationLedger) -> NotificationLedger) {
+      notifications += notification
+      effects += effect
+      ledger = effect(ledger)
+    }
 
     // ------------------------------------------------------------- allerta del barometro
     val verdict = inputs.verdict
     if (inputs.settings.nowcastAlert) {
-      if (verdict != null && verdict.level == AlertLevel.ALLERTA && !inputs.rainingNow && !alreadyAnnounced(inputs)) {
+      if (verdict != null && verdict.level == AlertLevel.ALLERTA && !inputs.rainingNow && !alreadyAnnounced(inputs.copy(ledger = ledger))) {
         val strongest = verdict.windows.maxByOrNull { it.probability }
         if (strongest != null) {
           val lastAt = ledger.nowcastAlertAtMillis
@@ -99,7 +131,7 @@ object AlertPolicy {
             val factors = strongest.topFactors.take(2).joinToString(", ") { factor ->
               texts.factorLabel(factor.name) + if (factor.contribution > 0) " ▲" else " ▼"
             }
-            notifications += AppNotification(
+            val notification = AppNotification(
               channel = NotificationChannelKind.NOWCAST_ALERT,
               id = NOWCAST_ID,
               title = texts.nowcastTitle(),
@@ -113,17 +145,23 @@ object AlertPolicy {
               ),
               urgency = NotificationUrgency.ALARM,
             )
-            ledger = ledger.copy(
-              nowcastAlertAtMillis = inputs.nowMillis,
-              nowcastAlertProbability = strongest.probability,
+            offer(notification) { it.copy(
+              nowcastAlertAtMillis = inputs.nowMillis, nowcastAlertProbability = strongest.probability,
               nowcastAlertActive = true,
-            )
+            ) }
           }
         }
       } else if (ledger.nowcastAlertActive) {
         cancelNowcast = true
         ledger = ledger.copy(nowcastAlertActive = false)
       }
+    } else if (ledger.nowcastAlertActive) {
+      cancelNowcast = true
+      ledger = ledger.copy(nowcastAlertActive = false)
+    }
+    // Cancellation changes are independent of accepted posts. Offers are replayed onto this base.
+    val deliveryBase = inputs.ledger.atLocation(inputs.location).let {
+      if (cancelNowcast) it.copy(nowcastAlertActive = false) else it
     }
 
     // ------------------------------------------------------ inizio/fine precipitazione
@@ -137,26 +175,26 @@ object AlertPolicy {
         val isNewEvent = already == null || abs(transition.atMillis - already) > EVENT_DISTINCT_MILLIS
         if (isNewEvent) {
           val time = texts.time(transition.atMillis, inputs.zone)
-          notifications += when (transition.kind) {
+          val notification = when (transition.kind) {
             TransitionKind.ONSET -> AppNotification(
               channel = NotificationChannelKind.PRECIPITATION,
               id = PRECIPITATION_ID,
               title = texts.onsetTitle(transition.weatherKind),
-              text = texts.onsetText(time),
+              text = inputs.locationName?.let { texts.onsetText(time, it) } ?: texts.onsetText(time),
               urgency = NotificationUrgency.WATCH,
             )
             TransitionKind.END -> AppNotification(
               channel = NotificationChannelKind.PRECIPITATION,
               id = PRECIPITATION_ID,
               title = texts.endTitle(transition.weatherKind),
-              text = texts.endText(time),
+              text = inputs.locationName?.let { texts.endText(time, it) } ?: texts.endText(time),
               urgency = NotificationUrgency.CLEAR,
             )
           }
-          ledger = when (transition.kind) {
-            TransitionKind.ONSET -> ledger.copy(precipitationOnsetMillis = transition.atMillis)
-            TransitionKind.END -> ledger.copy(precipitationEndMillis = transition.atMillis)
-          }
+          offer(notification) { confirmed -> when (transition.kind) {
+            TransitionKind.ONSET -> confirmed.copy(precipitationOnsetMillis = transition.atMillis)
+            TransitionKind.END -> confirmed.copy(precipitationEndMillis = transition.atMillis)
+          } }
         }
       }
     }
@@ -167,7 +205,7 @@ object AlertPolicy {
         .filter { it.isActive(inputs.nowMillis) && it.id !in ledger.officialAlertIds }
         .distinctBy { it.id }
       fresh.take(MAX_OFFICIAL_PER_ROUND).forEach { alert ->
-        notifications += AppNotification(
+        val notification = AppNotification(
           channel = NotificationChannelKind.OFFICIAL_ALERTS,
           id = OFFICIAL_ID_BASE + (alert.id.hashCode() and 0xFFFF),
           title = alert.event,
@@ -183,15 +221,12 @@ object AlertPolicy {
           },
           urgency = NotificationUrgency.ALARM,
         )
-      }
-      if (fresh.isNotEmpty()) {
-        ledger = ledger.copy(
-          officialAlertIds = (ledger.officialAlertIds + fresh.take(MAX_OFFICIAL_PER_ROUND).map { it.id })
-            .takeLast(NotificationLedger.MAX_OFFICIAL_IDS),
-        )
+        offer(notification) { confirmed -> confirmed.copy(
+          officialAlertIds = (confirmed.officialAlertIds + alert.id).takeLast(NotificationLedger.MAX_OFFICIAL_IDS),
+        ) }
       }
     }
 
-    return AlertDecision(notifications, cancelNowcast, ledger)
+    return AlertDecision(notifications, cancelNowcast, ledger, deliveryBase, effects)
   }
 }

@@ -16,6 +16,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import dev.antigravity.fluidengine.ui.theme.AccentPreset
+import dev.antigravity.fluidengine.foundation.EngineSettings
+import dev.pampa.fluidweather.core.model.WeatherZones
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
 import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
@@ -62,6 +64,8 @@ import dev.pampa.fluidweather.core.model.GeoPoint
 import dev.pampa.fluidweather.core.model.WeatherBrief
 import dev.pampa.fluidweather.core.data.RoutineWindowStore
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -112,6 +116,7 @@ class HomeDependencies(
   val routineWindowStore: RoutineWindowStore,
   /** Optional name lookup, isolated from the weather/local-data load. */
   val resolveLocationName: suspend (Context, Double, Double) -> String? = ::reverseGeocode,
+  val engineSettings: Flow<EngineSettings> = flowOf(EngineSettings()),
 )
 
 data class HomeUiState(
@@ -171,6 +176,8 @@ data class HomeUiState(
   val dayLengthYesterdayMillis: Long? = null,
   val weatherBrief: WeatherBrief? = null,
   val routineReadError: Boolean = false,
+  /** Selected-place or accepted-snapshot metadata, never the device fallback. */
+  val zoneId: String? = null,
 )
 
 /** Quanto si aspetta al massimo un fix per un giro silenzioso: la ripresa non deve inchiodarsi. */
@@ -205,6 +212,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
     longitude = homePoint(place.latitude, place.longitude)?.longitude,
     sensorAvailable = deps.barometerAvailable,
     barometerApplies = place.isGps && deps.barometerAvailable,
+    zoneId = WeatherZones.validId(place.zoneId),
   )) }
   var briefSnapshot by remember(deps, place) { mutableStateOf<WeatherSnapshot?>(null) }
   var invalidatedBefore by remember(deps) { mutableStateOf<Long?>(null) }
@@ -213,6 +221,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
   val lifecycle = LocalLifecycleOwner.current.lifecycle
   // Cresce a ogni pull to refresh, ed e' la chiave che fa ripartire il caricamento da capo.
   var reloads by remember { mutableIntStateOf(0) }
+  var explicitRefreshPending by remember(deps, place) { mutableStateOf(false) }
 
   LaunchedEffect(deps, place, reloads, active, lifecycle, wiped) {
     if (!active || wiped) return@LaunchedEffect
@@ -221,7 +230,9 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         // Il corpo qui sotto scrive in `value` come prima: e' lo stesso caricamento, spostato.
         val loadGeneration = deps.dataGeneration()
         var value by GenerationHomeState(holder, deps.dataGeneration, loadGeneration, currentCoroutineContext())
-        value = value.copy(loading = true, refreshing = reloads > 0)
+        val explicitRefresh = explicitRefreshPending
+        explicitRefreshPending = false
+        value = value.copy(loading = true, refreshing = explicitRefresh)
         val now = System.currentTimeMillis()
         val key = if (place.isGps) WeatherSnapshot.GPS_KEY else WeatherSnapshot.keyFor(place.id)
 
@@ -241,7 +252,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
             homeSnapshotMatches(place, homePoint(if (place.isGps) it.latitude else place.latitude,
               if (place.isGps) it.longitude else place.longitude), it) &&
               (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) &&
-              it.ageMillis(now) <= DataAge.SHOWABLE_AGE_MILLIS
+              (homeSourceTime(it, now) == null || it.ageMillis(now) <= DataAge.SHOWABLE_AGE_MILLIS)
           },
           backfill = { if (!place.isGps) deps.savedLocations.backfillZoneId(place.id, it.zoneId) },
         )
@@ -253,7 +264,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
             latitude = known.latitude,
             longitude = known.longitude,
             phase = SolarEphemeris.phaseAt(now, known.latitude, known.longitude),
-          ).applySnapshot(known, now, deps)
+          ).applySnapshot(known, now, deps, place)
         }
 
         // 1) GPS o localita' scelta: da qui in poi il caricamento non sa la differenza.
@@ -310,16 +321,14 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
           // Drop weather from A when GPS resolves B, retaining this device's local archive.
           value = HomeUiState(locationName = presetName, latitude = latitude, longitude = longitude,
             phase = phase, sensorAvailable = deps.barometerAvailable,
+            zoneId = WeatherZones.validId(place.zoneId),
             barometerApplies = place.isGps && deps.barometerAvailable,
             cleaning = value.cleaning, latestRawPressureHpa = value.latestRawPressureHpa,
             verdictHistory = value.verdictHistory, readiness = value.readiness)
           briefSnapshot = null
         }
-        val snapshotCandidate = if (canRefresh && (cached == null || cached.ageMillis(now) > cadenceMillis)) {
-          homeCatching { deps.snapshotRefresher.refresh(key, latitude, longitude, registerPredictions = registerHere) }.getOrNull()
-            ?: cached
-        } else {
-          cached
+        val snapshotCandidate = loadHomeForecast(cached, now, cadenceMillis, canRefresh, explicitRefresh) {
+          deps.snapshotRefresher.refresh(key, latitude, longitude, registerPredictions = registerHere)
         }
         val snapshot = homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
           ?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
@@ -328,10 +337,10 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         briefSnapshot = snapshot
         if (!place.isGps && snapshot != null) deps.savedLocations.backfillZoneId(place.id, snapshot.zoneId)
         if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
-        if (snapshot != null && snapshot !== known) value = value.applySnapshot(snapshot, now, deps)
+        if (snapshot != null && snapshot !== known) value = value.applySnapshot(snapshot, now, deps, place)
 
         // Sole: oggi e ieri, per il "piu' corto/lungo di ieri" del widget.
-        val zone = ZoneId.systemDefault()
+        val zone = homeWeatherZone(value).zoneId
         val todayStartUtc = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
           .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
         val sunToday = SunTimes.forDay(todayStartUtc, latitude, longitude)
@@ -428,6 +437,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         briefSnapshot = null
         holder.value = HomeUiState(loading = false,
           locationName = place.name.takeIf { it.isNotBlank() },
+          zoneId = WeatherZones.validId(place.zoneId),
           sensorAvailable = deps.barometerAvailable, barometerApplies = place.isGps && deps.barometerAvailable)
         return@LaunchedEffect
       }
@@ -446,6 +456,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         wiped = true
         briefSnapshot = null
         holder.value = HomeUiState(loading = false, locationName = place.name.takeIf { it.isNotBlank() },
+          zoneId = WeatherZones.validId(place.zoneId),
           latitude = homePoint(place.latitude, place.longitude)?.latitude,
           longitude = homePoint(place.latitude, place.longitude)?.longitude,
           sensorAvailable = deps.barometerAvailable, barometerApplies = place.isGps && deps.barometerAvailable)
@@ -477,7 +488,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
       holder.value = holder.value.copy(
         latitude = fresh.latitude, longitude = fresh.longitude, hasLocation = true,
         phase = SolarEphemeris.phaseAt(now, fresh.latitude, fresh.longitude),
-      ).applySnapshot(fresh, now, deps)
+      ).applySnapshot(fresh, now, deps, place)
       if (recovering) {
         // The guarded store read is from the current epoch; old pre-wipe commits are
         // rejected upstream. Re-arm consumers without extending any source clock.
@@ -541,7 +552,11 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
     }
   }
 
-  return remember(holder) { HomeStateHandle(state = holder, refresh = { wiped = false; reloads++ }) }
+  return remember(holder) { HomeStateHandle(state = holder, refresh = {
+    explicitRefreshPending = true
+    wiped = false
+    reloads++
+  }) }
 }
 
 /** Le ore fuse dell'istantanea dentro lo stato: testata, cielo, dispensa dei widget, accento. */
@@ -549,18 +564,29 @@ private fun HomeUiState.applySnapshot(
   snapshot: WeatherSnapshot,
   nowMillis: Long,
   deps: HomeDependencies,
+  place: Place,
 ): HomeUiState {
   val fused = snapshot.fused
+  val snapshotZone = WeatherZones.validId(place.zoneId) ?: WeatherZones.validId(snapshot.zoneId)
+    ?: WeatherZones.validId(snapshot.context?.takeIf {
+      dev.pampa.fluidweather.core.weather.haversineKm(it.latitude, it.longitude,
+        snapshot.latitude, snapshot.longitude) <= 2.0
+    }?.zoneId)
   // Un'istantanea senza ore non ha niente da dire, e "niente da dire" non vuol dire "cancella
   // quello che c'era": prima azzerava temperatura, tipo, min/max e nuvole, e la home si svuotava
   // sotto gli occhi. Si aggiorna solo l'eta', che e' l'unica cosa che quel giro ha davvero detto.
-  if (fused.hours.isEmpty()) return copy(dataAtMillis = snapshot.fetchedAtMillis)
+  if (fused.hours.isEmpty()) return copy(
+    dataAtMillis = if (fusedHours.isEmpty()) homeSourceTime(snapshot, nowMillis) else dataAtMillis,
+    zoneId = snapshotZone,
+  )
   val nowValues = fused.at(nowMillis)
   val kind = fused.kindAt(nowMillis)
-  val (minToday, maxToday) = fused.todayRange(nowMillis)
+  val (minToday, maxToday) = fused.todayRange(nowMillis,
+    WeatherZones.resolve(snapshotZone, null, ZoneId.systemDefault()).zoneId)
   deps.onWeatherAccent(WeatherAccent.presetFor(kind, phase))
   return copy(
-    dataAtMillis = snapshot.fetchedAtMillis,
+    zoneId = snapshotZone,
+    dataAtMillis = homeSourceTime(snapshot, nowMillis),
     temperatureC = nowValues?.get(FusionVariables.TEMPERATURE),
     kind = kind,
     minC = minToday,

@@ -61,12 +61,11 @@ internal fun WidgetSheetHost(
   }
 }
 
-/** Legacy detail clocks use the device zone; disclose it whenever it differs from the place. */
+/** Device time is used only when location metadata is unavailable, and remains disclosed. */
 @Composable
 internal fun DetailClockNote(state: HomeUiState) {
-  val device = ZoneId.systemDefault()
-  val resolved = WeatherZones.resolve(state.weatherBrief?.precipitation?.place?.zoneId, null, device)
-  if (resolved.source == dev.pampa.fluidweather.core.model.WeatherZoneSource.DEVICE_FALLBACK || resolved.zoneId != device) {
-    BlackSheetNote(stringResource(R.string.quality_device_times, device.id))
+  val resolved = homeWeatherZone(state)
+  if (resolved.source == dev.pampa.fluidweather.core.model.WeatherZoneSource.DEVICE_FALLBACK) {
+    BlackSheetNote(stringResource(R.string.quality_device_times, resolved.zoneId.id))
   }
 }

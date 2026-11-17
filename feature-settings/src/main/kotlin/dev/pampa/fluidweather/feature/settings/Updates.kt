@@ -28,6 +28,8 @@ import dev.antigravity.fluidengine.ui.theme.FluidListDivider
 import dev.antigravity.fluidengine.ui.theme.FluidListRow
 import dev.pampa.fluidweather.strings.R
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** Tutto quello che serve a controllare e installare un aggiornamento. */
 class UpdateDependencies(
@@ -43,7 +45,7 @@ private sealed interface UpdateStatus {
   data object Checking : UpdateStatus
   data object Latest : UpdateStatus
   data object CheckFailed : UpdateStatus
-  data class Available(val update: AvailableAppUpdate) : UpdateStatus
+  data class Available(val update: AvailableAppUpdate, val channel: UpdateChannel) : UpdateStatus
   data class Downloading(val percent: Int) : UpdateStatus
   data class Message(val text: String) : UpdateStatus
   data object Installed : UpdateStatus
@@ -85,10 +87,17 @@ fun AppUpdateRows(deps: UpdateDependencies) {
       title = stringResource(if (candidate == UpdateChannel.STABLE) R.string.channel_stable else R.string.channel_beta),
       subtitle = stringResource(if (candidate == UpdateChannel.STABLE) R.string.channel_stable_desc else R.string.channel_beta_desc),
       selected = channel == candidate,
+      enabled = !busy,
       onSelect = {
+        if (busy) return@FluidChoiceRow
+        busy = true
         scope.launch {
-          deps.releaseSettings.setChannel(candidate)
-          status = UpdateStatus.Idle
+          try {
+            deps.releaseSettings.setChannel(candidate)
+            status = UpdateStatus.Idle
+          } finally {
+            busy = false
+          }
         }
       },
     )
@@ -112,16 +121,26 @@ fun AppUpdateRows(deps: UpdateDependencies) {
     meta = deps.appVersion,
     onClick = {
       if (busy) return@FluidListRow
-      val available = (current as? UpdateStatus.Available)?.update
+      val availableState = current as? UpdateStatus.Available
+      val available = availableState?.update
+      busy = true
       scope.launch {
-        busy = true
         try {
           if (available == null) {
             status = UpdateStatus.Checking
-            deps.updater.check(currentVersionName = deps.appVersion, channel = channel, ignoredVersion = ignored)
-              .onSuccess { found -> status = if (found == null) UpdateStatus.Latest else UpdateStatus.Available(found) }
+            val checkedChannel = deps.releaseSettings.currentChannel()
+            val result = deps.updater.check(currentVersionName = deps.appVersion, channel = checkedChannel, ignoredVersion = ignored)
+            currentCoroutineContext().ensureActive()
+            if (deps.releaseSettings.currentChannel() != checkedChannel) {
+              status = UpdateStatus.Idle
+            } else result
+              .onSuccess { found -> status = if (found == null) UpdateStatus.Latest else UpdateStatus.Available(found, checkedChannel) }
               .onFailure { status = UpdateStatus.CheckFailed }
           } else {
+            if (deps.releaseSettings.currentChannel() != availableState.channel) {
+              status = UpdateStatus.Idle
+              return@launch
+            }
             deps.updater.install(available).collect { state ->
               status = when (state) {
                 is AppUpdateInstallState.Downloading -> UpdateStatus.Downloading((state.progress * 100).toInt())

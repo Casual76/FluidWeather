@@ -135,6 +135,7 @@ object FeatureExtractor {
     nowMillis: Long,
   ): DoubleArray? {
     val filtered = cleaning.filtered
+    if (!CurrentSignalPolicy.isCurrent(filtered, nowMillis)) return null
     val latest = filtered.lastOrNull() ?: return null
     val spanHours = (latest.timestampMillis - filtered.first().timestampMillis) / 3_600_000.0
     if (spanHours < MIN_HISTORY_HOURS) return null

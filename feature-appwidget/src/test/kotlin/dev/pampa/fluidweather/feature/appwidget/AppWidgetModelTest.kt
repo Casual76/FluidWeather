@@ -44,7 +44,7 @@ class AppWidgetModelTest {
       latitude = 43.8,
       longitude = 11.2,
       fetchedAtMillis = fetchedAtMillis,
-      fetches = emptyList(),
+      fetches = listOf(dev.pampa.fluidweather.core.weather.ProviderFetchSummary("fixture", hours.size, null, fetchedAtMillis)),
       fused = FusedForecast(hours, emptyMap()),
       context = null,
     )
@@ -207,6 +207,7 @@ class AppWidgetModelTest {
         timestampMillis = adesso + h * ora,
         values = mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(if (h == 3) 80.0 else 5.0, emptyList())),
         kind = WeatherKind.CLEAR,
+        precipitationInterval = dev.pampa.fluidweather.core.model.WeatherInterval(adesso + (h - 1) * ora, adesso + h * ora),
       )
     }
 
@@ -219,8 +220,10 @@ class AppWidgetModelTest {
   fun `la pioggia guarda avanti, non indietro`() {
     // Un acquazzone di due ore fa non e' un motivo per prendere l'ombrello adesso.
     val hours = listOf(
-      FusedHour(adesso - 2 * ora, mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(90.0, emptyList())), null),
-      FusedHour(adesso + ora, mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(10.0, emptyList())), null),
+      FusedHour(adesso - 2 * ora, mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(90.0, emptyList())), null,
+        precipitationInterval = dev.pampa.fluidweather.core.model.WeatherInterval(adesso - 3 * ora, adesso - 2 * ora)),
+      FusedHour(adesso + ora, mapOf(FusionVariables.PRECIP_PROBABILITY to FusedValue(10.0, emptyList())), null,
+        precipitationInterval = dev.pampa.fluidweather.core.model.WeatherInterval(adesso, adesso + ora)),
     )
 
     val model = AppWidgetModelBuilder.of(istantanea(hours = hours), null, null, adesso, AppWidgetTier.SMALL)

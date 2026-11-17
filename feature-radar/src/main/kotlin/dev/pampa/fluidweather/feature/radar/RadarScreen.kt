@@ -71,6 +71,7 @@ import dev.antigravity.fluidengine.foundation.ThemeMode
 import dev.antigravity.fluidengine.storage.EngineSettingsStore
 import dev.antigravity.fluidengine.ui.fluid.ContinuousCornerShape
 import dev.antigravity.fluidengine.ui.fluid.FluidContextAction
+import dev.antigravity.fluidengine.ui.fluid.FluidButton
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassIconButton
 import dev.antigravity.fluidengine.ui.fluid.FluidGlassSize
 import dev.antigravity.fluidengine.ui.fluid.FluidRadius
@@ -162,9 +163,14 @@ fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
   // Niente chiave e niente Play Services da controllare prima: l'unico modo di non avere la mappa
   // e' che lo stile non arrivi, e MapLibre lo dice. Allora lo si dice anche qui, invece di
   // lasciare un rettangolo vuoto.
-  var mapFailed by remember { mutableStateOf(false) }
-  if (mapFailed) {
-    RadarUnavailable(onBack)
+  val recovery = remember(deps) { RadarRecoveryController(deps.rainViewer::frames) }
+  val status by recovery.state.collectAsState()
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  LaunchedEffect(recovery, lifecycle) {
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { recovery.observe() }
+  }
+  if (status.mapFailed) {
+    RadarUnavailable(onBack, recovery::retry)
     return
   }
   // La stessa regola dell'engine: Sistema segue il telefono, Chiaro e' chiaro, Scuro e' scuro.
@@ -175,19 +181,17 @@ fun RadarScreen(deps: RadarDependencies, onBack: () -> Unit) {
     ThemeMode.SYSTEM -> isSystemInDarkTheme()
   }
   FluidTheme(
-    settings = remember(dark) {
-      EngineSettings(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColorEnabled = false)
-    },
+    settings = radarThemeSettings(settings, dark),
     brand = WeatherAccent.presetFor(null, if (dark) DayPhase.NIGHT else DayPhase.DAY),
   ) {
     CompositionLocalProvider(LocalRadarPalette provides RadarPalette(dark)) {
-      RadarShell(deps, onBack, dark, onMapFailed = { mapFailed = true })
+      RadarShell(deps, onBack, dark, status, recovery::retry, recovery::mapFailed)
     }
   }
 }
 
 @Composable
-private fun RadarUnavailable(onBack: () -> Unit) {
+private fun RadarUnavailable(onBack: () -> Unit, onRetry: () -> Unit) {
   FluidScreen(title = stringResource(R.string.radar_title), onBack = onBack) {
     item {
       FluidEmptyState(
@@ -197,6 +201,7 @@ private fun RadarUnavailable(onBack: () -> Unit) {
           Icon(Icons.Rounded.Map, contentDescription = null, modifier = Modifier.size(56.dp))
         },
       )
+      FluidButton(text = stringResource(R.string.radar_retry), onClick = onRetry)
     }
   }
 }
@@ -206,6 +211,8 @@ private fun RadarShell(
   deps: RadarDependencies,
   onBack: () -> Unit,
   dark: Boolean,
+  recovery: RadarRecoveryState,
+  onRetry: () -> Unit,
   onMapFailed: () -> Unit,
 ) {
   val scope = rememberCoroutineScope()
@@ -230,19 +237,19 @@ private fun RadarShell(
   }
 
   // I fotogrammi del radar e l'animazione: parte in play (decisione 2026-09-02), un tocco ferma.
-  val frames by produceState<RadarFrames?>(initialValue = null) {
-    value = runCatching { deps.rainViewer.frames() }.getOrNull()
-  }
+  val frames = recovery.frames
   var frameIndex by remember { mutableIntStateOf(0) }
   var playing by remember { mutableStateOf(true) }
   LaunchedEffect(frames) { frames?.let { frameIndex = it.nowIndex } }
-  LaunchedEffect(playing, frames) {
-    val available = frames ?: return@LaunchedEffect
-    val count = available.all.size
-    if (count <= 1) return@LaunchedEffect
-    while (playing) {
-      delay(RadarTimeline.frameDelayMillis(frameIndex, count))
-      frameIndex = (frameIndex + 1) % count
+  LaunchedEffect(playing, frames, lifecycle) {
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      val available = frames ?: return@repeatOnLifecycle
+      val count = available.all.size
+      if (count <= 1) return@repeatOnLifecycle
+      while (playing) {
+        delay(RadarTimeline.frameDelayMillis(frameIndex, count))
+        frameIndex = (frameIndex + 1) % count
+      }
     }
   }
   var layer by remember { mutableStateOf(RadarLayer.PRECIPITATION) }
@@ -292,7 +299,7 @@ private fun RadarShell(
   }
 
   val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-  val barHeight = 84.dp
+  val barHeight = if (recovery.framesFailed || recovery.stale) 124.dp else 84.dp
 
   Box(
     Modifier
@@ -302,7 +309,7 @@ private fun RadarShell(
     val density = LocalDensity.current
     val language = LocalConfiguration.current.locales[0]?.language ?: "en"
     val owmLayer = layer.owmLayer
-    RadarMap(
+    key(recovery.mapAttempt) { RadarMap(
       controller = map,
       scene = RadarMapScene(
         dark = dark,
@@ -319,7 +326,7 @@ private fun RadarShell(
       loadColor = Ink,
       onFailed = onMapFailed,
       modifier = Modifier.fillMaxSize(),
-    )
+    ) }
 
     // Le etichette dei posti sopra la mappa, sotto i controlli.
     RadarPins(pins, map)
@@ -414,6 +421,8 @@ private fun RadarShell(
       frames = frames,
       index = frameIndex,
       playing = playing,
+      recovery = recovery,
+      onRetry = onRetry,
       backdrop = chromeBackdrop,
       onTogglePlay = { playing = !playing },
       onScrubStart = { playing = false },
@@ -544,6 +553,8 @@ private fun RadarTimelineBar(
   frames: RadarFrames?,
   index: Int,
   playing: Boolean,
+  recovery: RadarRecoveryState,
+  onRetry: () -> Unit,
   onTogglePlay: () -> Unit,
   onScrubStart: () -> Unit,
   onScrub: (Int) -> Unit,
@@ -552,6 +563,23 @@ private fun RadarTimelineBar(
   modifier: Modifier = Modifier,
 ) {
   Column(modifier.fillMaxWidth()) {
+    if (recovery.framesFailed || recovery.stale || (recovery.loading && frames != null)) {
+      Row(Modifier.fillMaxWidth().radarChrome(backdrop).padding(start = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        val message = when {
+          recovery.stale -> stringResource(R.string.radar_frames_stale,
+            dev.pampa.fluidweather.strings.TimeFormats.dayTime(recovery.latestFrameMillis!!))
+          recovery.framesFailed -> stringResource(R.string.radar_frames_failed)
+          else -> stringResource(R.string.radar_frames_updating)
+        }
+        Text(message, style = MaterialTheme.typography.labelSmall, color = White,
+          modifier = Modifier.weight(1f))
+        if (recovery.framesFailed || recovery.stale) {
+          FluidButton(text = stringResource(R.string.radar_retry), onClick = onRetry,
+            enabled = !recovery.loading)
+        }
+      }
+    }
     Row(
       verticalAlignment = Alignment.CenterVertically,
       modifier = Modifier
@@ -576,7 +604,7 @@ private fun RadarTimelineBar(
       // Le parole di ogni fotogramma ("adesso", "-1 h 40 min", "+20 min") si scrivono qui, in
       // composizione: lo scrubber le chiede da una lambda che non lo e'.
       val labels = (0 until count).map { frame ->
-        timelineLabel(RadarTimeline.offset(frames!!.all[frame].timeMillis, frames.past.last().timeMillis))
+        timelineLabel(RadarTimeline.offset(frames!!.all[frame].timeMillis, recovery.checkedAtMillis))
       }
       val loadingLabel = stringResource(R.string.radar_loading)
       FluidScrubber(
@@ -603,7 +631,7 @@ private fun RadarTimelineBar(
       val label = if (frames == null || count == 0) {
         stringResource(R.string.radar_loading)
       } else {
-        timelineLabel(RadarTimeline.offset(frames.all[index.coerceIn(0, count - 1)].timeMillis, frames.past.last().timeMillis))
+        timelineLabel(RadarTimeline.offset(frames.all[index.coerceIn(0, count - 1)].timeMillis, recovery.checkedAtMillis))
       }
       Text(
         label,

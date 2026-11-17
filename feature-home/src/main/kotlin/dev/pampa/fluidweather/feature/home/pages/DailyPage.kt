@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.pampa.fluidweather.core.model.DailyAggregate
 import dev.pampa.fluidweather.core.model.FusionVariables
+import dev.pampa.fluidweather.core.model.precipitationHours
 import dev.pampa.fluidweather.core.ui.Charts
 import dev.pampa.fluidweather.feature.home.HomeUiState
 import dev.pampa.fluidweather.feature.home.WeatherKindIcon
@@ -45,11 +46,15 @@ import dev.pampa.fluidweather.strings.labelRes
 @Composable
 internal fun DailyPage(state: HomeUiState) {
   val now = System.currentTimeMillis()
-  val today = localDate(now)
-  val zone = remember { ZoneId.systemDefault() }
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
+  val today = localDate(now, zone)
   // L'aggregato condiviso (fase 19): la stessa aritmetica della home la legge anche l'assistente.
-  val days = remember(state.fusedHours, state.latitude, state.longitude) {
+  val days = remember(state.fusedHours, state.latitude, state.longitude, zone, today) {
     DailyAggregate.of(state.fusedHours, zone, state.latitude, state.longitude, today, 10)
+  }
+  val rainByStart = remember(state.fusedHours) {
+    state.fusedHours.precipitationHours(Long.MIN_VALUE, Long.MAX_VALUE)
+      .associateBy { it.precipitationInterval!!.startMillis }
   }
   if (days.isEmpty()) {
     PageNote(stringResource(if (state.fusedHours.isEmpty()) R.string.common_waiting_providers else R.string.tile_no_fused_temperature))
@@ -123,23 +128,30 @@ internal fun DailyPage(state: HomeUiState) {
       Text(
         buildString {
           if (popMax != null) append(stringResource(R.string.daily_rain, popMax.toInt()))
-          if (mm >= 0.1) append(stringResource(R.string.daily_mm_suffix, units.precipitation(mm)))
+          if (mm != null && mm >= 0.1) append(stringResource(R.string.daily_mm_suffix, units.precipitation(mm)))
           if (windMax != null) append(stringResource(R.string.daily_wind_suffix, units.wind(windMax)))
           val sunrise = day.sunriseMillis
           val sunset = day.sunsetMillis
           if (sunrise != null && sunset != null) {
-            append(" · ☀ ${fmtTime(sunrise)}–${fmtTime(sunset)}")
+            append(" · ☀ ${fmtTime(sunrise, zone)}–${fmtTime(sunset, zone)}")
           }
         },
         style = MaterialTheme.typography.labelSmall,
         color = Faint,
         modifier = Modifier.padding(top = 3.dp),
       )
+      if (mm == null) {
+        val sampled = day.precipitationSampleSumMm
+        Text((if (sampled != null) stringResource(R.string.precip_quality_sample_sum) + ": " + units.precipitation(sampled) + " · " else "") +
+          stringResource(R.string.precip_quality_amount_coverage, day.precipitationSamples, day.precipitationExpectedSamples),
+          style = MaterialTheme.typography.labelSmall, color = Faint)
+      }
       if (expanded == date) {
         Spacer(Modifier.height(6.dp))
+        PageNote(stringResource(R.string.quality_rain_interval_rows))
         hours.forEach { hour ->
           Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-            Text(fmtHour(hour.timestampMillis), style = MaterialTheme.typography.bodySmall, color = Dim, modifier = Modifier.width(34.dp))
+            Text(fmtHour(hour.timestampMillis, zone), style = MaterialTheme.typography.bodySmall, color = Dim, modifier = Modifier.width(34.dp))
             WeatherKindIcon(hour.kind, size = 14.dp, night = isNightAt(hour.timestampMillis, state.latitude, state.longitude))
             Spacer(Modifier.width(8.dp))
             Text(
@@ -148,16 +160,17 @@ internal fun DailyPage(state: HomeUiState) {
               color = White,
               modifier = Modifier.width(40.dp),
             )
-            val pop = hour.values[FusionVariables.PRECIP_PROBABILITY]?.value
+            val rain = rainByStart[hour.timestampMillis]
+            val pop = rain?.values?.get(FusionVariables.PRECIP_PROBABILITY)?.value
             Text(
-              if (pop != null && pop >= 5) "${pop.toInt()}%" else "",
+              precipitationProbability(pop),
               style = MaterialTheme.typography.bodySmall,
               color = PageBlue,
               modifier = Modifier.width(48.dp),
             )
-            val hourMm = hour.values[FusionVariables.PRECIPITATION]?.value
+            val hourMm = rain?.values?.get(FusionVariables.PRECIPITATION)?.value
             Text(
-              if (hourMm != null && hourMm >= 0.05) units.precipitation(hourMm) else "",
+              precipitationSampleValue(hourMm, units),
               style = MaterialTheme.typography.bodySmall,
               color = Dim,
             )

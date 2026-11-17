@@ -44,12 +44,14 @@ class AlertPolicyTest {
 
   private fun hour(offsetHours: Int, probability: Double, amount: Double = 0.0, kind: WeatherKind? = null) =
     FusedHour(
-      timestampMillis = now + offsetHours * 3_600_000L,
+      timestampMillis = now + (offsetHours + 1) * 3_600_000L,
       values = mapOf(
         FusionVariables.PRECIP_PROBABILITY to FusedValue(probability, emptyList()),
         FusionVariables.PRECIPITATION to FusedValue(amount, emptyList()),
       ),
       kind = kind,
+      precipitationInterval = dev.pampa.fluidweather.core.model.WeatherInterval(
+        now + offsetHours * 3_600_000L, now + (offsetHours + 1) * 3_600_000L),
     )
 
   private fun decide(inputs: AlertInputs) = AlertPolicy.decide(inputs, ItalianTexts)

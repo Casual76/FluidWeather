@@ -14,6 +14,8 @@ android {
     minSdk engine.minSdk
   }
 
+  testOptions { unitTests.includeAndroidResources = true }
+
   buildFeatures {
     compose true
   }
@@ -36,4 +38,5 @@ dependencies {
 
   testImplementation "junit:junit:${engine.junit}"
   testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${engine.coroutinesTest}"
+  testImplementation "org.robolectric:robolectric:${engine.robolectric}"
 }

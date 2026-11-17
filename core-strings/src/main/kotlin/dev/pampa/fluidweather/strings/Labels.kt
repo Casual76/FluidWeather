@@ -38,6 +38,7 @@ fun CalibrationOutcome.messageRes(): Int? = when (this) {
   CalibrationOutcome.START_FAILED -> R.string.calib_start_failed_short
   CalibrationOutcome.NO_READINGS -> R.string.calib_no_readings
   CalibrationOutcome.NO_REFERENCE -> R.string.calib_no_reference
+  CalibrationOutcome.REFERENCE_EXPIRED -> R.string.calib_reference_expired
   CalibrationOutcome.TOO_FEW -> R.string.calib_too_few
   CalibrationOutcome.TOO_MUCH_MOVEMENT -> R.string.calib_too_much_movement
 }

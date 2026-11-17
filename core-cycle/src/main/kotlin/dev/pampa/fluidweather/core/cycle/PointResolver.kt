@@ -24,6 +24,8 @@ data class ResolvedPoint(
   val latitude: Double,
   val longitude: Double,
   val source: PointSource,
+  val locationName: String? = null,
+  val zoneId: String? = null,
 )
 
 /**
@@ -83,7 +85,8 @@ internal object PointResolver {
       }
     }
     val saved = firstSavedPlace?.takeUnless { it.isGps } ?: return null
-    return ResolvedPoint(WeatherSnapshot.keyFor(saved.id), saved.latitude, saved.longitude, PointSource.SAVED_PLACE)
+    return ResolvedPoint(WeatherSnapshot.keyFor(saved.id), saved.latitude, saved.longitude, PointSource.SAVED_PLACE,
+      saved.name.takeIf { it.isNotBlank() }, saved.zoneId)
   }
 
   private fun ageOf(fix: FixSample, nowMillis: Long): Long = nowMillis - fix.fixedAtMillis

@@ -6,11 +6,11 @@ import org.junit.Test
 
 class ForecastRainSamplesTest {
   private val h = ForecastRainSamples.HOUR
-  private fun hour(at: Long, mm: Double? = null, probability: Double? = null) = FusedHour(at,
+  private fun hour(at: Long, mm: Double? = null, probability: Double? = null) = FusedHour(at + h,
     buildMap {
       mm?.let { put(FusionVariables.PRECIPITATION, FusedValue(it, emptyList())) }
       probability?.let { put(FusionVariables.PRECIP_PROBABILITY, FusedValue(it, emptyList())) }
-    }, null)
+    }, null, precipitationInterval = WeatherInterval(at, at + h))
 
   @Test fun missingIsNotZeroAndTrueZeroSurvives() {
     val slots = ForecastRainSamples.slots(listOf(hour(0, 0.0, 0.0), hour(h)), 0, 2*h)
@@ -32,13 +32,30 @@ class ForecastRainSamplesTest {
     assertNull(ForecastRainSamples.sum(slots).value)
   }
   @Test fun offGridOriginalIsRetainedButCannotProveCompatibleAccumulation() {
-    val slots = ForecastRainSamples.slots(listOf(hour(h/2, 8.0, 40.0)), 0, 2*h)
+    val slots = ForecastRainSamples.slots(listOf(hour(h/2, 8.0, 40.0)
+      .copy(timestampMillis = h/2, precipitationInterval = null)), 0, 2*h)
     assertEquals(listOf(0L, h/2, h), slots.map { it.at })
     assertTrue(slots.all { it.amount == null })
   }
   @Test fun absentSixHoursAreSixUnknownPositions() {
     val slots = ForecastRainSamples.slots(emptyList(), 0, 6*h)
     assertEquals(ForecastSampleSum(0, 6, null), ForecastRainSamples.sum(slots))
+  }
+  @Test fun midnightEndpointIsAllocatedToPrecedingHourWithoutMovingItsInstantaneousFields() {
+    val midnight = 24 * h
+    val source = hour(midnight - h, 2.0, 80.0)
+    val today = ForecastRainSamples.slots(listOf(source), 0, midnight)
+    assertEquals(2.0, today.last().amount!!, 0.0)
+    assertEquals(midnight - h, today.last().at)
+    assertEquals(midnight, today.last().interval!!.endMillis)
+    assertNull(ForecastRainSamples.slots(listOf(source), midnight, midnight + h).single().amount)
+    assertEquals(midnight, source.timestampMillis)
+  }
+  @Test fun legacyValuesCannotAcquireAnHourlyDurationFromTheirEndpoint() {
+    val legacy = hour(0, 2.0, 80.0).copy(precipitationInterval = null)
+    val slots = ForecastRainSamples.slots(listOf(legacy), 0, 2*h)
+    assertTrue(slots.all { it.amount == null && it.probability == null })
+    assertNull(ForecastRainSamples.sum(slots).value)
   }
   @Test fun clippedResidualOmitsAmountAndKeepsUnknownGapAndEvidencePrecision() {
     val now = 1_800_000L

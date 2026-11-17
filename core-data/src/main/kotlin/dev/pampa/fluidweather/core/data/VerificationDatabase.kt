@@ -5,6 +5,8 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.ColumnInfo
+import dev.pampa.fluidweather.core.model.ForecastLearning
 import dev.pampa.fluidweather.core.model.ForecastVerification
 import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.PendingPrediction
@@ -14,12 +16,12 @@ import dev.pampa.fluidweather.core.model.VerificationStore
  * Una previsione in attesa del suo giudizio (fusione, fase 7).
  *
  * [latitude] e [longitude] sono il punto del bundle che l'ha prodotta (colonne nullable, aggiunte
- * dalla migrazione 6->7): le righe di prima non li hanno e si giudicano come sempre finche' non
- * scadono, quelle nuove solo contro i bundle entro 3 km.
+ * dalla migrazione 6->7). La chiave include luogo e versione: una previsione in un altro posto
+ * non sostituisce e non cancella quella di qui. Le righe legacy non si riqualificano.
  */
 @Entity(
   tableName = "pending_predictions",
-  primaryKeys = ["providerId", "variable", "targetTimestampMillis"],
+  primaryKeys = ["providerId", "variable", "targetTimestampMillis", "placeKey", "semanticsVersion"],
   indices = [Index("targetTimestampMillis")],
 )
 data class PendingPredictionEntity(
@@ -30,6 +32,8 @@ data class PendingPredictionEntity(
   val issuedAtMillis: Long,
   val latitude: Double? = null,
   val longitude: Double? = null,
+  @ColumnInfo(defaultValue = "'legacy'") val placeKey: String = "legacy",
+  @ColumnInfo(defaultValue = "'legacy'") val semanticsVersion: String = ForecastLearning.LEGACY_SEMANTICS,
 )
 
 /** Un giudizio emesso: errore assoluto contro la mediana delle analisi. */
@@ -41,6 +45,9 @@ data class ForecastVerificationEntity(
   val horizonBucket: String,
   val absoluteError: Double,
   val verifiedAtMillis: Long,
+  val latitude: Double? = null,
+  val longitude: Double? = null,
+  @ColumnInfo(defaultValue = "'legacy'") val semanticsVersion: String = ForecastLearning.LEGACY_SEMANTICS,
 )
 
 @Dao
@@ -54,9 +61,9 @@ interface VerificationDao {
 
   @Query(
     "DELETE FROM pending_predictions WHERE providerId = :providerId AND variable = :variable " +
-      "AND targetTimestampMillis = :targetTimestampMillis",
+      "AND targetTimestampMillis = :targetTimestampMillis AND placeKey = :placeKey AND semanticsVersion = :semanticsVersion",
   )
-  suspend fun removePending(providerId: String, variable: String, targetTimestampMillis: Long)
+  suspend fun removePending(providerId: String, variable: String, targetTimestampMillis: Long, placeKey: String, semanticsVersion: String)
 
   @Insert
   suspend fun addVerifications(verifications: List<ForecastVerificationEntity>)
@@ -92,6 +99,8 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
           issuedAtMillis = it.issuedAtMillis,
           latitude = it.latitude,
           longitude = it.longitude,
+          placeKey = it.placeKey,
+          semanticsVersion = it.semanticsVersion,
         )
       },
     )
@@ -107,12 +116,14 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
         issuedAtMillis = it.issuedAtMillis,
         latitude = it.latitude,
         longitude = it.longitude,
+        placeKey = it.placeKey,
+        semanticsVersion = it.semanticsVersion,
       )
     }
 
   override suspend fun removePending(predictions: List<PendingPrediction>) {
     for (prediction in predictions) {
-      dao.removePending(prediction.providerId, prediction.variable, prediction.targetTimestampMillis)
+      dao.removePending(prediction.providerId, prediction.variable, prediction.targetTimestampMillis, prediction.placeKey, prediction.semanticsVersion)
     }
   }
 
@@ -126,6 +137,9 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
           horizonBucket = it.horizonBucket.name,
           absoluteError = it.absoluteError,
           verifiedAtMillis = it.verifiedAtMillis,
+          latitude = it.latitude,
+          longitude = it.longitude,
+          semanticsVersion = it.semanticsVersion,
         )
       },
     )
@@ -162,6 +176,9 @@ class RoomVerificationStore(private val dao: VerificationDao) : VerificationStor
     horizonBucket = HorizonBucket.valueOf(horizonBucket),
     absoluteError = absoluteError,
     verifiedAtMillis = verifiedAtMillis,
+    latitude = latitude,
+    longitude = longitude,
+    semanticsVersion = semanticsVersion,
   )
 
   companion object {

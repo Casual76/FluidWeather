@@ -53,7 +53,7 @@ data class AppWidgetModel(
   val longitude: Double?,
   /** Che ora e' in cielo: decide il disegno notturno e lo sfondo. */
   val dayPhase: DayPhase,
-  /** Quando risale il giro dei provider: null se non c'e' niente da mostrare. */
+  /** Oldest known acquisition of contributing data; unknown provenance stays null. */
   val dataAtMillis: Long?,
   val freshness: DataFreshness,
   val verdictLevel: AlertLevel?,
@@ -114,6 +114,7 @@ object AppWidgetModelBuilder {
     val kind = current?.kind ?: forecast?.kind
     val range = snapshot?.fused?.hours?.todayRange(nowMillis, zone) ?: (null to null)
     val phase = SkyScene.phaseOf(snapshot?.latitude, snapshot?.longitude, nowMillis, zone)
+    val sourceTime = snapshot?.sourceDataAtMillis?.takeIf { it in 0L..nowMillis }
     return AppWidgetModel(
       placeName = placeName,
       atmosphere = dev.pampa.fluidweather.core.ui.SkyAtmosphereEvidence.derive(snapshot?.context,
@@ -125,8 +126,8 @@ object AppWidgetModelBuilder {
       latitude = snapshot?.latitude,
       longitude = snapshot?.longitude,
       dayPhase = phase,
-      dataAtMillis = snapshot?.fetchedAtMillis,
-      freshness = DataAge.of(snapshot?.fetchedAtMillis, nowMillis),
+      dataAtMillis = sourceTime,
+      freshness = DataAge.of(sourceTime, nowMillis),
       // Il verdetto e' un fatto del barometro, non della taglia: si legge sempre, ma le taglie
       // che non lo disegnano non se lo portano dietro.
       verdictLevel = verdict?.levelOrNull()?.takeIf { tier != AppWidgetTier.SMALL },

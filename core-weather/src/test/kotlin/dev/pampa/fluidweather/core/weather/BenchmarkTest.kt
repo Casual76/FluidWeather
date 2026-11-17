@@ -2,6 +2,11 @@ package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.model.ForecastBundle
 import dev.pampa.fluidweather.core.model.ForecastVerification
+import dev.pampa.fluidweather.core.model.ForecastLearning
+import dev.pampa.fluidweather.core.model.Contribution
+import dev.pampa.fluidweather.core.model.FusedForecast
+import dev.pampa.fluidweather.core.model.FusedHour
+import dev.pampa.fluidweather.core.model.FusedValue
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.HourlyPoint
@@ -75,13 +80,16 @@ class BenchmarkTest {
   }
 
   @Test
-  fun `la pagella ordina per quota appresa e trova il migliore per variabile, senza contare le righe pioggia di una volta`() {
+  fun `la pagella separa quote effettive ed errori locali senza contare righe pioggia legacy`() {
     fun verification(providerId: String, variable: String, error: Double, daysAgo: Int = 0) = ForecastVerification(
       providerId = providerId,
       variable = variable,
       horizonBucket = HorizonBucket.SHORT,
       absoluteError = error,
       verifiedAtMillis = now - daysAgo * 86_400_000L,
+      latitude = 43.83,
+      longitude = 11.2,
+      semanticsVersion = ForecastLearning.CURRENT_SEMANTICS,
     )
     val verifications = buildList {
       repeat(25) {
@@ -101,7 +109,12 @@ class BenchmarkTest {
         add(verification("open-meteo", "${RainEvent.PREFIX}1_3", 0.35))
       }
     }
-    val report = Benchmark.build(verifications + legacyRain, now)
+    val fused = FusedForecast(listOf(FusedHour(now, mapOf(
+      FusionVariables.TEMPERATURE to FusedValue(20.0, listOf(Contribution("open-meteo", 0.8, 20.0), Contribution("open-meteo-icon", 0.2, 20.0))),
+      FusionVariables.WIND_SPEED to FusedValue(10.0, listOf(Contribution("open-meteo", 0.2, 10.0), Contribution("open-meteo-icon", 0.8, 10.0))),
+      FusionVariables.PRESSURE_MSL to FusedValue(1013.0, listOf(Contribution("met-norway", 1.0, 1013.0))),
+    ), null)), emptyMap())
+    val report = Benchmark.build(verifications + legacyRain, now, 43.83, 11.2, fused)
 
     assertEquals(3, report.ranking.size)
     // Quote: temperatura 1/(1.3)^2 vs 1/(2.3)^2 -> open-meteo domina; vento il contrario.

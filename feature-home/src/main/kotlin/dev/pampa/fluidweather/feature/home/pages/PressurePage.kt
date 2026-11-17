@@ -49,6 +49,7 @@ private val PeriodHours = listOf(12, 24, 72, 168)
  */
 @Composable
 internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
   // Su una localita' lontana il barometro di questo telefono non parla di quel posto: archivio,
   // marea sottratta e taratura sarebbero una pagina su un altro luogo. Al suo posto la pressione
   // che i provider prevedono qui, dichiarata per quello che e'.
@@ -124,8 +125,8 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
       PageSection(stringResource(R.string.pressure_clean_msl))
       CurveWithLabels(
         values = units.pressureSeries(shown.filtered.map { it.levelHpa }),
-        labels = timeLabels(shown.filtered.map { it.timestampMillis }),
-        timestamps = shown.filtered.map { it.timestampMillis },
+        labels = timeLabels(shown.filtered.map { it.timestampMillis }, zone),
+        timestamps = shown.filtered.map { it.timestampMillis }, zone = zone,
         color = PageBlue,
         unit = " " + units.pressureSymbol(),
         decimals = units.pressureChartDecimals() + 1,
@@ -135,8 +136,8 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
       PageSection(stringResource(R.string.pressure_raw_station))
       CurveWithLabels(
         values = units.pressureSeries(shown.cleaned.map { it.stationPressureHpa }),
-        labels = timeLabels(shown.cleaned.map { it.timestampMillis }),
-        timestamps = shown.cleaned.map { it.timestampMillis },
+        labels = timeLabels(shown.cleaned.map { it.timestampMillis }, zone),
+        timestamps = shown.cleaned.map { it.timestampMillis }, zone = zone,
         color = PageAmber,
         unit = " " + units.pressureSymbol(),
         decimals = units.pressureChartDecimals() + 1,
@@ -193,6 +194,7 @@ internal fun PressurePage(state: HomeUiState, deps: HomeDependencies) {
  */
 @Composable
 fun ProviderPressurePage(state: HomeUiState) {
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
   val units = rememberUnitFormatter()
   // L'ora al passo dell'ora, come nella pagina orario: `System.currentTimeMillis()` in
   // composizione cambierebbe la chiave ad ogni fotogramma e rifarebbe tutto.
@@ -211,7 +213,7 @@ fun ProviderPressurePage(state: HomeUiState) {
 
   val (firstMillis, current) = series.first()
   PageSection(stringResource(R.string.quality_forecast_valid,
-    dev.pampa.fluidweather.strings.TimeFormats.dayTime(firstMillis, zone(),
+    dev.pampa.fluidweather.strings.TimeFormats.dayTime(firstMillis, zone,
       androidx.compose.ui.platform.LocalConfiguration.current.locales[0])))
   BigStat(
     units.pressureValue(current, 1),
@@ -245,8 +247,8 @@ fun ProviderPressurePage(state: HomeUiState) {
   PageSection(stringResource(R.string.pressure_provider_series))
   CurveWithLabels(
     values = units.pressureSeries(series.map { it.second }),
-    labels = timeLabels(series.map { it.first }),
-    timestamps = series.map { it.first }, maxGapMillis = 90 * 60_000L,
+    labels = timeLabels(series.map { it.first }, zone),
+    timestamps = series.map { it.first }, maxGapMillis = 90 * 60_000L, zone = zone,
     color = PageBlue,
     unit = " " + units.pressureSymbol(),
     decimals = units.pressureChartDecimals() + 1,

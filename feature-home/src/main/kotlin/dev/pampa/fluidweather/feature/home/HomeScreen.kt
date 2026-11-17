@@ -165,7 +165,9 @@ fun HomeScreen(
   val context = LocalContext.current
   val appearance by deps.appearanceStore.settings.collectAsState(initial = AppearanceSettings())
   val deviceTier = remember { deviceGlassTier(context) }
-  val powerSave = remember { isPowerSaveActive(context) }
+  val powerSave by remember(context) { homePowerSaveChanges(context.applicationContext) }
+    .collectAsState(initial = isPowerSaveActive(context))
+  val engineSettings by deps.engineSettings.collectAsState(initial = EngineSettings())
   val glassLevel = GlassPolicy.resolve(appearance, powerSave, deviceTier)
 
   // La localita' che comanda la home: GPS o una salvata (fase 10).
@@ -202,7 +204,7 @@ fun HomeScreen(
   }
 
   FluidTheme(
-    settings = remember { EngineSettings(themeMode = ThemeMode.DARK, dynamicColorEnabled = false) },
+    settings = homeThemeSettings(engineSettings),
     brand = WeatherAccent.presetFor(state.weatherBrief?.current?.kind ?: state.kind, state.phase),
   ) {
     HomeShell(
@@ -726,7 +728,11 @@ private fun HomeWeatherHero(state: HomeUiState, gridState: LazyGridState, collap
         nowMillis = System.currentTimeMillis()
       }
     }
-    val age = dataAgeLabel(LocalContext.current.resources, state.dataAtMillis, nowMillis, state.loading)
+    val sourceTime = state.dataAtMillis?.takeIf { it <= nowMillis }
+    val hasWeather = state.temperatureC != null || state.kind != null || state.fusedHours.isNotEmpty() ||
+      state.weatherBrief?.current != null
+    val age = if (sourceTime == null && hasWeather) stringResource(R.string.widget_quality_age_unknown)
+      else dataAgeLabel(LocalContext.current.resources, sourceTime, nowMillis, state.loading)
     if (age != null) {
       Text(
         text = age,

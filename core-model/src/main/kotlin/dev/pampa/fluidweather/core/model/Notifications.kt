@@ -70,12 +70,29 @@ data class NotificationLedger(
   /** L'ultimo ciclo in background: quando e cosa ha fatto, per la diagnostica. */
   val lastCycleAtMillis: Long? = null,
   val lastCycleNote: String? = null,
+  /** The point whose local alert fields above describe; old installs have no known scope. */
+  val location: NotificationLocation? = null,
+  /** Recent other points, so travelling away and back does not announce the same event again. */
+  val previousLocations: List<LocalNotificationLedger> = emptyList(),
 ) {
   companion object {
     /** Oltre questi identificativi si dimenticano i piu' vecchi: le allerte scadono comunque. */
     const val MAX_OFFICIAL_IDS = 60
+    const val MAX_LOCAL_LOCATIONS = 12
   }
 }
+
+data class NotificationLocation(val placeKey: String, val latitude: Double, val longitude: Double)
+
+/** Only local weather dedupe is scoped; official identifiers and the scheduled day stay global. */
+data class LocalNotificationLedger(
+  val location: NotificationLocation,
+  val nowcastAlertAtMillis: Long? = null,
+  val nowcastAlertProbability: Double? = null,
+  val nowcastAlertActive: Boolean = false,
+  val precipitationOnsetMillis: Long? = null,
+  val precipitationEndMillis: Long? = null,
+)
 
 /** Una notifica pronta da consegnare: chi la consegna (sistema o banner in-app) decide come. */
 data class AppNotification(

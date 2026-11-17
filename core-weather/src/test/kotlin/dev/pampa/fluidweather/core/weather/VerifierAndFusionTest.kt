@@ -1,10 +1,13 @@
 package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.model.ForecastBundle
+import dev.pampa.fluidweather.core.model.ForecastLearning
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.PendingPrediction
 import dev.pampa.fluidweather.core.model.WeatherKind
+import dev.pampa.fluidweather.core.model.PrecipitationAccumulation
+import dev.pampa.fluidweather.core.model.AccumulationAnchor
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -26,6 +29,7 @@ class VerifierAndFusionTest {
     kind: WeatherKind? = null,
     latitude: Double = 43.83,
     longitude: Double = 11.2,
+    downloadedAt: Long = now,
   ): ProviderFetch {
     val descriptor = ProviderRegistry.all.first { it.id == providerId }
     val hours = (-6..24).map { h ->
@@ -39,8 +43,15 @@ class VerifierAndFusionTest {
         kind = kind,
       )
     }
-    return ProviderFetch(descriptor, ForecastBundle(providerId, now, latitude, longitude, hours), null)
+    return ProviderFetch(descriptor, ForecastBundle(providerId, downloadedAt, latitude, longitude, hours,
+      hourlyPrecipitation = PrecipitationAccumulation(3_600_000L, AccumulationAnchor.PRECEDING)), null)
   }
+
+  /** Synthetic peer analyses: explicitly named models, newly acquired after the closed target. */
+  private fun analyses(temperature: Double, downloadedAt: Long, latitude: Double = 43.83) = listOf(
+    ProviderRegistry.OPEN_METEO_ICON, ProviderRegistry.OPEN_METEO_ECMWF,
+    ProviderRegistry.OPEN_METEO_GFS, ProviderRegistry.OPEN_METEO_AROME,
+  ).map { bundle(it, { temperature }, latitude = latitude, downloadedAt = downloadedAt) }
 
   @Test
   fun `il verificatore semina, aspetta, e giudica contro la mediana`() = runTest {
@@ -58,8 +69,8 @@ class VerifierAndFusionTest {
     assertEquals(75, store.pending.size)
 
     // Tre ore dopo: i +1h e +3h sono scaduti; la verita' per la temperatura e' la mediana (21).
-    clock = now + 3 * 3_600_000L
-    verifier.settle(fetches)
+    clock = now + 3 * 3_600_000L + 60_000L
+    verifier.settle(analyses(21.0, clock))
 
     val judged = store.verifications.filter { it.variable == FusionVariables.TEMPERATURE }
     assertEquals(6, judged.size) // 3 provider x 2 orizzonti scaduti
@@ -86,13 +97,10 @@ class VerifierAndFusionTest {
     var clock = now
     val verifier = ForecastVerifier(store, clock = { clock })
     // Seminata a Sesto (43,83), giudicata con tre bundle a 13 km piu' a nord (43,95).
-    store.pending += PendingPrediction(descriptorId(0), FusionVariables.TEMPERATURE, now + 3_600_000L, 20.0, now, 43.83, 11.2)
+    store.pending += PendingPrediction(descriptorId(0), FusionVariables.TEMPERATURE, now + 3_600_000L, 20.0, now, 43.83, 11.2,
+      semanticsVersion = ForecastLearning.CURRENT_SEMANTICS)
     clock = now + 2 * 3_600_000L
-    val altrove = listOf(
-      bundle(descriptorId(0), { 25.0 }, latitude = 43.95),
-      bundle(descriptorId(1), { 25.0 }, latitude = 43.95),
-      bundle(descriptorId(2), { 25.0 }, latitude = 43.95),
-    )
+    val altrove = analyses(25.0, clock, latitude = 43.95)
 
     verifier.settle(altrove)
     assertTrue("nessun giudizio con la mediana di un altro posto", store.verifications.isEmpty())
@@ -100,18 +108,14 @@ class VerifierAndFusionTest {
 
     // Con tre bundle del posto (a meno di un km) si giudica.
     verifier.settle(
-      listOf(
-        bundle(descriptorId(0), { 21.0 }, latitude = 43.835),
-        bundle(descriptorId(1), { 21.0 }, latitude = 43.835),
-        bundle(descriptorId(2), { 21.0 }, latitude = 43.835),
-      ),
+      analyses(21.0, clock, latitude = 43.835),
     )
     assertEquals(1.0, store.verifications.single().absoluteError, 1e-9)
     assertTrue(store.pending.isEmpty())
   }
 
   @Test
-  fun `una riga di prima, senza punto, si giudica come allora`() = runTest {
+  fun `una riga legacy senza punto resta non giudicata fino alla scadenza`() = runTest {
     val store = InMemoryVerificationStore()
     var clock = now
     val verifier = ForecastVerifier(store, clock = { clock })
@@ -119,14 +123,14 @@ class VerifierAndFusionTest {
     clock = now + 2 * 3_600_000L
 
     verifier.settle(
-      listOf(
-        bundle(descriptorId(0), { 22.0 }, latitude = 43.95),
-        bundle(descriptorId(1), { 22.0 }, latitude = 43.95),
-        bundle(descriptorId(2), { 22.0 }, latitude = 43.95),
-      ),
+      analyses(22.0, clock, latitude = 43.95),
     )
 
-    assertEquals(2.0, store.verifications.single().absoluteError, 1e-9)
+    assertTrue(store.verifications.isEmpty())
+    assertEquals(1, store.pending.size)
+    clock = now + 8 * 3_600_000L
+    verifier.settle(analyses(22.0, clock))
+    assertTrue(store.pending.isEmpty())
   }
 
   @Test
@@ -135,10 +139,11 @@ class VerifierAndFusionTest {
     var clock = now
     val verifier = ForecastVerifier(store, minTruthOpinions = 3, clock = { clock })
 
-    store.pending += PendingPrediction(descriptorId(0), FusionVariables.TEMPERATURE, now + 3_600_000L, 20.0, now)
+    store.pending += PendingPrediction(descriptorId(0), FusionVariables.TEMPERATURE, now + 3_600_000L, 20.0, now, 43.83, 11.2,
+      semanticsVersion = ForecastLearning.CURRENT_SEMANTICS)
     clock = now + 2 * 3_600_000L
     // Solo due opinioni fresche: niente mediana, niente giudizio, la pendente resta.
-    verifier.settle(listOf(bundle(descriptorId(0), { 20.0 }), bundle(descriptorId(1), { 22.0 })))
+    verifier.settle(analyses(22.0, clock).take(2))
 
     assertTrue(store.verifications.isEmpty())
     assertEquals(1, store.pending.size)

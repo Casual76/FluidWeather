@@ -13,13 +13,17 @@ data class DaySummary(
   val minC: Double,
   val maxC: Double,
   val precipitationProbabilityMaxPercent: Double?,
-  val precipitationMm: Double,
+  val precipitationMm: Double?,
   val windMaxKmh: Double?,
   val windGustMaxKmh: Double?,
   val sunriseMillis: Long?,
   val sunsetMillis: Long?,
   /** Le ore fuse del giorno, nell'ordine: chi vuole il dettaglio le ha gia' in mano. */
   val hours: List<FusedHour>,
+  val rainHours: List<FusedHour> = emptyList(),
+  val precipitationSampleSumMm: Double? = precipitationMm,
+  val precipitationSamples: Int = 0,
+  val precipitationExpectedSamples: Int = 0,
 )
 
 /**
@@ -57,18 +61,24 @@ object DailyAggregate {
       } else {
         null
       }
+      val rain = hours.precipitationSummary(date.atStartOfDay(zone).toInstant().toEpochMilli(),
+        date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
       DaySummary(
         date = date,
         kind = kind,
         minC = temps.min(),
         maxC = temps.max(),
-        precipitationProbabilityMaxPercent = sorted.mapNotNull { it.values[FusionVariables.PRECIP_PROBABILITY]?.value }.maxOrNull(),
-        precipitationMm = sorted.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 },
+        precipitationProbabilityMaxPercent = rain.probabilityMaxPercent,
+        precipitationMm = rain.amountMm,
         windMaxKmh = sorted.mapNotNull { it.values[FusionVariables.WIND_SPEED]?.value }.maxOrNull(),
         windGustMaxKmh = sorted.mapNotNull { it.values[FusionVariables.WIND_GUST]?.value }.maxOrNull(),
         sunriseMillis = sun?.sunriseMillis,
         sunsetMillis = sun?.sunsetMillis,
         hours = sorted,
+        rainHours = rain.hours,
+        precipitationSampleSumMm = rain.sampleAmountMm,
+        precipitationSamples = rain.availableAmountSamples,
+        precipitationExpectedSamples = rain.expectedSamples,
       )
     }
   }
@@ -82,22 +92,34 @@ object DailyAggregate {
     val minC: Double?,
     val maxC: Double?,
     val precipitationProbabilityMaxPercent: Double?,
-    val precipitationMm: Double,
+    val precipitationMm: Double?,
     val windMaxKmh: Double?,
+    val rainHours: List<FusedHour> = emptyList(),
+    val precipitationSampleSumMm: Double? = precipitationMm,
+    val precipitationSamples: Int = 0,
+    val precipitationExpectedSamples: Int = 0,
   )
 
   fun parts(day: DaySummary, zone: ZoneId): List<PartSummary> = DayPart.entries.mapNotNull { part ->
     val hours = day.hours.filter { Instant.ofEpochMilli(it.timestampMillis).atZone(zone).hour in part.hours }
-    if (hours.isEmpty()) return@mapNotNull null
+    val start = day.date.atTime(part.hours.first, 0).atZone(zone).toInstant().toEpochMilli()
+    val end = if (part == DayPart.EVENING) day.date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+      else day.date.atTime(part.hours.last + 1, 0).atZone(zone).toInstant().toEpochMilli()
+    val rain = day.rainHours.precipitationSummary(start, end)
+    if (hours.isEmpty() && rain.hours.isEmpty()) return@mapNotNull null
     val temps = hours.mapNotNull { it.values[FusionVariables.TEMPERATURE]?.value }
     PartSummary(
       part = part,
       kind = hours.mapNotNull { it.kind }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key,
       minC = temps.minOrNull(),
       maxC = temps.maxOrNull(),
-      precipitationProbabilityMaxPercent = hours.mapNotNull { it.values[FusionVariables.PRECIP_PROBABILITY]?.value }.maxOrNull(),
-      precipitationMm = hours.sumOf { it.values[FusionVariables.PRECIPITATION]?.value ?: 0.0 },
+      precipitationProbabilityMaxPercent = rain.probabilityMaxPercent,
+      precipitationMm = rain.amountMm,
       windMaxKmh = hours.mapNotNull { it.values[FusionVariables.WIND_SPEED]?.value }.maxOrNull(),
+      rainHours = rain.hours,
+      precipitationSampleSumMm = rain.sampleAmountMm,
+      precipitationSamples = rain.availableAmountSamples,
+      precipitationExpectedSamples = rain.expectedSamples,
     )
   }
 }

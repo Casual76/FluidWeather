@@ -1,9 +1,9 @@
 package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.model.ForecastVerification
+import dev.pampa.fluidweather.core.model.FusedForecast
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HorizonBucket
-import kotlin.math.pow
 
 /** Il punteggio di un provider su una variabile: MAE decaduto, quante verifiche, se pesa. */
 data class ProviderScore(
@@ -17,7 +17,7 @@ data class ProviderScore(
 /** La riga della classifica generale. */
 data class ProviderRank(
   val providerId: String,
-  /** La quota media di peso appreso sulle variabili verificate, in [0,1]. */
+  /** Actual mean contribution to the latest forecast across all its linear hour/variable cells. */
   val share: Double,
   val verifications: Int,
   /** Le variabili in cui e' il migliore della zona. */
@@ -29,8 +29,8 @@ data class ProviderRank(
 data class DailyError(val epochDay: Long, val mae: Double, val count: Int)
 
 /**
- * La pagella della zona, tutta dalle verifiche vere: nessun numero qui e' un'opinione
- * editoriale. Chi non ha ancora verifiche non compare: la pagina lo dice, non lo inventa.
+ * Local historical peer-analysis errors and the actual latest forecast contribution shares.
+ * A contributing provider may have no history yet: its forecast uses regional priors.
  */
 data class BenchmarkReport(
   val ranking: List<ProviderRank>,
@@ -43,16 +43,14 @@ data class BenchmarkReport(
 )
 
 /**
- * Costruisce la pagella con la STESSA matematica del tabellone della fusione (MAE decaduto con
- * dimezzamento a 14 giorni, peso 1/(MAE+0,3)², soglia di 20 verifiche): la classifica che si
- * legge e' la classifica che comanda i pesi, non una sua parafrasi.
+ * Error eligibility and decay are shared with ProviderScoreboard. Shares come from the saved
+ * fusion; historical errors cannot identify current coverage, contributing providers or overrides.
  */
 object Benchmark {
 
   const val DAYS = 14
-  const val MIN_VERIFICATIONS = 20
-  const val HALF_LIFE_DAYS = 14.0
-  private const val MAE_EPSILON = 0.3
+  const val MIN_VERIFICATIONS = LocalProviderLearning.MIN_VERIFICATIONS
+  const val HALF_LIFE_DAYS = LocalProviderLearning.HALF_LIFE_DAYS
 
   /**
    * [stored] e' quello che il magazzino restituisce: ci sono anche le righe `rain_event_*` di quando
@@ -60,44 +58,35 @@ object Benchmark {
    * pioggia ha la sua classifica, [RainBoard]): contarle gonfierebbe "verifiche raccolte" e
    * nasconderebbe la pagina vuota a chi ha solo quelle.
    */
-  fun build(stored: List<ForecastVerification>, nowMillis: Long): BenchmarkReport {
-    val verifications = stored.filterNot { RainEvent.isRainEvent(it.variable) }
-
-    fun decay(v: ForecastVerification): Double =
-      0.5.pow((nowMillis - v.verifiedAtMillis) / 86_400_000.0 / HALF_LIFE_DAYS)
+  fun build(
+    stored: List<ForecastVerification>, nowMillis: Long,
+    latitude: Double? = null, longitude: Double? = null, fused: FusedForecast? = null,
+  ): BenchmarkReport {
+    val verifications = LocalProviderLearning.eligible(stored, latitude, longitude, nowMillis)
+      .filter { it.variable in FusionVariables.verified }
 
     fun scores(variable: String): List<ProviderScore> =
       verifications
         .filter { it.variable == variable && it.horizonBucket == HorizonBucket.SHORT }
         .groupBy { it.providerId }
         .mapNotNull { (providerId, own) ->
-          val weights = own.sumOf { decay(it) }
-          if (weights <= 0.0) return@mapNotNull null
+          val stats = LocalProviderLearning.statistics(own, nowMillis)
+          if (!stats.mae.isFinite()) return@mapNotNull null
           ProviderScore(
             providerId = providerId,
-            decayedMae = own.sumOf { decay(it) * it.absoluteError } / weights,
-            count = own.size,
-            learned = own.size >= MIN_VERIFICATIONS && weights > 1.0,
+            decayedMae = stats.mae,
+            count = stats.count,
+            learned = stats.learned,
           )
         }
         .sortedBy { it.decayedMae }
 
     val byVariable = FusionVariables.verified.associateWith { scores(it) }.filterValues { it.isNotEmpty() }
 
-    // La quota per variabile e' il peso appreso normalizzato fra chi ha verifiche; la classifica
-    // generale e' la media delle quote sulle variabili in cui il provider e' stato giudicato.
-    val shares = mutableMapOf<String, MutableList<Double>>()
-    byVariable.forEach { (_, list) ->
-      val weights = list.associate { it.providerId to 1.0 / (it.decayedMae + MAE_EPSILON).pow(2) }
-      val total = weights.values.sum()
-      weights.forEach { (providerId, weight) ->
-        shares.getOrPut(providerId) { mutableListOf() } += weight / total
-      }
-    }
-    val ranking = shares.map { (providerId, list) ->
+    val ranking = actualShares(fused).map { (providerId, share) ->
       ProviderRank(
         providerId = providerId,
-        share = list.average(),
+        share = share,
         verifications = verifications.count { it.providerId == providerId },
         bestAt = byVariable.filter { (_, scores) -> scores.firstOrNull()?.providerId == providerId }.keys.toList(),
         maeByVariable = byVariable.mapNotNull { (variable, scores) ->
@@ -125,5 +114,22 @@ object Benchmark {
       totalVerifications = verifications.size,
       firstVerificationMillis = verifications.minOfOrNull { it.verifiedAtMillis },
     )
+  }
+
+  private fun actualShares(fused: FusedForecast?): Map<String, Double> {
+    val totals = mutableMapOf<String, Double>()
+    var cells = 0
+    for (value in fused?.hours.orEmpty().flatMap { it.values.values }) {
+      if (!value.value.isFinite()) continue
+      val contributions = value.contributions.filter { it.weight.isFinite() && it.weight > 0.0 }
+      val total = contributions.sumOf { it.weight }
+      if (!total.isFinite() || total <= 0.0) continue
+      cells++
+      for (contribution in contributions) {
+        totals[contribution.providerId] = (totals[contribution.providerId] ?: 0.0) + contribution.weight / total
+      }
+    }
+    // All providers share a denominator: absence from a cell contributes zero.
+    return if (cells == 0) emptyMap() else totals.mapValues { it.value / cells }
   }
 }

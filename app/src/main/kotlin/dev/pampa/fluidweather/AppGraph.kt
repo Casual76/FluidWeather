@@ -6,11 +6,14 @@ import dev.antigravity.fluidengine.storage.EngineSettingsStore
 import dev.pampa.fluidweather.core.cycle.networkLikelyAvailable
 import dev.pampa.fluidweather.core.data.CrashLog
 import dev.pampa.fluidweather.core.data.DataWipeGuard
+import dev.pampa.fluidweather.core.data.clearUserData
 import dev.pampa.fluidweather.core.data.FluidWeatherDatabase
 import dev.pampa.fluidweather.core.cycle.AppVisibility
 import dev.pampa.fluidweather.core.cycle.BackgroundCycle
 import dev.pampa.fluidweather.core.cycle.CycleTrigger
 import dev.pampa.fluidweather.core.cycle.DailySummaryAlarm
+import dev.pampa.fluidweather.core.cycle.DailySummarySchedule
+import dev.pampa.fluidweather.core.cycle.DailySummaryWork
 import dev.pampa.fluidweather.core.cycle.InAppAlertBus
 import dev.pampa.fluidweather.core.cycle.PlaceContextResolver
 import dev.pampa.fluidweather.core.cycle.SystemNotifier
@@ -109,6 +112,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import dev.pampa.fluidweather.feature.settings.ReleaseSettingsStore
 import dev.pampa.fluidweather.feature.settings.UpdateDependencies
 
@@ -438,7 +442,10 @@ class AppGraph(context: Context) {
    */
   private suspend fun calibrationReference(): CalibrationReferenceSample? {
     val now = System.currentTimeMillis()
-    val here = runCatching { locationProvider.snapshot() }.getOrNull()
+    val here = runCatching { locationProvider.snapshot() }.getOrElse {
+      if (it is kotlinx.coroutines.CancellationException) throw it
+      null
+    }
     val snapshot = if (here != null) {
       snapshotRefresher.fresh(WeatherSnapshot.GPS_KEY, here.latitude, here.longitude, maxAgeMillis = REFERENCE_MAX_AGE_MILLIS)
         ?: runCatching {
@@ -450,15 +457,18 @@ class AppGraph(context: Context) {
             here.longitude,
             registerPredictions = if (here.isFreshAt(now)) null else false,
           )
-        }.getOrNull()
+        }.getOrElse {
+          if (it is kotlinx.coroutines.CancellationException) throw it
+          null
+        }
     } else {
       weatherSnapshotStore.read(WeatherSnapshot.GPS_KEY)?.takeIf { it.ageMillis(now) <= REFERENCE_MAX_AGE_MILLIS }
     } ?: return null
     val hour = snapshot.fused.nearestHour(now)?.first ?: return null
-    if (abs(hour.timestampMillis - now) > 90 * 60_000L) return null
+    if (abs(hour.timestampMillis - now) > 30 * 60_000L) return null
     val msl = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return null
     return CalibrationReferenceSample(
-      atMillis = now,
+      atMillis = hour.timestampMillis,
       mslHpa = msl,
       temperatureCelsius = hour.values[FusionVariables.TEMPERATURE]?.value,
       latitude = here?.latitude ?: snapshot.latitude,
@@ -535,40 +545,66 @@ class AppGraph(context: Context) {
   suspend fun wipeAllData() {
     // Sotto il guardiano: chi sta scrivendo in background (ristima, giudice, registratore) o finisce
     // prima o, se aveva letto prima della cancellazione, si accorge che e' passata e non scrive.
-    wipeGuard.wipe {
-      weatherSummaryService.clear()
-      weatherBriefService.clear()
-      pressureRepository.clear()
-      verificationStore.clear()
-      nowcastHistoryStore.clear()
-      observationRepository.clear()
-      calibrationStore.clear()
-      barometerBaselineStore.clear()
-      learningRepository.clear()
-      learningStore.clear()
+    try {
+      wipeGuard.wipe {
+        dev.pampa.fluidweather.core.data.clearUserData(
+          { weatherSummaryService.clear() },
+          { weatherBriefService.clear() },
+          { pressureRepository.clear() },
+          { verificationStore.clear() },
+          { nowcastHistoryStore.clear() },
+          { observationRepository.clear() },
+          { calibrationStore.clear() },
+          { barometerBaselineStore.clear() },
+          { learningRepository.clear() },
+          { learningStore.clear() },
       // Le righe della classifica pioggia e tutto cio' che dice dove sei stato: l'ultimo fix e le
       // climatologie per cella (che svuota anche il freno orario del giudice).
-      rainEventStore.clear()
-      lastFixStore.clear()
-      localClimatologyStore.clear()
-      notificationLedgerStore.update { NotificationLedger() }
-      weatherSnapshotStore.clear()
-      File(appContext.cacheDir, "providers").deleteRecursively()
-      radarTiles.clear()
-      aiAssistant.diagnostics.clear()
+          { rainEventStore.clear() },
+          { lastFixStore.clear() },
+          { localClimatologyStore.clear() },
+          { notificationLedgerStore.update { NotificationLedger() } },
+          { weatherSnapshotStore.clear() },
+          {
+            withContext(Dispatchers.IO) {
+              val directory = File(appContext.cacheDir, "providers")
+              check(!directory.exists() || directory.deleteRecursively()) { "Could not clear provider cache" }
+            }
+          },
+          { radarTiles.clear() },
+          { aiAssistant.diagnostics.clear() },
+        )
+      }
+    } finally {
+      // Invalidate memory even when one store could not be deleted.
+      nowcastUseCase.invalidateLearning()
     }
-    // La cache dell'apprendimento da un'ora teneva in vita le mappe appena cancellate.
-    nowcastUseCase.invalidateLearning()
   }
 
   /** Il riepilogo giornaliero segue l'impostazione: programmato all'ora scelta, o cancellato. */
   suspend fun rescheduleDailySummary() {
     val settings = notificationSettingsStore.current()
     if (settings.dailySummary) {
-      DailySummaryAlarm.schedule(appContext, settings.summaryHour, settings.summaryMinute)
+      try {
+        val due = DailySummarySchedule.pendingOccurrence(
+          System.currentTimeMillis(), settings, notificationLedgerStore.current().summaryEpochDay,
+          java.time.ZoneId.systemDefault(),
+        )
+        if (due != null) DailySummaryWork.enqueue(appContext, due)
+      } finally {
+        // Re-arm even if today's durable handoff failed; another startup can recover today.
+        DailySummaryAlarm.schedule(appContext, settings.summaryHour, settings.summaryMinute)
+      }
     } else {
       DailySummaryAlarm.cancel(appContext)
+      DailySummaryWork.cancel(appContext)
     }
+  }
+
+  suspend fun runDailySummary(dueAtMillis: Long): Boolean {
+    val settings = notificationSettingsStore.current()
+    if (!DailySummarySchedule.isCurrentOccurrence(dueAtMillis, System.currentTimeMillis(), settings, java.time.ZoneId.systemDefault())) return true
+    return !backgroundCycle.run(CycleTrigger.DAILY_SUMMARY, dueAtMillis).dailySummaryPending
   }
 
   private companion object {

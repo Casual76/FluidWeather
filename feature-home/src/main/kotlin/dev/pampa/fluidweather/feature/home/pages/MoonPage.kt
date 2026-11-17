@@ -56,8 +56,9 @@ internal fun MoonPage(state: HomeUiState) {
   var offsetDays by remember { mutableIntStateOf(0) }
   val units = rememberUnitFormatter()
   val now = System.currentTimeMillis()
-  val selected = now + offsetDays * 86_400_000L
-  val date = localDate(selected)
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
+  val selected = java.time.Instant.ofEpochMilli(now).atZone(zone).plusDays(offsetDays.toLong()).toInstant().toEpochMilli()
+  val date = localDate(selected, zone)
 
   PageSection(if (offsetDays == 0) stringResource(R.string.common_now) else fmtDate(date))
   DayScrubber(offsetDays = offsetDays, onOffsetChange = { offsetDays = it })
@@ -96,20 +97,20 @@ internal fun MoonPage(state: HomeUiState) {
     }
     StatGrid(
       listOf(
-        stringResource(R.string.moon_rises) to (times.riseMillis?.let { fmtTime(it) } ?: stringResource(R.string.moon_no_rise)),
-        stringResource(R.string.moon_sets) to (times.setMillis?.let { fmtTime(it) } ?: stringResource(R.string.moon_no_set)),
+        stringResource(R.string.moon_rises) to (times.riseMillis?.let { fmtTime(it, zone) } ?: stringResource(R.string.moon_no_rise)),
+        stringResource(R.string.moon_sets) to (times.setMillis?.let { fmtTime(it, zone) } ?: stringResource(R.string.moon_no_set)),
       ),
     )
   }
 
   PageSection(stringResource(R.string.moon_next_phases))
   nextPhases(now).forEach { (label, millis) ->
-    StatRow(label, fmtDay(millis), fmtTime(millis))
+    StatRow(label, fmtDay(millis, zone), fmtTime(millis, zone))
   }
 
   val month = YearMonth.from(date)
   PageSection(stringResource(R.string.moon_calendar_of) + DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()).format(month).replaceFirstChar { it.uppercase() })
-  MonthCalendar(month = month, selected = date, today = localDate(now))
+  MonthCalendar(month = month, selected = date, today = localDate(now, zone), zone = zone)
   PageDisclosure {
     PageNote(stringResource(R.string.moon_skip_note))
     PageNote(stringResource(R.string.moon_method_note))
@@ -182,7 +183,7 @@ private fun DayScrubber(offsetDays: Int, onOffsetChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun MonthCalendar(month: YearMonth, selected: LocalDate, today: LocalDate) {
+private fun MonthCalendar(month: YearMonth, selected: LocalDate, today: LocalDate, zone: java.time.ZoneId) {
   val first = month.atDay(1)
   val leading = first.dayOfWeek.value - 1 // lunedi' = 0
   val cells = List(leading) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
@@ -198,7 +199,7 @@ private fun MonthCalendar(month: YearMonth, selected: LocalDate, today: LocalDat
       week.forEach { day ->
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
           if (day != null) {
-            val noon = day.atTime(12, 0).atZone(zone()).toInstant().toEpochMilli()
+            val noon = day.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
             val age = Moon.ageDays(noon)
             Charts.MoonDisc(
               illuminatedFraction = Moon.illuminatedFraction(noon),

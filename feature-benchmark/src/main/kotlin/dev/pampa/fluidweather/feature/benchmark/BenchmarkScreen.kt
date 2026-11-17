@@ -106,7 +106,7 @@ fun BenchmarkSheet(open: Boolean, deps: BenchmarkDependencies, onDismiss: () -> 
 }
 
 /** Le due pagelle della pagina, pronte insieme: il foglio si disegna una volta sola. */
-private class BenchmarkState(val report: BenchmarkReport, val rain: RainBoardReport)
+private class BenchmarkState(val report: BenchmarkReport, val rain: RainBoardReport, val snapshot: WeatherSnapshot?)
 
 @Composable
 private fun BenchmarkContent(deps: BenchmarkDependencies) {
@@ -117,19 +117,18 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
     // sul thread dell'interfaccia.
     value = withContext(Dispatchers.Default) {
       val verifications = runCatching {
-        deps.verificationStore.allVerifications(now - 60L * 86_400_000L)
+        deps.verificationStore.allVerifications(Long.MIN_VALUE)
       }.getOrDefault(emptyList())
       val rainRows = runCatching {
         deps.rainEventStore.verifications(ModelVersions.TAG, now - RainBoard.WINDOW_MILLIS)
       }.getOrDefault(emptyList())
+      val snapshot = deps.snapshotStore.read(WeatherSnapshot.GPS_KEY)
       BenchmarkState(
-        report = Benchmark.build(verifications, now),
+        report = Benchmark.build(verifications, now, snapshot?.latitude, snapshot?.longitude, snapshot?.fused),
         rain = RainBoard.build(rainRows, now, deps.barometerAvailable),
+        snapshot = snapshot,
       )
     }
-  }
-  val snapshot by produceState<WeatherSnapshot?>(initialValue = null) {
-    value = deps.snapshotStore.read(WeatherSnapshot.GPS_KEY)
   }
   val onlyProvider by deps.fusionSettings.onlyProviderId.collectAsState(initial = null)
 
@@ -150,7 +149,7 @@ private fun BenchmarkContent(deps: BenchmarkDependencies) {
   } else {
     StatRow(stringResource(R.string.bench_collected), "${ready.totalVerifications}", first?.let { stringResource(R.string.bench_since, fmtDay(it)) })
     StatRow(stringResource(R.string.bench_threshold), stringResource(R.string.bench_per_variable, Benchmark.MIN_VERIFICATIONS), stringResource(R.string.bench_below_threshold))
-    val current = snapshot
+    val current = loaded.snapshot
     if (current != null) {
       StatRow(stringResource(R.string.bench_last_round), stringResource(R.string.bench_providers_count, current.providersResponding, current.fetches.size), fmtTime(current.fetchedAtMillis))
     }

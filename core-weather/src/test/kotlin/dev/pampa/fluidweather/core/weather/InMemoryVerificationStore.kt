@@ -16,7 +16,8 @@ class InMemoryVerificationStore : VerificationStore {
       pending.removeAll {
         it.providerId == prediction.providerId &&
           it.variable == prediction.variable &&
-          it.targetTimestampMillis == prediction.targetTimestampMillis
+          it.targetTimestampMillis == prediction.targetTimestampMillis &&
+          it.placeKey == prediction.placeKey && it.semanticsVersion == prediction.semanticsVersion
       }
       pending += prediction
     }
@@ -30,7 +31,8 @@ class InMemoryVerificationStore : VerificationStore {
       predictions.any {
         it.providerId == candidate.providerId &&
           it.variable == candidate.variable &&
-          it.targetTimestampMillis == candidate.targetTimestampMillis
+          it.targetTimestampMillis == candidate.targetTimestampMillis &&
+          it.placeKey == candidate.placeKey && it.semanticsVersion == candidate.semanticsVersion
       }
     }
   }

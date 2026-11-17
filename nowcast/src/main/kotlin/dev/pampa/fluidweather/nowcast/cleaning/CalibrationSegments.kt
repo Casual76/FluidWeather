@@ -74,12 +74,15 @@ object CalibrationSegments {
       // In viaggio si butta, e si chiude il tratto: e' la scelta esplicita di scartare il
       // movimento invece di pesarlo poco. Una lettura presa in auto non e' una lettura imprecisa,
       // e' la pressione di una cabina.
-      if (TransitRule.isInTransit(sample.activity, sample.activityConfidence)) {
+      if (!sample.pressureHpa.isFinite() || sample.pressureHpa !in 300.0..1100.0 ||
+        TransitRule.isInTransit(sample.activity, sample.activityConfidence)) {
         close()
         continue
       }
       val anchor = run.firstOrNull()
-      if (anchor != null && !sample.staysWith(anchor, stableAltitudeMeters, stableRadiusMeters)) {
+      val previous = run.lastOrNull()
+      if (anchor != null && (!sample.staysWith(anchor, stableAltitudeMeters, stableRadiusMeters) ||
+          previous != null && sample.timestampMillis - previous.timestampMillis > MAX_SAMPLE_GAP_MILLIS)) {
         close()
       }
       run += sample
@@ -116,6 +119,7 @@ object CalibrationSegments {
   ): Boolean {
     val altitudeHere = altitudeMeters
     val altitudeThere = anchor.altitudeMeters
+    if ((altitudeHere == null) != (altitudeThere == null)) return false
     if (altitudeHere != null && altitudeThere != null &&
       abs(altitudeHere - altitudeThere) > stableAltitudeMeters
     ) {
@@ -125,6 +129,7 @@ object CalibrationSegments {
     val lonHere = longitude
     val latThere = anchor.latitude
     val lonThere = anchor.longitude
+    if ((latHere != null && lonHere != null) != (latThere != null && lonThere != null)) return false
     if (latHere != null && lonHere != null && latThere != null && lonThere != null) {
       if (metersBetween(latHere, lonHere, latThere, lonThere) > stableRadiusMeters) return false
     }
@@ -144,6 +149,7 @@ object CalibrationSegments {
   }
 
   private const val EARTH_RADIUS_M = 6_371_000.0
+  private const val MAX_SAMPLE_GAP_MILLIS = 5_000L
 }
 
 /**
@@ -163,26 +169,35 @@ data class CalibrationReferenceSample(
 
   /**
    * Quanto questo riferimento vale per quel tratto: 1 se e' li' e adesso, e scende con la
-   * distanza nel tempo e nello spazio. Non e' una soglia perche' un riferimento lontano non e'
-   * sbagliato — la pressione al mare e' un campo liscio — e' solo meno informativo.
+   * distanza nel tempo e nello spazio. Oltre le soglie non e' un confronto simultaneo: la
+   * pressione cambiata col tempo non puo' diventare un bias permanente del dispositivo.
    */
   fun weightFor(segment: CalibrationSegment): Double {
-    val middle = (segment.fromMillis + segment.toMillis) / 2
+    if (!mslHpa.isFinite() || mslHpa !in 800.0..1100.0 ||
+      temperatureCelsius?.isFinite() == false) return 0.0
+    val middle = segment.fromMillis + (segment.toMillis - segment.fromMillis) / 2
     val minutes = abs(middle - atMillis) / 60_000.0
+    if (minutes > MAX_SEPARATION_MINUTES) return 0.0
     val latHere = latitude
     val lonHere = longitude
     val latThere = segment.latitude
     val lonThere = segment.longitude
+    val located = latHere != null && lonHere != null && latThere != null && lonThere != null
     val km = if (latHere != null && lonHere != null && latThere != null && lonThere != null) {
+      if (!latHere.isFinite() || !lonHere.isFinite() || !latThere.isFinite() || !lonThere.isFinite() ||
+        abs(latHere) > 90 || abs(latThere) > 90 || abs(lonHere) > 180 || abs(lonThere) > 180) return 0.0
       CalibrationSegments.metersBetween(latHere, lonHere, latThere, lonThere) / 1000.0
     } else {
       0.0
     }
-    return 1.0 / (1.0 + minutes / TOLERATED_MINUTES + km / TOLERATED_KM)
+    if (km > MAX_SEPARATION_KM) return 0.0
+    return (if (located) 1.0 else UNKNOWN_LOCATION_WEIGHT) /
+      (1.0 + minutes / MAX_SEPARATION_MINUTES + km / MAX_SEPARATION_KM)
   }
 
-  private companion object {
-    const val TOLERATED_MINUTES = 30.0
-    const val TOLERATED_KM = 10.0
+  companion object {
+    const val MAX_SEPARATION_MINUTES = 30.0
+    const val MAX_SEPARATION_KM = 10.0
+    const val UNKNOWN_LOCATION_WEIGHT = 0.5
   }
 }

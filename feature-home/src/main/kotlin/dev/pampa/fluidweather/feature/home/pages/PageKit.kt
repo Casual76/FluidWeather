@@ -62,16 +62,16 @@ internal val Faint = Color.White.copy(alpha = 0.5f)
 
 internal fun zone(): ZoneId = ZoneId.systemDefault()
 
-internal fun fmtHour(millis: Long): String = TimeFormats.hour(millis, zone())
+internal fun fmtHour(millis: Long, zone: ZoneId = zone()): String = TimeFormats.hour(millis, zone)
 
-internal fun fmtTime(millis: Long): String = TimeFormats.time(millis, zone())
+internal fun fmtTime(millis: Long, zone: ZoneId = zone()): String = TimeFormats.time(millis, zone)
 
-internal fun fmtDay(millis: Long): String = TimeFormats.day(millis, zone())
+internal fun fmtDay(millis: Long, zone: ZoneId = zone()): String = TimeFormats.day(millis, zone)
 
 internal fun fmtDate(date: LocalDate): String = TimeFormats.longDate(date)
 
 /** L'ora del giorno come numero: per decidere, non per mostrare (il testo lo fa [fmtHour]). */
-internal fun hourOfDay(millis: Long): Int = Instant.ofEpochMilli(millis).atZone(zone()).hour
+internal fun hourOfDay(millis: Long, zone: ZoneId = zone()): Int = Instant.ofEpochMilli(millis).atZone(zone).hour
 
 internal fun fmt1(value: Double): String = String.format(Locale.getDefault(), "%.1f", value)
 
@@ -79,7 +79,7 @@ internal fun fmt0(value: Double): String = String.format(Locale.getDefault(), "%
 
 internal fun fmtDuration(millis: Long): String = "${millis / 3_600_000L}h ${(millis / 60_000L) % 60}m"
 
-internal fun localDate(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(zone()).toLocalDate()
+internal fun localDate(millis: Long, zone: ZoneId = zone()): LocalDate = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
 
 @Composable
 internal fun PageSection(title: String) = BlackSheetSectionTitle(title)
@@ -176,6 +176,7 @@ internal fun CurveWithLabels(
   decimals: Int = 0,
   timestamps: List<Long>? = null,
   maxGapMillis: Long = 30 * 60_000L,
+  zone: ZoneId = zone(),
 ) {
   if (values.size < 2) {
     PageNote(stringResource(R.string.page_no_curve))
@@ -213,8 +214,8 @@ internal fun CurveWithLabels(
       val start = timestamps.first()
       val end = timestamps.last()
       listOf(start, start + (end - start) / 2, end).map {
-        if (end - start > 36 * 3_600_000L) TimeFormats.shortDate(it, zone()) + "\n" + fmtTime(it)
-        else fmtTime(it)
+        if (end - start > 36 * 3_600_000L) TimeFormats.shortDate(it, zone) + "\n" + fmtTime(it, zone)
+        else fmtTime(it, zone)
       }
     } else labels
     if (axisLabels.isNotEmpty()) {
@@ -246,9 +247,9 @@ internal fun ChipRow(options: List<String>, selectedIndex: Int, onSelect: (Int) 
  * l'ultima finiscono su ore che la curva non contiene. Qui o si tengono entrambi o non si tiene
  * niente.
  */
-internal fun curvePoints(hours: List<FusedHour>, variable: String): Pair<List<Double>, List<String>> {
+internal fun curvePoints(hours: List<FusedHour>, variable: String, zone: ZoneId = zone()): Pair<List<Double>, List<String>> {
   val kept = curveSamples(hours, variable)
-  return kept.map { it.second } to timeLabels(kept.map { it.first })
+  return kept.map { it.second } to timeLabels(kept.map { it.first }, zone)
 }
 
 /** Values and their clocks are selected together, including when a variable has gaps. */
@@ -258,10 +259,10 @@ internal fun curveSamples(hours: List<FusedHour>, variable: String): List<Pair<L
   }
 
 /** Le etichette temporali per una serie: prima, meta' e ultima ora. */
-internal fun timeLabels(timestamps: List<Long>): List<String> {
+internal fun timeLabels(timestamps: List<Long>, zone: ZoneId = zone()): List<String> {
   if (timestamps.isEmpty()) return emptyList()
-  if (timestamps.size < 3) return timestamps.map { fmtTime(it) }
+  if (timestamps.size < 3) return timestamps.map { fmtTime(it, zone) }
   val spanHours = (timestamps.last() - timestamps.first()) / 3_600_000.0
-  val format: (Long) -> String = if (spanHours > 36) { { fmtDay(it) } } else { { fmtTime(it) } }
+  val format: (Long) -> String = if (spanHours > 36) { { fmtDay(it, zone) } } else { { fmtTime(it, zone) } }
   return listOf(format(timestamps.first()), format(timestamps[timestamps.size / 2]), format(timestamps.last()))
 }

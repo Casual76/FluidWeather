@@ -40,7 +40,7 @@ fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTime
     PageNote(stringResource(R.string.common_waiting_providers))
     return
   }
-  val zone = java.time.ZoneId.systemDefault()
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
   val sampleLabel = stringResource(R.string.accessibility_model_sample,
     dev.pampa.fluidweather.strings.accessibilitySampleTime(current.timestampMillis, zone,
       androidx.compose.ui.platform.LocalConfiguration.current.locales[0]))
@@ -50,7 +50,7 @@ fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTime
   // Curva ed etichette si costruiscono INSIEME (vedi `curvePoints`): con le etichette prese da
   // tutte le ore e i valori filtrati, un'ora mancante ai provider spostava le etichette su ore
   // che la curva non contiene.
-  fun curve(variable: String) = curvePoints(next24, variable)
+  fun curve(variable: String) = curvePoints(next24, variable, zone)
   fun timestamps(variable: String) = curveSamples(next24, variable).map { it.first }
   fun value(variable: String): Double? = current.values[variable]?.value?.takeIf { it.isFinite() }
 
@@ -82,7 +82,7 @@ fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTime
   if (windCurve.size >= 2) {
     Spacer(Modifier.height(6.dp))
     CurveWithLabels(units.windSeries(windCurve), windLabels, PageBlue, " " + units.windSymbol(), height = 70.dp,
-      timestamps = timestamps(FusionVariables.WIND_SPEED), maxGapMillis = 90 * 60_000L)
+      timestamps = timestamps(FusionVariables.WIND_SPEED), maxGapMillis = 90 * 60_000L, zone = zone)
   }
 
   // ------------------------------------------------------------------- umidita' e rugiada
@@ -117,7 +117,7 @@ fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTime
   val (humidityCurve, humidityLabels) = curve(FusionVariables.HUMIDITY)
   if (humidityCurve.size >= 2) {
     CurveWithLabels(humidityCurve, humidityLabels, PageBlue, "%", height = 70.dp,
-      timestamps = timestamps(FusionVariables.HUMIDITY), maxGapMillis = 90 * 60_000L)
+      timestamps = timestamps(FusionVariables.HUMIDITY), maxGapMillis = 90 * 60_000L, zone = zone)
   }
 
   // ------------------------------------------------------------------------------- UV
@@ -126,14 +126,14 @@ fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTime
   StatRow(stringResource(R.string.quality_hourly_value), uv?.let { fmt0(it) } ?: "—", uv?.let { uvLabel(it) })
   val uvPeak = remainingUvPeak(next24, now, zone)
   if (uvPeak != null) {
-    StatRow(stringResource(R.string.quality_uv_available_peak), fmt0(uvPeak.second), stringResource(R.string.quality_uv_from_now, fmtTime(uvPeak.first), uvLabel(uvPeak.second)))
+    StatRow(stringResource(R.string.quality_uv_available_peak), fmt0(uvPeak.second), stringResource(R.string.quality_uv_from_now, fmtTime(uvPeak.first, zone), uvLabel(uvPeak.second)))
   }
   val uvSamples = supportedUvSamples(next24)
   val uvCurve = uvSamples.map { it.second }
-  val uvLabels = timeLabels(uvSamples.map { it.first })
+  val uvLabels = timeLabels(uvSamples.map { it.first }, zone)
   if (uvCurve.size >= 2) {
     CurveWithLabels(uvCurve, uvLabels, PageAmber, "", height = 60.dp,
-      timestamps = uvSamples.map { it.first }, maxGapMillis = 90 * 60_000L)
+      timestamps = uvSamples.map { it.first }, maxGapMillis = 90 * 60_000L, zone = zone)
   }
 
   // ------------------------------------------------------------------------ visibilita'
@@ -147,7 +147,7 @@ fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTime
   val (visibilityCurve, visibilityLabels) = curve(FusionVariables.VISIBILITY)
   if (visibilityCurve.size >= 2) {
     CurveWithLabels(units.distanceSeries(visibilityCurve.map { it / 1000 }), visibilityLabels, PageBlue, " " + units.distanceSymbol(), height = 60.dp,
-      timestamps = timestamps(FusionVariables.VISIBILITY), maxGapMillis = 90 * 60_000L)
+      timestamps = timestamps(FusionVariables.VISIBILITY), maxGapMillis = 90 * 60_000L, zone = zone)
   }
 
   // ---------------------------------------------------------- pressione: provider vs barometro
@@ -162,7 +162,7 @@ fun DetailsPage(state: HomeUiState, evaluatedAtMillis: Long = System.currentTime
   val (pressureCurve, pressureLabels) = curve(FusionVariables.PRESSURE_MSL)
   if (pressureCurve.size >= 2) {
     CurveWithLabels(units.pressureSeries(pressureCurve), pressureLabels, PageAmber, " " + units.pressureSymbol(), height = 70.dp, decimals = units.pressureChartDecimals() + 1,
-      timestamps = timestamps(FusionVariables.PRESSURE_MSL), maxGapMillis = 90 * 60_000L)
+      timestamps = timestamps(FusionVariables.PRESSURE_MSL), maxGapMillis = 90 * 60_000L, zone = zone)
   }
   PageDisclosure {
     PageNote(sampleLabel)

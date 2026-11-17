@@ -10,6 +10,7 @@ import dev.pampa.fluidweather.core.model.ApparentTemperature
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.nearestHour
+import dev.pampa.fluidweather.core.model.precipitationAt
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.strings.TimeFormats
 import dev.pampa.fluidweather.strings.compassPoint
@@ -27,10 +28,12 @@ internal object ToolPhrases {
   const val NO_DATA = "nessun dato: i servizi meteo non hanno ancora risposto per questo posto"
 
   fun header(ctx: ToolContext, place: dev.pampa.fluidweather.core.ai.data.ResolvedPlace, snapshot: WeatherSnapshot): String {
-    val ageMin = ((System.currentTimeMillis() - snapshot.fetchedAtMillis) / 60_000.0).roundToInt()
+    val ageMin = dev.pampa.fluidweather.core.ai.data.weatherDataAgeMinutes(snapshot, ctx.nowMillis)
+    val age = if (ctx.locale.language == "it") ageMin?.let { "dati di $it min fa" } ?: "età dei dati sconosciuta"
+      else ageMin?.let { "data $it min old" } ?: "data age unknown"
     val providers = snapshot.fetches.filter { it.ok }.joinToString { it.providerId }
-    return if (ctx.locale.language == "it") "Luogo: ${place.label}; dati di $ageMin min fa; fonti: $providers. Campioni del MODELLO, non misure; risoluzione sorgente sconosciuta, campioni mancanti sconosciuti; fuso ${ctx.zone.id}."
-    else "Place: ${place.label}; data $ageMin min old; sources: $providers. MODEL samples, not measurements; unknown source resolution, missing samples unknown; zone ${ctx.zone.id}."
+    return if (ctx.locale.language == "it") "Luogo: ${place.label}; $age; fonti: $providers. Campioni del MODELLO, non misure; risoluzione sorgente sconosciuta, campioni mancanti sconosciuti; fuso ${ctx.zone.id}."
+    else "Place: ${place.label}; $age; sources: $providers. MODEL samples, not measurements; unknown source resolution, missing samples unknown; zone ${ctx.zone.id}."
   }
 }
 
@@ -56,6 +59,7 @@ class NowTool(private val resolver: PlaceResolver) : WeatherTool() {
     val shared = dev.pampa.fluidweather.core.ai.grounding.sharedWeatherFacts(place, resolver, ctx)
     val hour = snapshot.fused.nearestHour(ctx.nowMillis)?.first
       ?.takeIf { abs(it.timestampMillis - ctx.nowMillis) <= 90 * 60_000L } ?: return ToolPhrases.NO_DATA
+    val rainHour = snapshot.fused.hours.precipitationAt(ctx.nowMillis)
     val u = ctx.units
     val t = hour.value(FusionVariables.TEMPERATURE)
     val rh = hour.value(FusionVariables.HUMIDITY)
@@ -83,8 +87,11 @@ class NowTool(private val resolver: PlaceResolver) : WeatherTool() {
       line("nuvole", hour.value(FusionVariables.CLOUD_COVER)?.let { "${it.roundToInt()}%" })
       line("indice UV", hour.value(FusionVariables.UV_INDEX)?.let { "${it.roundToInt()} (${ctx.string(uvLabelRes(it))})" })
       line("visibilita'", hour.value(FusionVariables.VISIBILITY)?.let { "${u.visibilityMeters(it)} (${ctx.string(visibilityLabelRes(it))})" })
-      line("probabilita' di pioggia in quest'ora", hour.value(FusionVariables.PRECIP_PROBABILITY)?.let { "${it.roundToInt()}%" })
-      line("pioggia prevista in quest'ora", hour.value(FusionVariables.PRECIPITATION)?.let { u.precipitation(it) })
+      rainHour?.precipitationInterval?.let { interval ->
+        line("intervallo della pioggia prevista", "${ctx.dayTimeLabel(interval.startMillis)}–${ctx.dayTimeLabel(interval.endMillis)}")
+      }
+      line("probabilita' di pioggia in questo intervallo", rainHour?.value(FusionVariables.PRECIP_PROBABILITY)?.let { "${it.roundToInt()}%" })
+      line("pioggia prevista in questo intervallo", rainHour?.value(FusionVariables.PRECIPITATION)?.let { u.precipitation(it) })
       val weights = snapshot.fused.providerWeights.entries.sortedByDescending { it.value }.take(3)
       if (weights.isNotEmpty()) line("servizi con piu' peso", weights.joinToString(", ") { "${it.key} ${(it.value * 100).roundToInt()}%" })
     }
@@ -126,12 +133,18 @@ class HourlyForecastTool(private val resolver: PlaceResolver) : WeatherTool() {
       line(ToolPhrases.header(ctx, place, snapshot))
       if (step > 1) line("(una riga ogni $step ore)")
       hours.filterIndexed { index, _ -> index % step == 0 }.forEach { hour ->
+        val rainHour = snapshot.fused.hours.precipitationAt(hour.timestampMillis)
         val parts = mutableListOf<String>()
         parts += ctx.dayTimeLabel(hour.timestampMillis)
         parts += ctx.kindLabel(hour.kind)
         hour.value(FusionVariables.TEMPERATURE)?.let { parts += u.temperature(it) }
-        hour.value(FusionVariables.PRECIP_PROBABILITY)?.let { parts += "pioggia ${it.roundToInt()}%" }
-        hour.value(FusionVariables.PRECIPITATION)?.takeIf { it >= 0.05 }?.let { parts += u.precipitation(it) }
+        rainHour?.precipitationInterval?.let { interval ->
+          val rain = listOfNotNull(
+            rainHour.value(FusionVariables.PRECIP_PROBABILITY)?.let { "pioggia ${it.roundToInt()}%" },
+            rainHour.value(FusionVariables.PRECIPITATION)?.let { u.precipitation(it) },
+          )
+          if (rain.isNotEmpty()) parts += "${rain.joinToString(" / ")} (${ctx.timeLabel(interval.startMillis)}–${ctx.timeLabel(interval.endMillis)})"
+        }
         hour.value(FusionVariables.WIND_SPEED)?.let { w ->
           val dir = hour.windDirectionDeg?.let { " ${compassPoint(ctx.resources, it)}" } ?: ""
           parts += "vento ${u.wind(w)}$dir"

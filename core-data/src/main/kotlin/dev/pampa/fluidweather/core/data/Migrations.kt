@@ -68,5 +68,32 @@ val MIGRATION_7_8: Migration = object : Migration(7, 8) {
   }
 }
 
+/**
+ * 8 -> 9: local learning with explicit peer-analysis provenance. Historical judgments keep
+ * unknown coordinates and legacy semantics. Rebuilding pending changes only its identity;
+ * every existing row and value is copied, including coordinates already recorded in v8.
+ */
+val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("ALTER TABLE `forecast_verifications` ADD COLUMN `latitude` REAL")
+    db.execSQL("ALTER TABLE `forecast_verifications` ADD COLUMN `longitude` REAL")
+    db.execSQL("ALTER TABLE `forecast_verifications` ADD COLUMN `semanticsVersion` TEXT NOT NULL DEFAULT 'legacy'")
+    db.execSQL(
+      "CREATE TABLE `pending_predictions_v9` (`providerId` TEXT NOT NULL, `variable` TEXT NOT NULL, " +
+        "`targetTimestampMillis` INTEGER NOT NULL, `predictedValue` REAL NOT NULL, `issuedAtMillis` INTEGER NOT NULL, " +
+        "`latitude` REAL, `longitude` REAL, `placeKey` TEXT NOT NULL DEFAULT 'legacy', " +
+        "`semanticsVersion` TEXT NOT NULL DEFAULT 'legacy', " +
+        "PRIMARY KEY(`providerId`, `variable`, `targetTimestampMillis`, `placeKey`, `semanticsVersion`))",
+    )
+    db.execSQL(
+      "INSERT INTO `pending_predictions_v9` (providerId, variable, targetTimestampMillis, predictedValue, issuedAtMillis, latitude, longitude) " +
+        "SELECT providerId, variable, targetTimestampMillis, predictedValue, issuedAtMillis, latitude, longitude FROM `pending_predictions`",
+    )
+    db.execSQL("DROP TABLE `pending_predictions`")
+    db.execSQL("ALTER TABLE `pending_predictions_v9` RENAME TO `pending_predictions`")
+    db.execSQL("CREATE INDEX `index_pending_predictions_targetTimestampMillis` ON `pending_predictions` (`targetTimestampMillis`)")
+  }
+}
+
 /** Tutte le migrazioni, nell'ordine: e' quello che `FluidWeatherDatabase.build` passa a Room. */
-val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_6_7, MIGRATION_7_8)
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)

@@ -9,6 +9,7 @@ import dev.pampa.fluidweather.nowcast.features.NowcastContext
 import dev.pampa.fluidweather.nowcast.truth.RainWindows
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
 
 /** L'esito per-provider: o il bundle, o il motivo del fallimento — mai un silenzio. */
 data class ProviderFetch(
@@ -41,7 +42,7 @@ class WeatherRepository(
               onSuccess = { ProviderFetch(descriptor, it, null) },
               // Non piu' `error.message` grezzo: "rete: Unable to resolve host" e un HTTP 500 sono
               // due situazioni opposte, e la Diagnostica le mostrava identiche.
-              onFailure = { ProviderFetch(descriptor, null, failureTextOf(it)) },
+              onFailure = { if (it is CancellationException) throw it else ProviderFetch(descriptor, null, failureTextOf(it)) },
             )
         }
       }
@@ -55,7 +56,9 @@ class WeatherRepository(
    */
   suspend fun contextFor(latitude: Double, longitude: Double, nowMillis: Long): NowcastContext? {
     val client = clients[ProviderRegistry.OPEN_METEO] ?: return null
-    val bundle = runCatching { client.fetch(latitude, longitude, null) }.getOrNull() ?: return null
+    val bundle = try { client.fetch(latitude, longitude, null) }
+      catch (cancelled: CancellationException) { throw cancelled }
+      catch (_: Exception) { return null }
     return bundle.toContext(nowMillis)
   }
 }

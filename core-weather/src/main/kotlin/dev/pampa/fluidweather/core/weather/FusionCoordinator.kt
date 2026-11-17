@@ -19,7 +19,10 @@ data class WeatherRound(
    * fusione restituisce una previsione VUOTA invece di un errore, e quella finiva salvata sopra
    * l'ultima buona. Un giro che non ha prodotto niente non ha niente da salvare.
    */
-  val producedAnything: Boolean get() = fetches.any { it.bundle != null }
+  val producedAnything: Boolean get() = fetches.any { it.bundle != null && it.error == null }
+
+  fun usableAt(nowMillis: Long, latitude: Double, longitude: Double): WeatherRound =
+    copy(fetches = fetches.map { it.validatedAt(nowMillis, latitude, longitude) })
 }
 
 /**
@@ -59,7 +62,7 @@ class FusionCoordinator(
    */
   override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound =
     withWeatherWipeEpoch(wipeGuard) { epoch ->
-      val fetches = repository.fetchAll(latitude, longitude)
+      val fetches = repository.fetchAll(latitude, longitude).map { it.validatedAt(clock(), latitude, longitude) }
       currentCoroutineContext().ensureActive()
       epoch?.checkCurrent()
       verifier.settle(fetches)

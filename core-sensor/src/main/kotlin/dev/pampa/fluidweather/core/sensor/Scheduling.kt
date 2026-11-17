@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -45,9 +46,8 @@ class SamplingScheduler(
    */
   fun apply(mode: SamplingMode, restart: Boolean = false) {
     val workManager = WorkManager.getInstance(context)
-    if (mode == SamplingMode.MASSIMA && MaximaAlarm.canSchedule(context)) {
+    if (mode == SamplingMode.MASSIMA && MaximaAlarm.scheduleNext(context, mode.cadenceMinutes)) {
       workManager.cancelUniqueWork(WORK_NAME)
-      MaximaAlarm.scheduleNext(context, mode.cadenceMinutes)
     } else {
       MaximaAlarm.cancel(context)
       val cadenceMinutes = maxOf(mode.cadenceMinutes, MIN_PERIODIC_MINUTES).toLong()
@@ -143,14 +143,20 @@ object MaximaAlarm {
     return alarmManager.canScheduleExactAlarms()
   }
 
-  fun scheduleNext(context: Context, minutes: Int) {
-    if (!canSchedule(context)) return
+  fun scheduleNext(context: Context, minutes: Int): Boolean {
+    if (!canSchedule(context)) return false
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    alarmManager.setExactAndAllowWhileIdle(
-      AlarmManager.RTC_WAKEUP,
-      System.currentTimeMillis() + minutes * 60_000L,
-      pendingIntent(context),
-    )
+    return try {
+      alarmManager.setExactAndAllowWhileIdle(
+        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+        nextElapsedAlarmAt(SystemClock.elapsedRealtime(), minutes),
+        pendingIntent(context),
+      )
+      true
+    } catch (_: SecurityException) {
+      // Permission may be revoked between the check and registration. Keep the periodic fallback.
+      false
+    }
   }
 
   fun cancel(context: Context) {
@@ -201,11 +207,21 @@ class MaximaAlarmReceiver : BroadcastReceiver() {
   }
 }
 
-/** WorkManager sopravvive al riavvio da solo; la catena di allarmi esatti no. */
+/** Elapsed time survives wall-clock corrections; boot and app update require a new alarm. */
+internal fun nextElapsedAlarmAt(elapsedMillis: Long, minutes: Int): Long {
+  require(minutes > 0)
+  return elapsedMillis + minutes * 60_000L
+}
+
+internal fun isSamplingRestoreEvent(action: String?): Boolean = action == Intent.ACTION_BOOT_COMPLETED ||
+  action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+  action == AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+
+/** Re-read the saved mode; a broadcast never grants a permission or selects MASSIMA. */
 class BootReceiver : BroadcastReceiver() {
 
   override fun onReceive(context: Context, intent: Intent) {
-    if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+    if (!isSamplingRestoreEvent(intent.action)) return
     val pending = goAsync()
     val runtime = context.sensorRuntime()
     CoroutineScope(Dispatchers.Default).launch {

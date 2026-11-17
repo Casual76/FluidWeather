@@ -71,8 +71,11 @@ object CalibrationMath {
     if (segments.isEmpty() || references.isEmpty()) return null
 
     val votes = segments.mapNotNull { segment ->
-      val median = median(segment.pressures) ?: return@mapNotNull null
+      if (segment.durationSeconds <= 0 || segment.altitudeMeters?.isFinite() == false) return@mapNotNull null
+      val median = median(segment.pressures.filter { it.isFinite() && it in 300.0..1100.0 }) ?: return@mapNotNull null
       val reference = references.maxByOrNull { it.weightFor(segment) } ?: return@mapNotNull null
+      val referenceQuality = reference.weightFor(segment)
+      if (referenceQuality <= 0.0) return@mapNotNull null
       val localMsl = SeaLevel.reduce(
         stationPressureHpa = median,
         altitudeMeters = segment.altitudeMeters ?: 0.0,
@@ -83,12 +86,15 @@ object CalibrationMath {
         localMslHpa = localMsl,
         referenceMslHpa = reference.mslHpa,
         altitudeMeters = segment.altitudeMeters,
+        durationSeconds = segment.durationSeconds,
+        sampleCount = segment.pressures.size,
+        referenceQuality = referenceQuality,
         // Tre fattori, e ognuno risponde a una domanda diversa: quanto e' durato il tratto, se la
         // sua quota e' nota (senza, la riduzione e' cieca e puo' sbagliare di hPa interi), e
         // quanto il riferimento parla davvero di quel posto in quel momento.
         weight = segment.durationSeconds.toDouble() *
           (if (segment.altitudeMeters != null) 1.0 else BLIND_ALTITUDE_WEIGHT) *
-          reference.weightFor(segment),
+          referenceQuality,
       )
     }
     if (votes.isEmpty()) return null
@@ -96,15 +102,16 @@ object CalibrationMath {
     val bias = weightedMedian(votes.map { it.residual to it.weight }) ?: return null
     val spread = if (votes.size > 1) meanAbsoluteDeviation(votes.map { it.residual }, bias) else 0.0
     val chosen = votes.minByOrNull { kotlin.math.abs(it.residual - bias) } ?: votes.first()
-    val stableSeconds = segments.sumOf { it.durationSeconds }
+    val stableSeconds = votes.sumOf { it.durationSeconds }
     val completeness = (stableSeconds.toDouble() / minStableSeconds).coerceIn(0.1, 1.0)
     val base = if (votes.any { it.altitudeMeters != null }) CONFIDENCE_WITH_ALTITUDE else CONFIDENCE_WITHOUT_ALTITUDE
 
     return CalibrationRecord(
       biasHpa = bias,
-      confidence = (base * completeness * agreementFactor(votes.size, spread)).coerceAtMost(MAX_CONFIDENCE),
+      confidence = (base * completeness * agreementFactor(votes.size, spread) *
+        votes.sumOf { it.referenceQuality * it.durationSeconds } / stableSeconds).coerceAtMost(MAX_CONFIDENCE),
       calibratedAtMillis = nowMillis,
-      sampleCount = segments.sumOf { it.pressures.size },
+      sampleCount = votes.sumOf { it.sampleCount },
       // Il tratto che ha vinto la mediana: e' quello di cui il bias racconta la storia, ed e'
       // quello che va mostrato accanto al numero quando qualcuno chiede da dove viene.
       localMslHpa = chosen.localMslHpa,
@@ -154,6 +161,9 @@ object CalibrationMath {
     val localMslHpa: Double,
     val referenceMslHpa: Double,
     val altitudeMeters: Double?,
+    val durationSeconds: Int,
+    val sampleCount: Int,
+    val referenceQuality: Double,
     val weight: Double,
   )
 

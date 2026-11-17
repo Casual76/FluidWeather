@@ -3,8 +3,8 @@ package dev.pampa.fluidweather.core.cycle
 import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.WeatherKind
-import dev.pampa.fluidweather.core.model.hourAround
-import kotlin.math.abs
+import dev.pampa.fluidweather.core.model.precipitationAt
+import dev.pampa.fluidweather.core.model.precipitationStartingAt
 
 enum class TransitionKind { ONSET, END }
 
@@ -33,26 +33,47 @@ object PrecipitationTransitions {
   const val LEAD_MILLIS: Long = 75 * 60_000L
 
   fun isWet(hour: FusedHour): Boolean {
+    return state(hour) == State.WET
+  }
+
+  private enum class State { DRY, WET, UNKNOWN }
+
+  private fun state(hour: FusedHour): State {
     val probability = hour.values[FusionVariables.PRECIP_PROBABILITY]?.value
+      ?.takeIf { it.isFinite() && it in 0.0..100.0 }
     val amount = hour.values[FusionVariables.PRECIPITATION]?.value
-    return (probability != null && probability >= WET_PROBABILITY_PERCENT) ||
-      (amount != null && amount >= WET_AMOUNT_MM)
+      ?.takeIf { it.isFinite() && it >= 0.0 }
+    return when {
+      probability == null && amount == null -> State.UNKNOWN
+      probability != null && probability >= WET_PROBABILITY_PERCENT ||
+        amount != null && amount >= WET_AMOUNT_MM -> State.WET
+      else -> State.DRY
+    }
   }
 
   fun next(hours: List<FusedHour>, nowMillis: Long): PrecipitationTransition? {
-    val sorted = hours.sortedBy { it.timestampMillis }
-    val current = sorted.firstOrNull { it.timestampMillis <= nowMillis && nowMillis - it.timestampMillis < HOUR_MILLIS }
-      ?: sorted.hourAround(nowMillis)
-      ?: return null
-    val currentlyWet = isWet(current)
-    val upcoming = sorted.filter { it.timestampMillis > current.timestampMillis && it.timestampMillis - nowMillis <= LEAD_MILLIS }
-    val turn = upcoming.firstOrNull { isWet(it) != currentlyWet } ?: return null
-    return PrecipitationTransition(
-      kind = if (currentlyWet) TransitionKind.END else TransitionKind.ONSET,
-      atMillis = turn.timestampMillis,
-      weatherKind = if (currentlyWet) current.kind else turn.kind,
-    )
+    // Rain is an accumulation over an interval. Instantaneous temperature timestamps cannot
+    // stand in for its start; normalized provider products are anchored at the interval end.
+    var previous = hours.precipitationAt(nowMillis) ?: return null
+    var previousState = state(previous)
+    if (previousState == State.UNKNOWN) return null
+    // Missing hours and missing fields are not dry weather. Never bridge either gap.
+    while (previous.precipitationInterval!!.endMillis - nowMillis <= LEAD_MILLIS) {
+      val next = hours.precipitationStartingAt(previous.precipitationInterval!!.endMillis) ?: return null
+      val interval = next.precipitationInterval!!
+      if (interval.startMillis - nowMillis > LEAD_MILLIS) break
+      if (interval.startMillis != previous.precipitationInterval!!.endMillis) return null
+      val nextState = state(next)
+      if (nextState == State.UNKNOWN) return null
+      if (nextState != previousState) return PrecipitationTransition(
+        kind = if (previousState == State.WET) TransitionKind.END else TransitionKind.ONSET,
+        atMillis = interval.startMillis,
+        weatherKind = if (previousState == State.WET) previous.kind else next.kind,
+      )
+      previous = next
+      previousState = nextState
+    }
+    return null
   }
 
-  private const val HOUR_MILLIS = 3_600_000L
 }

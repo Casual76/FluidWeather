@@ -2,6 +2,7 @@ package dev.pampa.fluidweather.core.weather
 
 import dev.pampa.fluidweather.core.model.ForecastBundle
 import dev.pampa.fluidweather.core.model.ForecastVerification
+import dev.pampa.fluidweather.core.model.ForecastLearning
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HorizonBucket
 import dev.pampa.fluidweather.core.model.PendingPrediction
@@ -34,11 +35,12 @@ object RainEvent {
  * +1/+3/+6/+12/+24 ore, e quando quelle ore sono passate le giudica contro la verita' di
  * riferimento. Sono questi giudizi a muovere i pesi della fusione.
  *
- * La verita' automatica e' la MEDIANA delle analisi dei provider per quell'ora (l'ora appena
- * passata di un fetch fresco e' analisi, non previsione): robusta, senza un giudice unico che
- * possa portare acqua al suo mulino. Serve il quorum di [minTruthOpinions] opinioni — sotto,
- * meglio nessun giudizio che un giudizio di parte — e le opinioni devono essere **del posto della
- * previsione** (entro [SAME_PLACE_KM]): la mediana di Firenze non e' la verita' di Prato.
+ * Il riferimento e' un CONSENSO DI ANALISI DI MODELLI, non una misura sul terreno. Si accettano
+ * solo modelli espliciti che il client richiede con ore passate, acquisiti dopo il target e non
+ * nel futuro del chiamante, sul timestamp/intervallo esatto. Il soggetto non giudica se stesso;
+ * best_match non conta come voto indipendente da modelli che puo' aver selezionato. Ogni modello
+ * ha al massimo un voto. Serve ancora il quorum di [minTruthOpinions] peer ammessi e dello stesso
+ * posto (entro [SAME_PLACE_KM]); sotto quorum la previsione resta pending fino alla sua scadenza.
  *
  * L'evento pioggia non passa piu' di qui: lo iscrive [LocalRoundRegistrar] e lo giudica
  * [TruthPanelSettler].
@@ -63,25 +65,30 @@ class ForecastVerifier(
     val pending = mutableListOf<PendingPrediction>()
     for (fetch in fetches) {
       val bundle = fetch.bundle ?: continue
+      if (fetch.error != null || bundle.fetchedAtMillis !in 0L..now || !validForecastPoint(bundle.latitude, bundle.longitude)) continue
+      val products = ForecastProducts(bundle)
       for (horizonHours in HORIZONS) {
         val target = now + horizonHours * 3_600_000L
-        val point = bundle.at(target) ?: continue
         for (variable in FusionVariables.verified) {
-          val value = FusionVariables.of(point, variable) ?: continue
+          // Select an actual source endpoint after the requested horizon, never a neighbouring
+          // value relabelled as that endpoint. A gap longer than one hour is not allocated.
+          val (at, value) = products.firstValueAtOrAfter(target, variable, ForecastProducts.HOUR_MILLIS) ?: continue
           pending += PendingPrediction(
             providerId = bundle.providerId,
             variable = variable,
-            targetTimestampMillis = point.timestampMillis,
+            targetTimestampMillis = at,
             predictedValue = value,
-            issuedAtMillis = now,
+            issuedAtMillis = bundle.fetchedAtMillis,
             latitude = bundle.latitude,
             longitude = bundle.longitude,
+            semanticsVersion = ForecastLearning.CURRENT_SEMANTICS,
           )
         }
       }
     }
     currentCoroutineContext().ensureActive()
-    if (epoch == null) store.addPending(pending) else epoch.write { store.addPending(pending) }
+    val unique = pending.distinctBy { listOf(it.providerId, it.variable, it.targetTimestampMillis, it.placeKey, it.semanticsVersion) }
+    if (epoch == null) store.addPending(unique) else epoch.write { store.addPending(unique) }
   }
 
   /**
@@ -90,8 +97,8 @@ class ForecastVerifier(
    *
    * Prima la mediana si prendeva dai bundle del giro, ovunque fosse: una previsione seminata a casa
    * e giudicata in ufficio a dieci chilometri spostava i pesi della fusione con la verita' di un
-   * altro posto. Le righe scritte prima che il punto si registrasse (latitudine null) si giudicano
-   * come allora finche' non scadono. Le righe dell'evento pioggia rimaste nelle tabelle generali si
+   * altro posto. Le righe di una politica precedente o senza punto restano senza giudizio fino
+   * alla normale scadenza: non diventano prove della nuova politica. Le righe dell'evento pioggia si
    * tolgono senza giudizio: la loro verita' era quella circolare, e la classifica pioggia ora vive
    * altrove.
    */
@@ -104,7 +111,10 @@ class ForecastVerifier(
     epoch?.checkCurrent()
     if (due.isEmpty()) return
 
-    val bundles = fetches.mapNotNull { it.bundle }
+    val analyses = fetches.filter { it.error == null }.mapNotNull { it.bundle }
+      .filter { it.providerId in ANALYSIS_MODEL_IDS && it.fetchedAtMillis <= now && validForecastPoint(it.latitude, it.longitude) }
+      .groupBy { it.providerId }.values.mapNotNull { copies -> copies.distinct().singleOrNull() }
+      .map(::ForecastProducts)
     val verifications = mutableListOf<ForecastVerification>()
     val settled = mutableListOf<PendingPrediction>()
 
@@ -113,8 +123,17 @@ class ForecastVerifier(
         settled += prediction
         continue
       }
-      val nearby = bundles.filter { it.isNear(prediction) }
-      val truth = medianTruth(nearby, prediction.variable, prediction.targetTimestampMillis)
+      if (prediction.semanticsVersion != ForecastLearning.CURRENT_SEMANTICS ||
+        !ForecastLearning.validPoint(prediction.latitude, prediction.longitude)) {
+        if (now - prediction.targetTimestampMillis > TRUTH_WINDOW_MILLIS) settled += prediction
+        continue
+      }
+      if (!prediction.predictedValue.isFinite()) {
+        settled += prediction
+        continue
+      }
+      val nearby = analyses.filter { it.bundle.isNear(prediction) }
+      val truth = medianAnalysis(nearby, prediction, now)
       if (truth == null) {
         // Nessun quorum (offline, ora troppo vecchia per le analisi, un altro posto): la si lascia
         // decadere quando e' piu' vecchia dell'orizzonte delle analisi, senza inventare un giudizio.
@@ -127,6 +146,9 @@ class ForecastVerifier(
         horizonBucket = HorizonBucket.of(prediction.horizonHours),
         absoluteError = abs(prediction.predictedValue - truth),
         verifiedAtMillis = now,
+        latitude = prediction.latitude,
+        longitude = prediction.longitude,
+        semanticsVersion = ForecastLearning.CURRENT_SEMANTICS,
       )
       settled += prediction
     }
@@ -139,9 +161,13 @@ class ForecastVerifier(
     if (epoch == null) commit() else epoch.write { commit() }
   }
 
-  private fun medianTruth(bundles: List<ForecastBundle>, variable: String, timestampMillis: Long): Double? {
-    val opinions = bundles.mapNotNull { bundle ->
-      bundle.at(timestampMillis)?.let { FusionVariables.of(it, variable) }
+  private fun medianAnalysis(analyses: List<ForecastProducts>, prediction: PendingPrediction, now: Long): Double? {
+    val target = prediction.targetTimestampMillis
+    val opinions = analyses.mapNotNull { product ->
+      val bundle = product.bundle
+      if (bundle.providerId == prediction.providerId || bundle.fetchedAtMillis <= target || bundle.fetchedAtMillis > now)
+        return@mapNotNull null
+      product.valueAt(target, prediction.variable)
     }
     if (opinions.size < minTruthOpinions) return null
     val sorted = opinions.sorted()
@@ -149,18 +175,24 @@ class ForecastVerifier(
     return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2.0
   }
 
-  /** Il bundle e' del posto della previsione? Una riga senza punto (legacy) accetta tutti. */
+  /** Il bundle e' del posto noto della previsione? Unknown never supplies local truth. */
   private fun ForecastBundle.isNear(prediction: PendingPrediction): Boolean {
-    val latitude = prediction.latitude ?: return true
-    val longitude = prediction.longitude ?: return true
+    val latitude = prediction.latitude ?: return false
+    val longitude = prediction.longitude ?: return false
     return haversineKm(latitude, longitude, this.latitude, this.longitude) <= SAME_PLACE_KM
   }
 
   companion object {
     /** Entro quanto un bundle e' "dello stesso posto" della previsione: il raggio del refresher. */
-    const val SAME_PLACE_KM: Double = WeatherSnapshotRefresher.MAX_DISTANCE_KM
+    const val SAME_PLACE_KM: Double = ForecastLearning.LOCAL_RADIUS_KM
 
     private val HORIZONS = listOf(1, 3, 6, 12, 24)
+
+    /** These explicit forecast calls request past_hours=6; the best_match model is ambiguous. */
+    internal val ANALYSIS_MODEL_IDS = setOf(
+      ProviderRegistry.OPEN_METEO_ICON, ProviderRegistry.OPEN_METEO_ECMWF,
+      ProviderRegistry.OPEN_METEO_GFS, ProviderRegistry.OPEN_METEO_AROME, ProviderRegistry.OPEN_METEO_JMA,
+    )
 
     /** Oltre sei ore nel passato le analisi dei bundle freschi non arrivano piu'. */
     private const val TRUTH_WINDOW_MILLIS = 6 * 3_600_000L

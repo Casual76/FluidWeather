@@ -219,6 +219,7 @@ private fun FluidWeatherRoutes(
           savedLocations = graph.savedLocationsRepository,
           selectedPlaceStore = graph.selectedPlaceStore,
           geocodingClient = graph.geocodingClient,
+          engineSettings = graph.engineSettingsStore.settings,
           onWeatherAccent = { graph.weatherAccent.value = it },
           barometerAvailable = graph.barometer.isAvailable,
         )

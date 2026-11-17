@@ -47,9 +47,10 @@ fun PrecipitationPage(state: HomeUiState) {
 @Composable
 internal fun PrecipitationForecastSamples(state: HomeUiState, compact: Boolean = false) {
   val now = System.currentTimeMillis()
-  val start = now - Math.floorMod(now, ForecastRainSamples.HOUR) + ForecastRainSamples.HOUR
-  val upcoming = state.fusedHours.filter { it.timestampMillis >= start }
-  val zone = WeatherZones.resolve(state.weatherBrief?.precipitation?.place?.zoneId, null, ZoneId.systemDefault()).zoneId
+  val start = now - Math.floorMod(now, ForecastRainSamples.HOUR) +
+    if (Math.floorMod(now, ForecastRainSamples.HOUR) == 0L) 0L else ForecastRainSamples.HOUR
+  val upcoming = state.fusedHours
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
   val locale = LocalConfiguration.current.locales[0]
   val next6 = ForecastRainSamples.slots(upcoming, start, start + 6 * ForecastRainSamples.HOUR)
   if (compact) {
@@ -61,7 +62,7 @@ internal fun PrecipitationForecastSamples(state: HomeUiState, compact: Boolean =
   }
 
   // Every original position remains reachable; only one small window is composed at a time.
-  val end = upcoming.maxOfOrNull { it.timestampMillis }?.plus(ForecastRainSamples.HOUR) ?: start
+  val end = upcoming.maxOfOrNull { it.precipitationInterval?.endMillis ?: it.timestampMillis } ?: start
   val all = ForecastRainSamples.slots(upcoming, start, end)
   val days = all.groupBy { Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate() }.toSortedMap()
   var selectedDay by rememberSaveable(state.locationName) { mutableStateOf<String?>(null) }
@@ -108,7 +109,7 @@ internal fun PrecipitationForecastSamples(state: HomeUiState, compact: Boolean =
   Spacer(Modifier.height(12.dp))
   if (day != null) {
     Text(stringResource(R.string.precip_quality_window,
-      TimeFormats.time(slots.first().at, zone, locale), TimeFormats.time(slots.last().at, zone, locale)),
+      TimeFormats.time(slots.first().at, zone, locale), TimeFormats.time(slots.last().interval?.endMillis ?: slots.last().at, zone, locale)),
       style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       FluidButton(stringResource(R.string.precip_quality_earlier), { window = page - 1 }, enabled = page > 0,
@@ -232,10 +233,12 @@ private fun HourTable(slots: List<ForecastRainSlot>, zone: ZoneId) {
       if (index > 0) FluidListDivider()
       val p = slot.probability?.let(::probability) ?: unknown
       val amount = slot.amount?.let { precipitationSampleValue(it, units) + " " + units.precipitationSymbol() } ?: unknown
-      val stamp = accessibilitySampleTime(slot.at, zone, locale)
+      val stamp = slot.interval?.let { accessibilitySampleTime(it.startMillis, zone, locale) + " – " +
+        accessibilitySampleTime(it.endMillis, zone, locale) } ?: stringResource(R.string.quality_time_unknown)
       val description = stringResource(R.string.accessibility_probability_sample, stamp, p) + "; " +
         stringResource(R.string.accessibility_amount_sample, stamp, amount)
-      FluidListRow(title = TimeFormats.time(slot.at, zone, locale),
+      FluidListRow(title = slot.interval?.let { TimeFormats.time(it.startMillis, zone, locale) + "–" +
+        TimeFormats.time(it.endMillis, zone, locale) } ?: TimeFormats.time(slot.at, zone, locale),
         subtitle = stringResource(R.string.precip_quality_hour_values, p, amount),
         modifier = Modifier.testTag("precip_hour_$index").clearAndSetSemantics { contentDescription = description })
     }

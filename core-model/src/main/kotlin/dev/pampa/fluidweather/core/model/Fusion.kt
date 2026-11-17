@@ -18,9 +18,9 @@ object FusionVariables {
   const val WIND_GUST = "wind_gust"
 
   /**
-   * Le variabili che si VERIFICANO: osservabili fisiche con una verita' misurabile. Una
-   * probabilita' non ce l'ha (verificarla contro la mediana premierebbe il conformismo, non
-   * l'accuratezza), e UV/visibilita' non hanno analisi affidabili nella costellazione.
+   * Variabili confrontabili con il consenso delle analisi di modelli, non misure sul terreno.
+   * Una probabilita' non si verifica contro una mediana (premierebbe il conformismo); UV e
+   * visibilita' non hanno analisi ammesse nella costellazione.
    */
   val verified: List<String> = listOf(TEMPERATURE, PRESSURE_MSL, PRECIPITATION, CLOUD_COVER, WIND_SPEED)
 
@@ -60,8 +60,8 @@ enum class HorizonBucket(val label: String) {
  *
  * [latitude] e [longitude] sono il punto del bundle che l'ha prodotta: chi giudica una variabile
  * verificata usa solo i bundle entro 3 km da li', perche' la mediana di un altro posto non e' la
- * verita' di questo. Null nelle righe scritte prima che il punto si registrasse: quelle si
- * giudicano come prima finche' non scadono.
+ * verita' di questo. Righe senza provenienza corrente restano conservate fino alla scadenza,
+ * senza trasformarle retroattivamente in giudizi della nuova politica.
  */
 data class PendingPrediction(
   val providerId: String,
@@ -71,19 +71,39 @@ data class PendingPrediction(
   val issuedAtMillis: Long,
   val latitude: Double? = null,
   val longitude: Double? = null,
+  /** Exact source point identity; spatial learning itself uses a 3 km radius, not this key. */
+  val placeKey: String = ForecastLearning.placeKey(latitude, longitude),
+  val semanticsVersion: String = ForecastLearning.LEGACY_SEMANTICS,
 ) {
   val horizonHours: Int
     get() = ((targetTimestampMillis - issuedAtMillis) / 3_600_000L).toInt()
 }
 
-/** Il giudizio: errore assoluto contro la verita' di riferimento, con quando e' stato emesso. */
+/** Il giudizio contro analisi di modelli, con luogo e versione della politica che l'ha prodotto. */
 data class ForecastVerification(
   val providerId: String,
   val variable: String,
   val horizonBucket: HorizonBucket,
   val absoluteError: Double,
   val verifiedAtMillis: Long,
+  val latitude: Double? = null,
+  val longitude: Double? = null,
+  val semanticsVersion: String = ForecastLearning.LEGACY_SEMANTICS,
 )
+
+/** Stable persisted provenance. Unknown historical locations/semantics are never invented. */
+object ForecastLearning {
+  const val LEGACY_SEMANTICS = "legacy"
+  const val CURRENT_SEMANTICS = "peer-analysis-v2"
+  const val LOCAL_RADIUS_KM = 3.0
+
+  fun validPoint(latitude: Double?, longitude: Double?): Boolean =
+    latitude != null && longitude != null && latitude.isFinite() && longitude.isFinite() &&
+      latitude in -90.0..90.0 && longitude in -180.0..180.0
+
+  fun placeKey(latitude: Double?, longitude: Double?): String =
+    if (validPoint(latitude, longitude)) "point:$latitude:$longitude" else "unknown"
+}
 
 /**
  * Il magazzino delle verifiche, come interfaccia: Room la implementa sul telefono, una mappa
@@ -115,11 +135,17 @@ data class FusedValue(
 )
 
 data class FusedHour(
+  /** Instant of temperature/kind/wind; precipitation products end here, see precipitationInterval. */
   val timestampMillis: Long,
   val values: Map<String, FusedValue>,
   val kind: WeatherKind?,
   /** Circolare: non si media — la dice il provider col peso maggiore, come [kind]. */
   val windDirectionDeg: Double? = null,
+  /** Provider selected for categorical values; null in legacy snapshots. */
+  val kindProviderId: String? = null,
+  val windDirectionProviderId: String? = null,
+  /** Covered [start,end) for fused rain amount and probability, never inferred for legacy rows. */
+  val precipitationInterval: WeatherInterval? = null,
 )
 
 data class FusedForecast(
@@ -197,9 +223,13 @@ const val RAIN_OUTLOOK_HOURS: Int = 6
  * Il massimo e non la media: quello che serve sapere e' se **a un certo punto** conviene prendere
  * l'ombrello, e una media di sei ore annacqua un temporale di un'ora fino a farlo sparire.
  */
-fun List<FusedHour>.rainProbabilityPercent(nowMillis: Long, withinHours: Int = RAIN_OUTLOOK_HOURS): Int? = this
-  .filter { it.timestampMillis >= nowMillis }
-  .take(withinHours)
+fun List<FusedHour>.rainProbabilityPercent(nowMillis: Long, withinHours: Int = RAIN_OUTLOOK_HOURS): Int? {
+  if (withinHours <= 0) return null
+  val remainder = Math.floorMod(nowMillis, FUSED_PRECIPITATION_HOUR_MILLIS)
+  val start = nowMillis - remainder + if (remainder == 0L) 0L else FUSED_PRECIPITATION_HOUR_MILLIS
+  return precipitationHours(start, start + withinHours.toLong() * FUSED_PRECIPITATION_HOUR_MILLIS)
   .mapNotNull { it.values[FusionVariables.PRECIP_PROBABILITY]?.value }
+  .filter { it.isFinite() && it in 0.0..100.0 }
   .maxOrNull()
   ?.toInt()
+}

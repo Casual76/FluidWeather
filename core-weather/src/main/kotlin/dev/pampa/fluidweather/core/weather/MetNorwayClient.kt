@@ -3,6 +3,8 @@ package dev.pampa.fluidweather.core.weather
 import dev.pampa.fluidweather.core.model.ForecastBundle
 import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.WeatherKind
+import dev.pampa.fluidweather.core.model.PrecipitationAccumulation
+import dev.pampa.fluidweather.core.model.AccumulationAnchor
 import java.time.Instant
 
 /**
@@ -47,6 +49,8 @@ class MetNorwayClient(
       latitude = latitude,
       longitude = longitude,
       hourly = points,
+      // next_1_hours starts at the instantaneous row timestamp; fusion aligns only its amount.
+      hourlyPrecipitation = PrecipitationAccumulation(3_600_000L, AccumulationAnchor.FOLLOWING),
     )
   }
 

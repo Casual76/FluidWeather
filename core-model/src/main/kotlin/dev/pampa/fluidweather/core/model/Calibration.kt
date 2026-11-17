@@ -49,6 +49,8 @@ enum class CalibrationOutcome {
 
   /** I provider non hanno dato un riferimento: la raffica resta in archivio e si ritenta. */
   NO_REFERENCE,
+  /** The archived burst no longer has a temporally comparable reference. */
+  REFERENCE_EXPIRED,
   TOO_FEW,
 
   /** Troppo movimento: nessun tratto fermo abbastanza lungo da valere una stima. */

@@ -16,6 +16,9 @@ import androidx.datastore.preferences.preferencesDataStore
 import dev.pampa.fluidweather.core.model.NotificationChannelKind
 import dev.pampa.fluidweather.core.model.NotificationLedger
 import dev.pampa.fluidweather.core.model.NotificationSettings
+import dev.pampa.fluidweather.core.model.NotificationLocation
+import dev.pampa.fluidweather.core.model.LocalNotificationLedger
+import java.util.Base64
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -98,6 +101,9 @@ class NotificationLedgerStore(private val context: Context) {
     summaryEpochDay = this[Keys.SummaryDay],
     lastCycleAtMillis = this[Keys.CycleAt],
     lastCycleNote = this[Keys.CycleNote],
+    location = this[Keys.Location]?.let(::readLocation),
+    previousLocations = this[Keys.PreviousLocations]?.lineSequence()?.mapNotNull(::readLocalLedger)
+      ?.toList()?.takeLast(NotificationLedger.MAX_LOCAL_LOCATIONS).orEmpty(),
   )
 
   private fun MutablePreferences.write(ledger: NotificationLedger) {
@@ -115,6 +121,37 @@ class NotificationLedgerStore(private val context: Context) {
     set(Keys.SummaryDay, ledger.summaryEpochDay)
     set(Keys.CycleAt, ledger.lastCycleAtMillis)
     set(Keys.CycleNote, ledger.lastCycleNote)
+    set(Keys.Location, ledger.location?.let(::writeLocation))
+    this[Keys.PreviousLocations] = ledger.previousLocations.takeLast(NotificationLedger.MAX_LOCAL_LOCATIONS)
+      .joinToString("\n", transform = ::writeLocalLedger)
+  }
+
+  private fun writeLocation(location: NotificationLocation): String = listOf(
+    Base64.getUrlEncoder().withoutPadding().encodeToString(location.placeKey.toByteArray(Charsets.UTF_8)),
+    location.latitude.toString(), location.longitude.toString(),
+  ).joinToString("\t")
+
+  private fun readLocation(encoded: String): NotificationLocation? = runCatching {
+    val parts = encoded.split('\t')
+    if (parts.size != 3) return null
+    val latitude = parts[1].toDouble().takeIf { it.isFinite() && it in -90.0..90.0 } ?: return null
+    val longitude = parts[2].toDouble().takeIf { it.isFinite() && it in -180.0..180.0 } ?: return null
+    NotificationLocation(String(Base64.getUrlDecoder().decode(parts[0]), Charsets.UTF_8), latitude, longitude)
+  }.getOrNull()
+
+  private fun writeLocalLedger(local: LocalNotificationLedger): String = listOf(
+    writeLocation(local.location), local.nowcastAlertAtMillis?.toString().orEmpty(),
+    local.nowcastAlertProbability?.toString().orEmpty(), local.nowcastAlertActive.toString(),
+    local.precipitationOnsetMillis?.toString().orEmpty(), local.precipitationEndMillis?.toString().orEmpty(),
+  ).joinToString("\t")
+
+  private fun readLocalLedger(encoded: String): LocalNotificationLedger? {
+    val parts = encoded.split('\t')
+    if (parts.size != 8) return null
+    val location = readLocation(parts.take(3).joinToString("\t")) ?: return null
+    return LocalNotificationLedger(location, parts[3].toLongOrNull(),
+      parts[4].toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..1.0 }, parts[5] == "true",
+      parts[6].toLongOrNull(), parts[7].toLongOrNull())
   }
 
   private object Keys {
@@ -127,5 +164,7 @@ class NotificationLedgerStore(private val context: Context) {
     val SummaryDay = longPreferencesKey("ledger_summary_day")
     val CycleAt = longPreferencesKey("ledger_cycle_at")
     val CycleNote = stringPreferencesKey("ledger_cycle_note")
+    val Location = stringPreferencesKey("ledger_location")
+    val PreviousLocations = stringPreferencesKey("ledger_previous_locations")
   }
 }

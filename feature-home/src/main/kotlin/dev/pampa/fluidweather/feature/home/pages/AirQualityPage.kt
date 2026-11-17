@@ -31,6 +31,7 @@ import dev.pampa.fluidweather.strings.labelRes
  */
 @Composable
 internal fun AirQualityPage(state: HomeUiState) {
+  val zone = dev.pampa.fluidweather.feature.home.homeWeatherZone(state).zoneId
   val air = state.airQuality
   if (air == null) {
     PageNote(stringResource(R.string.aq_unavailable_point))
@@ -91,13 +92,13 @@ internal fun AirQualityPage(state: HomeUiState) {
   if (forecast.size >= 2) {
     CurveWithLabels(
       values = forecast.map { it.europeanAqi.toDouble() },
-      labels = timeLabels(forecast.map { it.timestampMillis }),
+      labels = timeLabels(forecast.map { it.timestampMillis }, zone),
       color = PageAmber,
       height = 80.dp,
     )
     val worst = forecast.maxByOrNull { it.europeanAqi }
     if (worst != null) {
-      StatRow(stringResource(R.string.aq_worst_ahead), "${worst.europeanAqi} · ${stringResource(AqiBand.of(worst.europeanAqi).labelRes())}", fmtDay(worst.timestampMillis) + " " + fmtTime(worst.timestampMillis))
+      StatRow(stringResource(R.string.aq_worst_ahead), "${worst.europeanAqi} · ${stringResource(AqiBand.of(worst.europeanAqi).labelRes())}", fmtDay(worst.timestampMillis, zone) + " " + fmtTime(worst.timestampMillis, zone))
     }
   } else {
     PageNote(stringResource(R.string.aq_no_forecast))

@@ -7,7 +7,9 @@ import dev.pampa.fluidweather.core.model.FusedHour
 import dev.pampa.fluidweather.core.model.FusedValue
 import dev.pampa.fluidweather.core.model.FusionVariables
 import dev.pampa.fluidweather.core.model.HorizonBucket
+import dev.pampa.fluidweather.core.model.HourlyPoint
 import dev.pampa.fluidweather.core.model.WeatherKind
+import dev.pampa.fluidweather.core.model.WeatherInterval
 
 /**
  * La fusione: per ogni ora e variabile, media pesata delle opinioni disponibili, con i pesi
@@ -28,8 +30,10 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
     nowMillis: Long,
     onlyProviderId: String? = null,
   ): FusedForecast {
-    val bundles = fetches.mapNotNull { it.bundle }
+    val bundles = fetches.filter { it.error == null }.mapNotNull { it.bundle }
+      .groupBy { it.providerId }.values.mapNotNull { it.distinct().singleOrNull() }
     if (bundles.isEmpty()) return FusedForecast(emptyList(), emptyMap())
+    val products = bundles.associate { it.providerId to ForecastProducts(it) }
     val providerIds = bundles.map { it.providerId }
 
     // Pesi per variabile e fascia, calcolati una volta per fusione. Le variabili verificate
@@ -48,8 +52,8 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
       }
     }
 
-    val timeline = bundles.flatMap { bundle -> bundle.hourly.map { it.timestampMillis } }
-      .filter { it >= nowMillis - 3_600_000L }
+    val timeline = products.values.flatMap { it.timestamps }
+      .filter { it >= nowMillis - 3_600_000L && it <= nowMillis + 10 * 24 * 3_600_000L }
       .distinct()
       .sorted()
 
@@ -60,12 +64,12 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
       val values = mutableMapOf<String, FusedValue>()
       var kind: WeatherKind? = null
       var kindWeight = -1.0
+      var kindProvider: String? = null
 
       for (variable in FusionVariables.all) {
         val weights = weightTable.getValue(bucket).getValue(variable)
         val contributions = bundles.mapNotNull { bundle ->
-          val point = bundle.at(timestamp) ?: return@mapNotNull null
-          val value = FusionVariables.of(point, variable) ?: return@mapNotNull null
+          val value = products.getValue(bundle.providerId).valueAt(timestamp, variable) ?: return@mapNotNull null
           val eligible = onlyProviderId == null || bundle.providerId == onlyProviderId
           if (!eligible) return@mapNotNull null
           Contribution(
@@ -79,8 +83,7 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
             emptyList()
           } else {
             bundles.mapNotNull { bundle ->
-              val point = bundle.at(timestamp) ?: return@mapNotNull null
-              val value = FusionVariables.of(point, variable) ?: return@mapNotNull null
+              val value = products.getValue(bundle.providerId).valueAt(timestamp, variable) ?: return@mapNotNull null
               Contribution(bundle.providerId, weights[bundle.providerId]?.weight ?: 0.0, value)
             }
           }
@@ -100,18 +103,28 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
       // Condizione e direzione del vento non si mediano: parla il provider col peso maggiore.
       var windDirection: Double? = null
       var windWeight = -1.0
-      for (bundle in bundles) {
-        if (onlyProviderId != null && bundle.providerId != onlyProviderId) continue
-        val point = bundle.at(timestamp) ?: continue
+      var windProvider: String? = null
+      val categorical = bundles.mapNotNull { bundle -> products.getValue(bundle.providerId).pointAt(timestamp)?.let { bundle to it } }
+      val selectedKind = categorical.filter { it.second.kind != null && it.second.kind != WeatherKind.UNKNOWN }
+      val selectedWind = categorical.filter { it.second.windDirectionDeg?.let { value -> value.isFinite() && value in 0.0..360.0 } == true }
+      fun chosen(candidates: List<Pair<ForecastBundle, HourlyPoint>>) =
+        candidates.filter { onlyProviderId == null || it.first.providerId == onlyProviderId }.ifEmpty { candidates }
+      for ((bundle, point) in chosen(selectedKind)) {
         val weight = weightTable.getValue(bucket)
           .getValue(FusionVariables.PRECIPITATION)[bundle.providerId]?.weight ?: 0.0
-        if (point.kind != null && weight > kindWeight) {
+        if (weight > kindWeight) {
           kindWeight = weight
           kind = point.kind
+          kindProvider = bundle.providerId
         }
-        if (point.windDirectionDeg != null && weight > windWeight) {
+      }
+      for ((bundle, point) in chosen(selectedWind)) {
+        val weight = weightTable.getValue(bucket)
+          .getValue(FusionVariables.WIND_SPEED)[bundle.providerId]?.weight ?: 0.0
+        if (weight > windWeight) {
           windWeight = weight
           windDirection = point.windDirectionDeg
+          windProvider = bundle.providerId
         }
       }
 
@@ -120,8 +133,12 @@ class ForecastFusion(private val scoreboard: ProviderScoreboard) {
         values = values,
         kind = kind,
         windDirectionDeg = windDirection,
+        kindProviderId = kindProvider,
+        windDirectionProviderId = windProvider,
+        precipitationInterval = if (FusionVariables.PRECIPITATION in values || FusionVariables.PRECIP_PROBABILITY in values)
+          WeatherInterval(timestamp - ForecastProducts.HOUR_MILLIS, timestamp) else null,
       )
-    }.filter { it.values.isNotEmpty() }
+    }.filter { it.values.isNotEmpty() || it.kind != null || it.windDirectionDeg != null }
 
     return FusedForecast(
       hours = hours,

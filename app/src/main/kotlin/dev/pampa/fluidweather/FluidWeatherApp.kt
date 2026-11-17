@@ -36,6 +36,7 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
   override val backgroundCycle: BackgroundCycle get() = graph.backgroundCycle
 
   override suspend fun rescheduleDailySummary() = graph.rescheduleDailySummary()
+  override suspend fun runDailySummary(dueAtMillis: Long): Boolean = graph.runDailySummary(dueAtMillis)
 
   override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
     super.onConfigurationChanged(newConfig)
@@ -93,6 +94,7 @@ class FluidWeatherApp : Application(), SensorRuntime, CycleRuntime, AppWidgetRun
       },
       unitPreferences = graph.notificationUnits,
       cachedInputUpdates = graph.weatherBriefService.cachedInputUpdates,
+      savedPlaces = graph.savedLocationsRepository.places,
     )
   }
 
