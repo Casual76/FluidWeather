@@ -80,4 +80,25 @@ class NowcastWipeReliabilityTest {
     assertTrue("control must really record a verdict", history.since(0L).isNotEmpty())
     wipePausedEvaluation()
   }
+
+  @Test fun gpsStartedDuringWipeCannotRestoreBaseline() = runBlocking {
+    useCase.evaluate(snapshot, now)
+    assertEquals(43.8, baseline.current().latitude!!, 0.0)
+    val started = CompletableDeferred<Unit>()
+    val finish = CompletableDeferred<Unit>()
+    val wipe = launch(Dispatchers.Default) {
+      guard.wipe { started.complete(Unit); finish.await(); baseline.clear(); history.clear(); pressure.clear() }
+    }
+    withTimeout(5_000L) { started.await() }
+    pause = true
+    val evaluation = async(Dispatchers.Default) { runCatching { useCase.evaluate(snapshot, now, record = true) } }
+    withTimeout(5_000L) { entered.await() }
+    finish.complete(Unit)
+    withTimeout(5_000L) { wipe.join() }
+    release.complete(Unit)
+    assertTrue(withTimeout(5_000L) { evaluation.await() }.exceptionOrNull() is CancellationException)
+    assertNull(baseline.current().latitude)
+    assertNull(baseline.current().longitude)
+    assertTrue(history.since(0L).isEmpty())
+  }
 }

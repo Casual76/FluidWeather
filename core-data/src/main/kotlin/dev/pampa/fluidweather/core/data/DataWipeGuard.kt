@@ -35,11 +35,17 @@ class DataWipeGuard {
       if (generation.get() != observed) null else write()
     }
 
-  /** Cancella: alza la generazione (chi scriveva con quella vecchia si fermera') e poi esegue [clear]. */
+  /** Invalidate work started before OR during deletion; only post-deletion tokens may commit. */
   suspend fun wipe(clear: suspend () -> Unit) {
     mutex.withLock {
       generation.incrementAndGet()
-      clear()
+      try {
+        clear()
+      } finally {
+        // Readers can start while clear suspends and still see old inputs. Expire that
+        // intermediate generation before releasing the lock, even after a partial failure.
+        generation.incrementAndGet()
+      }
     }
   }
 }

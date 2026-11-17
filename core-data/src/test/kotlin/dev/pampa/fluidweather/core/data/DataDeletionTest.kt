@@ -3,6 +3,10 @@ package dev.pampa.fluidweather.core.data
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -46,5 +50,45 @@ class DataDeletionTest {
     var completed = false
     guard.wipe { clearUserData({ completed = true }) }
     assertTrue(completed)
+  }
+
+  @Test fun workStartedDuringDeletionCannotRestoreOldInput() = runBlocking {
+    val guard = DataWipeGuard()
+    var stored: String? = "old"
+    val entered = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    val wipe = launch(start = CoroutineStart.UNDISPATCHED) {
+      guard.wipe { entered.complete(Unit); release.await(); stored = null }
+    }
+    entered.await()
+    val during = guard.generation()
+    val oldInput = stored
+    val writer = async(start = CoroutineStart.UNDISPATCHED) {
+      guard.writeIfUnchanged(during) { stored = oldInput }
+    }
+    assertFalse(writer.isCompleted)
+    release.complete(Unit)
+    wipe.join()
+    assertNull(writer.await())
+    assertNull(stored)
+    guard.writeIfUnchanged(guard.generation()) { stored = "new" }
+    assertEquals("new", stored)
+  }
+
+  @Test fun failedDeletionAlsoInvalidatesWorkStartedWhileItWasClearing() = runBlocking {
+    val guard = DataWipeGuard()
+    val release = CompletableDeferred<Unit>()
+    val wipe = async(start = CoroutineStart.UNDISPATCHED) {
+      runCatching { guard.wipe { release.await(); throw IOException("locked") } }
+    }
+    val during = guard.generation()
+    var lateCommit = false
+    val writer = async(start = CoroutineStart.UNDISPATCHED) {
+      guard.writeIfUnchanged(during) { lateCommit = true }
+    }
+    release.complete(Unit)
+    assertTrue(wipe.await().exceptionOrNull() is IOException)
+    assertNull(writer.await())
+    assertFalse(lateCommit)
   }
 }
