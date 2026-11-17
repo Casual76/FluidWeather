@@ -23,7 +23,7 @@ Tre agenti con contesto fresco analizzano notifiche, dati meteo e percorsi d'uso
 
 Branch di lavoro: `reliability/daily-use-20261117`. Rapporti dettagliati, log ed evidenze locali in `artifacts/reliability-2026-11-17/`.
 
-La suite iniziale è passata in 1m26s: rapporti XML per 1.277 casi, zero fallimenti/errori/saltati. Il batch comprende task eseguiti, recuperati da cache e già aggiornati: il totale dei rapporti non equivale a 1.277 nuove esecuzioni. Due invocazioni preliminari non hanno eseguito test (quoting PowerShell e scoperta del toolchain Java); i log sono conservati separatamente.
+La suite iniziale è passata in 1m26s. La prima riconta nella directory di lavoro riportava 1.277 casi; la copia congelata conserva 180 XML e **1.271 casi**, zero fallimenti/errori/saltati. La differenza di sei casi non viene attribuita come nuova esecuzione verificata. Il batch comprende task eseguiti, recuperati da cache e già aggiornati: i rapporti non equivalgono a nuove esecuzioni. Due invocazioni preliminari non hanno eseguito test (quoting PowerShell e scoperta del toolchain Java); i log sono conservati separatamente.
 
 Prove rosse eseguite prima degli interventi interessati: 1 difetto DST; 16 test notifiche con 13 fallimenti e 3 controlli passanti; 20 test dati con 18 fallimenti e 2 controlli passanti; 3 test del costruttore orario reale con 2 fallimenti e 1 controllo passante. Sono fixture di regressione, non misure meteo sul campo. Le ulteriori prove aggiunte durante l'implementazione verranno riportate separatamente.
 

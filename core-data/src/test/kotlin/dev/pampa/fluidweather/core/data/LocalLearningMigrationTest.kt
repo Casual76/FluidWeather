@@ -131,7 +131,8 @@ class LocalLearningMigrationTest {
     }
   }
 
-  @Test fun `real DAO round trips version and location and never replaces or removes another place`() = runBlocking {
+  // Keep the method name short: Robolectric includes it in the native SQLite temp path on Windows.
+  @Test fun daoKeepsPlacesAndVersionsDistinct() = runBlocking {
     openAndCheck(seed(8))
     val store = RoomVerificationStore(room!!.verificationDao())
     val a = PendingPrediction("open-meteo", FusionVariables.TEMPERATURE, now, 20.0, now - 3_600_000L,

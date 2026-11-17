@@ -78,7 +78,8 @@ internal fun ForecastBundle.usableAt(now: Long, latitude: Double = this.latitude
       (value.temperatureC?.isFinite() == true || value.kind?.let { it != WeatherKind.UNKNOWN } == true ||
         value.precipitationMm != null && value.precipitationInterval != null)) return true
   }
-  if (minutelyPrecipitation?.durationMillis == 900_000L && minutelyPrecipitation.anchor == AccumulationAnchor.PRECEDING &&
+  val minuteMetadata = minutelyPrecipitation
+  if (minuteMetadata?.durationMillis == 900_000L && minuteMetadata.anchor == AccumulationAnchor.PRECEDING &&
     now - fetchedAtMillis <= LocalPrecipitationEvaluator.DOWNLOAD_MAX_AGE) {
     if (minutely.groupBy { it.timestampMillis }.values.any { rows ->
         val row = rows.singleOrNull()

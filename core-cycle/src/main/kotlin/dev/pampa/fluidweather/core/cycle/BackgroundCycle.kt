@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.core.cycle
 import android.content.Context
 import android.location.Geocoder
 import dev.pampa.fluidweather.core.data.CalibrationStore
+import dev.pampa.fluidweather.core.data.DataWipeGuard
 import dev.pampa.fluidweather.core.data.LastFixStore
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.LearningRepository
@@ -27,6 +28,8 @@ import dev.pampa.fluidweather.core.weather.OfficialAlertsClient
 import dev.pampa.fluidweather.core.weather.NowcastUseCase
 import dev.pampa.fluidweather.core.weather.WeatherSnapshot
 import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
+import dev.pampa.fluidweather.core.weather.withWeatherDataGeneration
+import dev.pampa.fluidweather.core.weather.writeCurrentWeatherData
 import dev.pampa.fluidweather.nowcast.cleaning.CalibrationMath
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
@@ -191,11 +194,13 @@ class BackgroundCycle(
    * qui: il ciclo dice soltanto "e' un buon momento", non decide niente.
    */
   private val plattRefit: suspend (Long) -> Unit = {},
+  private val wipeGuard: DataWipeGuard? = null,
 ) {
 
   private val mutex = Mutex()
 
-  suspend fun run(trigger: CycleTrigger, dailySummaryDueAtMillis: Long? = null): CycleOutcome = mutex.withLock {
+  suspend fun run(trigger: CycleTrigger, dailySummaryDueAtMillis: Long? = null): CycleOutcome =
+    withWeatherDataGeneration(wipeGuard) { mutex.withLock {
     val now = clock()
     val point = resolvePoint(now)
     if (point == null) {
@@ -205,7 +210,7 @@ class BackgroundCycle(
       val outcome = CycleOutcome(texts.cycleNoPosition(), null, null, emptyList(),
         dailySummaryPending = summaryActionable(trigger, dailySummaryDueAtMillis, decisionNow, settings, ledger))
       record(decisionNow, outcome)
-      return outcome
+      return@withLock outcome
     }
     val (key, latitude, longitude) = point
 
@@ -297,8 +302,8 @@ class BackgroundCycle(
         locationName = point.locationName,
       ),
     )
-    if (decision.cancelNowcastAlert) notifier.cancel(AlertPolicy.NOWCAST_ID)
-    val delivery = decision.deliver(::deliver)
+    if (decision.cancelNowcastAlert) writeCurrentWeatherData { notifier.cancel(AlertPolicy.NOWCAST_ID) }
+    val delivery = writeCurrentWeatherData { decision.deliver(::deliver) }
     val delivered = delivery.delivered.toMutableList()
     var nextLedger = delivery.ledger
 
@@ -326,7 +331,7 @@ class BackgroundCycle(
           texts = texts,
           dataAtMillis = snapshot.sourceDataAtMillis,
         )
-        if (summary != null && deliver(summary)) {
+        if (summary != null && writeCurrentWeatherData { deliver(summary) }) {
           delivered += summary
           nextLedger = nextLedger.copy(summaryEpochDay = today)
           summaryPending = false
@@ -345,14 +350,16 @@ class BackgroundCycle(
       delivered = delivered.size,
     )
     val outcome = CycleOutcome(note, snapshot, verdict, delivered, summaryPending, delivery.pending)
-    ledgerStore.update { nextLedger.copy(lastCycleAtMillis = decisionNow, lastCycleNote = note) }
+    writeCurrentWeatherData {
+      ledgerStore.update { nextLedger.copy(lastCycleAtMillis = decisionNow, lastCycleNote = note) }
+    }
 
     // 7) Per ultimo il lavoro senza fretta: a notifiche consegnate e registro scritto, un giudice
     // lento non puo' ritardare niente a nessuno. Ma tiene il mutex, quindi ha un tetto: un giro di
     // rete appeso non deve bloccare tutti i cicli che verranno.
     runCatching { withTimeoutOrNull(AFTER_CYCLE_TIMEOUT_MILLIS) { afterCycle() } }
     outcome
-  }
+  } }
 
   private fun summaryActionable(
     trigger: CycleTrigger, dueAtMillis: Long?, nowMillis: Long,
@@ -399,12 +406,16 @@ class BackgroundCycle(
     val fresh = snapshot.takeIf { now - sourceAt in 0L..REFINE_MAX_SNAPSHOT_AGE_MILLIS } ?: return
     val hour = fresh.fused.hourAround(now) ?: return
     val reference = hour.values[FusionVariables.PRESSURE_MSL]?.value ?: return
-    runCatching { calibrationStore.save(CalibrationMath.refine(record, local.seaLevelPressureHpa, reference, now)) }
+    try {
+      writeCurrentWeatherData { calibrationStore.save(CalibrationMath.refine(record, local.seaLevelPressureHpa, reference, now)) }
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+      throw cancelled
+    } catch (_: Exception) { }
   }
 
   /** In primo piano il banner in-app, altrimenti la tendina (decisione 2026-09-02). */
   private fun deliver(notification: AppNotification): Boolean =
-    if (appVisibility.inForeground.value) inAppAlerts.emit(notification) else notifier.post(notification)
+    if (appVisibility.inForeground.value) inAppAlerts.emit(notification) || notifier.post(notification) else notifier.post(notification)
 
   /**
    * Dove fare il giro: il posto del telefono se lo si puo' dire, altrimenti la prima localita'
@@ -428,7 +439,7 @@ class BackgroundCycle(
   }
 
   private suspend fun record(now: Long, outcome: CycleOutcome) {
-    ledgerStore.update { it.copy(lastCycleAtMillis = now, lastCycleNote = outcome.note) }
+    writeCurrentWeatherData { ledgerStore.update { it.copy(lastCycleAtMillis = now, lastCycleNote = outcome.note) } }
   }
 
   private companion object {

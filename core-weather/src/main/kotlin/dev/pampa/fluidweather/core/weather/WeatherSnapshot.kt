@@ -700,6 +700,17 @@ class WeatherSnapshotRefresher(
   }
 }
 
+/** Carry the originating generation through a complete consumer workflow and its nested IO. */
+suspend fun <T> withWeatherDataGeneration(guard: DataWipeGuard?, block: suspend () -> T): T =
+  withWeatherWipeEpoch(guard) { block() }
+
+/** Serialize a consumer's final side effect with deletion, without holding the guard over IO. */
+suspend fun <T : Any> writeCurrentWeatherData(block: suspend () -> T): T {
+  currentCoroutineContext().ensureActive()
+  val epoch = currentCoroutineContext()[WeatherWipeEpoch]
+  return if (epoch == null) block() else epoch.write(block)
+}
+
 /** Inherited by nested stages and repository async children; never renew an originating epoch. */
 internal class WeatherWipeEpoch(val guard: DataWipeGuard, val observed: Long) :
   AbstractCoroutineContextElement(Key) {

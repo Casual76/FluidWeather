@@ -1,6 +1,7 @@
 package dev.pampa.fluidweather.testbench.replay
 
 import dev.pampa.fluidweather.nowcast.features.FeatureExtractorV3
+import dev.pampa.fluidweather.nowcast.features.CurrentSignalPolicy
 import dev.pampa.fluidweather.nowcast.truth.RainWindows
 import dev.pampa.fluidweather.testbench.baselines.HonestBaselines
 import dev.pampa.fluidweather.testbench.tiers.IssueSimulator
@@ -46,15 +47,49 @@ class IssueViewTest {
     val recorder = Recorder()
     val result = TierReplayer(period, model = null, threads = 1, extras = listOf(recorder)).replay(listOf(input))
     val honest = result.baselines.getValue("a")
+    val coverage = result.coverage.single()
+    val perTier = recorder.views.groupingBy { it.kind }.eachCount()
+    val diagnostic = "views=${recorder.views.size}, perTier=$perTier, " +
+      "anchors=${coverage.anchors}, issues=${coverage.issues}, noTruth=${coverage.noTruth}, " +
+      "noBarometer=${coverage.noBarometer}, droppedNoContext=${coverage.droppedNoContext}"
 
     assertEquals(TierKind.entries.size, recorder.contexts.size)
     for ((_, ctx) in recorder.contexts) assertSame(honest, ctx.honest)
 
-    assertTrue(recorder.views.size > 100)
+    // Two days x eight anchors x seven tiers used to allow 112 views. TELEFONO has no samples
+    // from 03:00 to 05:00 each day: the 06:00 anchors emit at 05:00-06:00, before three current
+    // hour buckets have recovered. Those two anchors must be rejected (at most 98 views before
+    // any additional sensor/context rejection). Count every eligible view instead of requiring
+    // an absolute volume that would reward emitting a verdict during the simulated outage.
+    assertEquals(diagnostic, period.issueAnchors().size, coverage.anchors)
+    assertEquals(diagnostic, coverage.anchors, coverage.issues + coverage.noTruth + coverage.noBarometer)
+    assertEquals(diagnostic, 0, coverage.noTruth) // This fixture has complete truth beyond the period.
+    assertEquals(diagnostic, TierKind.entries.toSet(), perTier.keys)
+    val expectedViews = coverage.issues * TierKind.entries.size - coverage.droppedNoContext.values.sum()
+    assertEquals(diagnostic, expectedViews, recorder.views.size)
+
+    val observedKeys = recorder.views.map { it.anchorMillis to it.kind }
+    val playedKeys = result.records.map { it.anchorMillis to it.kind }.toSet()
+    assertEquals("one view per played issue/tier; $diagnostic", playedKeys, observedKeys.toSet())
+    assertEquals("duplicate issue/tier views; $diagnostic", observedKeys.size, observedKeys.toSet().size)
+
+    val simulator = IssueSimulator(input)
+    val anchors = period.issueAnchors().toList()
+    val eligibleAnchors = anchors.filter { simulator.simulate(it) != null }.toSet()
+    assertEquals("all and only eligible issues are played; $diagnostic", eligibleAnchors,
+      recorder.views.map { it.anchorMillis }.toSet())
+    assertEquals(diagnostic, anchors.size - eligibleAnchors.size, coverage.noBarometer)
+    val recoveringFromDoze = anchors.filter { Math.floorMod(it, day) == 6 * hour }
+    assertEquals(diagnostic, 2, recoveringFromDoze.size)
+    assertTrue("Doze recovery must not emit from disconnected history; $diagnostic",
+      recoveringFromDoze.all { it !in eligibleAnchors })
+
     for (view in recorder.views) {
       assertNotNull(view.cleaning)
       assertSame(honest, view.honest)
       assertTrue(view.cleaning!!.filtered.isNotEmpty())
+      assertTrue("non-current signal at ${view.issueMillis}/${view.kind}; $diagnostic",
+        CurrentSignalPolicy.isCurrent(view.cleaning!!.filtered, view.issueMillis))
       if (view.kind.hasContext) {
         val asOf = view.asOf!!
         assertEquals(asOf.context, view.context)

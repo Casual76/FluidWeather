@@ -137,7 +137,7 @@ fun AppUpdateRows(deps: UpdateDependencies) {
               .onSuccess { found -> status = if (found == null) UpdateStatus.Latest else UpdateStatus.Available(found, checkedChannel) }
               .onFailure { status = UpdateStatus.CheckFailed }
           } else {
-            if (deps.releaseSettings.currentChannel() != availableState.channel) {
+            if (deps.releaseSettings.currentChannel() != availableState?.channel) {
               status = UpdateStatus.Idle
               return@launch
             }

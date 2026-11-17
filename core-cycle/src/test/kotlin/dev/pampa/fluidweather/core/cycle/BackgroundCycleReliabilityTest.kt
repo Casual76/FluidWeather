@@ -12,6 +12,8 @@ import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import java.io.File
 import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
+import dev.pampa.fluidweather.nowcast.verdict.AlertLevel
 import org.junit.Assert.*
 import org.junit.After
 import org.junit.Before
@@ -36,6 +38,9 @@ class BackgroundCycleReliabilityTest {
   private val noon = 1_781_517_600_000L
   private var now = noon
   private var onRefresh: () -> Unit = {}
+  private var beforeLedger: () -> Unit = {}
+  private val wipeGuard = DataWipeGuard()
+  private val visibility = AppVisibility()
   private val tokyo = Place(7, "Tokyo", null, 35.68, 139.69, "Asia/Tokyo")
   private val berlin = Place(8, "Berlin", null, 52.52, 13.40, "Europe/Berlin")
 
@@ -93,8 +98,16 @@ class BackgroundCycleReliabilityTest {
       officialAlerts = OfficialAlertsClient(ProviderHttp(EngineHttp(userAgent = "notification-regression"),
         UrlCache(File(app.cacheDir, "notification-regression-http")))),
       placeContext = PlaceContextResolver(app), notifier = SystemNotifier(app), inAppAlerts = InAppAlertBus(),
-      appVisibility = AppVisibility(), texts = ItalianTexts, clock = { now }, zone = { ZoneId.of("Europe/Rome") },
+      appVisibility = visibility,
+      texts = object : NotificationTexts by ItalianTexts {
+        override fun cycleNote(nowMillis: Long, zone: ZoneId, trigger: CycleTrigger,
+          providersResponding: Int?, providersTotal: Int?, fromSnapshot: Boolean, level: AlertLevel?, delivered: Int): String {
+          beforeLedger()
+          return ItalianTexts.cycleNote(nowMillis, zone, trigger, providersResponding, providersTotal, fromSnapshot, level, delivered)
+        }
+      }, clock = { now }, zone = { ZoneId.of("Europe/Rome") },
       networkLikelyAvailable = { true },
+      wipeGuard = wipeGuard,
     )
   }
 
@@ -148,5 +161,22 @@ class BackgroundCycleReliabilityTest {
     assertNotNull("the provider round must succeed, not fail the fixture", outcome.snapshot)
     assertEquals(noon + 2 * 3_600_000L, now)
     assertTrue(outcome.delivered.isEmpty())
+  }
+
+  @Test fun wipeBeforeCommitDoesNotRestoreLocations() = runBlocking {
+    ledger.update { it.copy(location = NotificationLocation("gps", 43.83, 11.20), precipitationOnsetMillis = noon) }
+    beforeLedger = { runBlocking { wipeGuard.wipe { ledger.update { NotificationLedger() } } } }
+    val result = runCatching { cycle.run(CycleTrigger.SAMPLING_PASS) }
+    assertTrue("an invalidated cycle must stop", result.exceptionOrNull() is CancellationException)
+    assertEquals(NotificationLedger(), ledger.current())
+  }
+
+  @Test fun foregroundWithoutBannerFallsBackToSystem() = runBlocking {
+    visibility.set(true)
+    val outcome = cycle.run(CycleTrigger.SAMPLING_PASS)
+    assertEquals(1, outcome.delivered.size)
+    assertEquals(noon + 3_600_000L, ledger.current().precipitationOnsetMillis)
+    val manager = app.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+    assertEquals(1, shadowOf(manager).size())
   }
 }

@@ -400,6 +400,7 @@ class AppGraph(context: Context) {
     learningRepository = learningRepository,
     samplingSettings = samplingSettingsStore,
     notificationSettings = notificationSettingsStore,
+    wipeGuard = wipeGuard,
     ledgerStore = notificationLedgerStore,
     nowcastHistory = nowcastHistoryStore,
     verificationStore = verificationStore,
