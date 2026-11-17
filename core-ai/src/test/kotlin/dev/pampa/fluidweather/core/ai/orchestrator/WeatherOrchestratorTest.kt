@@ -25,16 +25,33 @@ import dev.antigravity.fluidengine.ai.provider.TranscribeOptions
 import dev.antigravity.fluidengine.ai.provider.Transcript
 import dev.antigravity.fluidengine.ai.tools.Schema
 import dev.antigravity.fluidengine.ai.tools.ToolRegistry
+import dev.pampa.fluidweather.core.ai.data.ResolvedPlace
+import dev.pampa.fluidweather.core.ai.data.WeatherPlaceResolver
 import dev.pampa.fluidweather.core.ai.tools.ActionSink
+import dev.pampa.fluidweather.core.ai.tools.DayDetailTool
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
 import dev.pampa.fluidweather.core.ai.tools.ToolGroup
 import dev.pampa.fluidweather.core.ai.tools.WeatherTool
 import dev.pampa.fluidweather.core.ai.tools.weatherRegistry
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import dev.pampa.fluidweather.core.model.ForecastBundle
+import dev.pampa.fluidweather.core.model.FusedForecast
+import dev.pampa.fluidweather.core.model.HourlyPoint
+import dev.pampa.fluidweather.core.model.Place
+import dev.pampa.fluidweather.core.weather.ProviderFetch
+import dev.pampa.fluidweather.core.weather.ProviderRegistry
+import dev.pampa.fluidweather.core.weather.RoundSource
+import dev.pampa.fluidweather.core.weather.WeatherRound
+import dev.pampa.fluidweather.core.weather.WeatherSnapshot
+import dev.pampa.fluidweather.core.weather.WeatherSnapshotRefresher
+import dev.pampa.fluidweather.core.weather.WeatherSnapshotStore
 import java.io.File
+import java.nio.file.Files
 import java.time.ZoneId
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -42,12 +59,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 /** Un turno recitato: testo, tool call, o un errore da lanciare prima di rispondere. */
@@ -57,7 +76,12 @@ private sealed interface Scripted {
   data class Fail(val error: Throwable) : Scripted
 }
 
-private class FakeProvider(override val id: ProviderId, turns: List<Scripted>, private val router: String = """{"gruppi":["orario"],"profondo":false}""") : ChatProvider {
+private class FakeProvider(
+  override val id: ProviderId,
+  turns: List<Scripted>,
+  private val router: String = """{"gruppi":["orario"],"profondo":false}""",
+  private val beforeToolCalls: suspend () -> Unit = {},
+) : ChatProvider {
   private val queue = ArrayDeque(turns)
   val requests = mutableListOf<ChatRequest>()
   val streamed = mutableListOf<ChatRequest>()
@@ -79,6 +103,7 @@ private class FakeProvider(override val id: ProviderId, turns: List<Scripted>, p
         emit(ChatDelta.Finish(FinishReason.STOP, null, RateLimitInfo.EMPTY))
       }
       is Scripted.Calls -> {
+        beforeToolCalls()
         turn.preamble?.let { emit(ChatDelta.Text(it)) }
         turn.calls.forEachIndexed { index, (name, args) ->
           emit(ChatDelta.ToolCallPart(index, "call_$index", name, null))
@@ -118,26 +143,31 @@ class WeatherOrchestratorTest {
   private val diagnostics = AiDiagnosticsLog()
   private val orchestrator = WeatherOrchestrator.create(registry, diagnostics)
 
-  private fun context() = ToolContext(
+  private fun context(selected: ResolvedPlace? = null) = ToolContext(
     sourcesProvider = { error("i dati dell'app non servono a questo test") },
     unitsProvider = { error("le unita' non servono a questo test") },
     resourcesProvider = { error("le risorse non servono a questo test") },
     locale = Locale.ITALIAN,
     zone = ZoneId.of("Europe/Rome"),
     nowMillis = 1_700_000_000_000L,
-    selected = null,
+    selected = selected,
     actionsEnabled = false,
     actions = ActionSink.Disabled,
   )
 
-  private fun input(question: String, vararg providers: FakeProvider, conversation: Conversation = Conversation(1L, 0L)) = AskInput(
+  private fun input(
+    question: String,
+    vararg providers: FakeProvider,
+    conversation: Conversation = Conversation(1L, 0L),
+    selected: ResolvedPlace? = null,
+  ) = AskInput(
     question = question,
     mode = AskMode.TEXT,
     language = "it",
     settings = AiSettings(),
     // Con un modello profondo scritto: e' `deepTierEnabled = false` a tenerlo spento, non l'app che lo toglie.
     providers = providers.map { ReadyProvider(it, "modello-${it.id.id}", "stt", "piccolo", deepModel = "profondo-${it.id.id}") },
-    toolContext = context(),
+    toolContext = context(selected),
     systemPrompt = "sei un assistente",
     conversation = conversation,
     actionsEnabled = false,
@@ -275,6 +305,104 @@ class WeatherOrchestratorTest {
     job.cancel(CancellationException("stop"))
     job.join()
     assertTrue(conversation.exchanges.isEmpty())
+  }
+
+  @Test
+  fun `wipe during provider stream prevents old GPS from reaching the daily tool`() = runBlocking {
+    val directory = Files.createTempDirectory("assistant-wipe").toFile()
+    try {
+      val guard = DataWipeGuard()
+      val store = WeatherSnapshotStore(directory, wipeGuard = guard)
+      val now = 1_700_000_000_000L
+      val latitude = 43.8321
+      val longitude = 11.1994
+      val forecast = ForecastBundle("open-meteo", now, latitude, longitude,
+        listOf(HourlyPoint(now + 3_600_000L, temperatureC = 12.0)))
+      val fused = FusedForecast(emptyList(), emptyMap())
+      val key = WeatherSnapshot.GPS_KEY
+      store.write(WeatherSnapshot(key, latitude, longitude, now, emptyList(), fused, forecast))
+      var toolResolutions = 0
+      var refreshes = 0
+      val source = object : RoundSource {
+        override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
+          refreshes++
+          val provider = ProviderRegistry.all.first { it.id == ProviderRegistry.OPEN_METEO }
+          return WeatherRound(listOf(ProviderFetch(provider, forecast, null)), fused)
+        }
+      }
+      val refresher = WeatherSnapshotRefresher(source, store, clock = { now }, wipeGuard = guard)
+      val resolver = object : WeatherPlaceResolver {
+        override suspend fun resolve(query: String?, selected: ResolvedPlace?): ResolvedPlace? {
+          toolResolutions++
+          return selected
+        }
+
+        override suspend fun search(query: String, limit: Int): List<Place> = emptyList()
+
+        override suspend fun snapshot(place: ResolvedPlace, maxAgeMillis: Long): WeatherSnapshot =
+          refresher.fresh(place.snapshotKey, place.latitude, place.longitude, maxAgeMillis)
+            ?: refresher.refresh(place.snapshotKey, place.latitude, place.longitude, registerPredictions = false)
+      }
+      val tool = DayDetailTool(resolver)
+      val diagnostics = AiDiagnosticsLog()
+      val daily = WeatherOrchestrator.create(weatherRegistry(listOf(tool)), diagnostics)
+      val entered = CompletableDeferred<Unit>()
+      val release = CompletableDeferred<Unit>()
+      val calls = Scripted.Calls(listOf(tool.name to buildJsonObject { put("data", JsonPrimitive("oggi")) }))
+      val pending = FakeProvider(ProviderId.OPENROUTER, listOf(calls, Scripted.Text("old reply"))) {
+        entered.complete(Unit)
+        release.await()
+      }
+      val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
+      val history = Conversation(1L, 0L)
+      val turn = launch {
+        runAssistantTurn(guard, guard.generation(), state) {
+          val cached = requireNotNull(store.read(key))
+          val selected = ResolvedPlace("GPS", null, cached.latitude, cached.longitude, key,
+            Place.GPS_ID, true, false, true, fromFreshFix = false)
+          daily.ask(input("oggi?", pending, conversation = history, selected = selected), state)
+        }
+      }
+      withTimeout(5_000L) { entered.await() }
+      guard.wipe { store.clear() }
+      release.complete(Unit)
+      turn.join()
+
+      assertTrue(!turn.isCancelled)
+      assertEquals(AssistantState.Idle, state.value)
+      assertTrue(history.exchanges.isEmpty())
+      assertTrue(diagnostics.entries.value.isEmpty())
+      assertEquals(1, pending.streamed.size)
+      assertEquals(0, toolResolutions)
+      assertEquals(0, refreshes)
+      assertNull(store.read(key))
+      assertNull(WeatherSnapshotStore(directory, wipeGuard = guard).read(key))
+
+      val fresh = FakeProvider(ProviderId.OPENROUTER, listOf(calls, Scripted.Text("new reply")))
+      runAssistantTurn(guard, guard.generation(), state) {
+        val selected = ResolvedPlace("GPS", null, latitude, longitude, key, Place.GPS_ID, true, false, true)
+        assertEquals("new reply", daily.ask(input("oggi?", fresh, conversation = history, selected = selected), state).answer)
+      }
+      assertEquals(1, toolResolutions)
+      assertEquals(1, refreshes)
+      assertEquals(now, WeatherSnapshotStore(directory, wipeGuard = guard).read(key)?.fetchedAtMillis)
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `turn wrapper propagates ordinary cancellation`() = runBlocking {
+    val guard = DataWipeGuard()
+    val state = MutableStateFlow<AssistantState>(AssistantState.Transcribing)
+    val cancelled = CancellationException("user cancelled")
+    try {
+      runAssistantTurn(guard, guard.generation(), state) { throw cancelled }
+      fail("Cancellation was swallowed")
+    } catch (e: CancellationException) {
+      assertEquals(cancelled.message, e.message)
+    }
+    assertEquals(AssistantState.Transcribing, state.value)
   }
 
   @Test

@@ -30,10 +30,12 @@ class ManualBurstController(
 
   fun start() {
     if (job?.isActive == true) return
+    val observed = engine.dataGeneration()
     job = scope.launch {
       _progress.value = Progress(0, ManualBurst.DURATION_SECONDS)
       try {
-        engine.collect(
+        engine.collectForGeneration(
+          observed = observed,
           source = SampleSource.MANUAL_BURST,
           durationSeconds = ManualBurst.DURATION_SECONDS,
         ) { completed, total ->

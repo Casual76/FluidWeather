@@ -52,8 +52,11 @@ private class AndroidPressureSensorInput(context: Context) : PressureSensorInput
   }
 }
 
-class Barometer internal constructor(private val inputFactory: () -> PressureSensorInput) {
-  constructor(context: Context) : this({ AndroidPressureSensorInput(context) })
+class Barometer internal constructor(
+  private val clock: () -> Long = System::currentTimeMillis,
+  private val inputFactory: () -> PressureSensorInput,
+) {
+  constructor(context: Context) : this(inputFactory = { AndroidPressureSensorInput(context) })
 
   val isAvailable: Boolean get() = inputFactory().isAvailable
   val sensorName: String? get() = inputFactory().sensorName
@@ -83,7 +86,7 @@ class Barometer internal constructor(private val inputFactory: () -> PressureSen
    * gonfierebbe solo l'archivio.
    */
   fun burst(durationSeconds: Int, periodMillis: Long = 1_000): Flow<TimedReading> = flow {
-    val start = System.currentTimeMillis()
+    val start = clock()
     val endAt = start + durationSeconds * 1_000L
     var lastBucket = -1L
     withTimeoutOrNull(durationSeconds * 1_000L) {

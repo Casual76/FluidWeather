@@ -15,8 +15,11 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import dev.pampa.fluidweather.core.data.DataWipeGuard
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
 import dev.pampa.fluidweather.core.model.SamplingMode
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +35,7 @@ import kotlinx.coroutines.launch
 class SamplingScheduler(
   private val context: Context,
   private val settingsStore: SamplingSettingsStore,
+  private val wipeGuard: DataWipeGuard,
 ) {
 
   suspend fun applyCurrentMode() = apply(settingsStore.current().mode)
@@ -67,7 +71,7 @@ class SamplingScheduler(
     WorkManager.getInstance(context).enqueueUniqueWork(
       PASS_NOW_WORK,
       ExistingWorkPolicy.KEEP,
-      OneTimeWorkRequestBuilder<MaximaPassWorker>().build(),
+      oneTimeSamplingPass(wipeGuard.generation()),
     )
   }
 
@@ -89,8 +93,9 @@ class PressureSamplingWorker(
   /** Failed attempts request WorkManager backoff; cancellation remains owned by WorkManager. */
   override suspend fun doWork(): Result {
     val runtime = applicationContext.sensorRuntime()
+    val observed = runtime.samplingEngine.dataGeneration()
     runtime.samplingHealth.check()
-    return runPass { runtime.samplingEngine.runScheduledPass() }
+    return runPass { runtime.samplingEngine.runScheduledPass(observed) }
   }
 }
 
@@ -111,12 +116,26 @@ class MaximaPassWorker(
 
   override suspend fun doWork(): Result {
     val runtime = applicationContext.sensorRuntime()
+    // A cold process has no in-flight readings and begins a fresh acquisition.
+    val observed = if (inputData.getString(PASS_PROCESS_KEY) == samplingProcess) {
+      inputData.getLong(PASS_GENERATION_KEY, runtime.samplingEngine.dataGeneration())
+    } else {
+      runtime.samplingEngine.dataGeneration()
+    }
     // Stesso ragionamento di PressureSamplingWorker: qui il lavoro e' uno solo e non periodico,
     // ma la catena di allarmi la riaggancia il receiver, quindi un'eccezione che sale non
     // riporterebbe niente a nessuno.
-    return runPass { runtime.samplingEngine.runScheduledPass() }
+    return runPass { runtime.samplingEngine.runScheduledPass(observed) }
   }
 }
+
+private const val PASS_PROCESS_KEY = "sampling-process"
+private const val PASS_GENERATION_KEY = "sampling-generation"
+private val samplingProcess = UUID.randomUUID().toString()
+
+private fun oneTimeSamplingPass(observed: Long) = OneTimeWorkRequestBuilder<MaximaPassWorker>()
+  .setInputData(workDataOf(PASS_PROCESS_KEY to samplingProcess, PASS_GENERATION_KEY to observed))
+  .build()
 
 /**
  * Una passata come la vuole WorkManager: ogni errore diventa `retry()`, **tranne la cancellazione**.
@@ -175,15 +194,15 @@ object MaximaAlarm {
 class MaximaAlarmReceiver : BroadcastReceiver() {
 
   override fun onReceive(context: Context, intent: Intent) {
+    val runtime = context.sensorRuntime()
     // Il receiver fa due cose e nessuna delle due e' lunga: mette in coda la passata, e riaggancia
     // la catena. Il campionamento vero e proprio vive nel Worker, dove c'e' tempo per farlo intero.
     WorkManager.getInstance(context).enqueueUniqueWork(
       MAXIMA_PASS_WORK,
       ExistingWorkPolicy.KEEP,
-      OneTimeWorkRequestBuilder<MaximaPassWorker>().build(),
+      oneTimeSamplingPass(runtime.samplingEngine.dataGeneration()),
     )
     val pending = goAsync()
-    val runtime = context.sensorRuntime()
     CoroutineScope(Dispatchers.Default).launch {
       try {
         // Riapplicare la modalita' corrente e' anche il riaggancio della catena: se nel frattempo

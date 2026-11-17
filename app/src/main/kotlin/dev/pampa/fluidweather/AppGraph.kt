@@ -175,7 +175,7 @@ class AppGraph(context: Context) {
   val barometer = Barometer(context)
   // Ogni fix che legge lo ricorda: in background il fix nuovo non sempre arriva, e l'ultimo recente
   // dice ancora dov'e' il telefono (vedi PointResolver).
-  val locationProvider = LocationProvider(context, lastFixStore)
+  val locationProvider = LocationProvider(context, lastFixStore, wipeGuard = wipeGuard)
   private val surveillanceController = SurveillanceController(context)
 
   // Un solo EngineHttp per tutta l'app, con lo User-Agent descrittivo che MET Norway pretende
@@ -322,6 +322,7 @@ class AppGraph(context: Context) {
     settingsStore = samplingSettingsStore,
     surveillance = surveillanceController,
     cleaningPipeline = cleaningPipeline,
+    wipeGuard = wipeGuard,
     // La soglia della sorveglianza legge la stessa tendenza del verdetto, non una sua cugina.
     cleanTrend = { nowcastUseCase.cleanTrend(hours = 3, nowMillis = System.currentTimeMillis()) },
     // Il meteo al ritmo del barometro: dopo ogni passata, il ciclo (costruito qui sotto).
@@ -331,7 +332,7 @@ class AppGraph(context: Context) {
       )
     },
   )
-  val samplingScheduler = SamplingScheduler(context, samplingSettingsStore)
+  val samplingScheduler = SamplingScheduler(context, samplingSettingsStore, wipeGuard)
 
   /**
    * Il cane da guardia del campionamento: verifica che il meccanismo sia ancora armato e che
@@ -429,6 +430,7 @@ class AppGraph(context: Context) {
     store = calibrationStore,
     reference = { calibrationReference() },
     scope = applicationScope,
+    wipeGuard = wipeGuard,
   )
 
   /**
@@ -521,6 +523,7 @@ class AppGraph(context: Context) {
         weatherBriefService = weatherBriefService,
         routineWindowStore = routineWindowStore,
         generation = wipeGuard::generation,
+        wipeGuard = wipeGuard,
       )
     },
   )
@@ -564,6 +567,7 @@ class AppGraph(context: Context) {
       // climatologie per cella (che svuota anche il freno orario del giudice).
           { rainEventStore.clear() },
           { lastFixStore.clear() },
+          { latestActivityStore.clear() },
           { localClimatologyStore.clear() },
           { notificationLedgerStore.update { NotificationLedger() } },
           { weatherSnapshotStore.clear() },
@@ -574,7 +578,10 @@ class AppGraph(context: Context) {
             }
           },
           { radarTiles.clear() },
-          { aiAssistant.diagnostics.clear() },
+          {
+            aiAssistant.session.resetForDataDeletion()
+            aiAssistant.diagnostics.clear()
+          },
         )
       }
     } finally {

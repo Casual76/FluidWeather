@@ -244,7 +244,10 @@ fun EngineAccuracyScreen(deps: EngineAccuracyDependencies, onBack: () -> Unit) {
                 FluidButton(
                   text = stringResource(R.string.common_start),
                   style = FluidButtonStyle.Plain,
-                  onClick = { scope.launch { deps.calibrationController.retryPendingEstimate() } },
+                  onClick = {
+                    val observed = deps.calibrationController.dataGeneration()
+                    scope.launch { deps.calibrationController.retryPendingEstimate(observed) }
+                  },
                 )
               },
             )

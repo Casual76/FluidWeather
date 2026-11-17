@@ -14,8 +14,10 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicLong
 import dev.pampa.fluidweather.core.data.DataWipeGuard
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
+import dev.pampa.fluidweather.core.data.DataWipeEpoch
+import dev.pampa.fluidweather.core.data.dataWipeEpoch
+import dev.pampa.fluidweather.core.data.withDataWipeGeneration
+import dev.pampa.fluidweather.core.data.writeCurrentData
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
@@ -702,39 +704,15 @@ class WeatherSnapshotRefresher(
 
 /** Carry the originating generation through a complete consumer workflow and its nested IO. */
 suspend fun <T> withWeatherDataGeneration(guard: DataWipeGuard?, block: suspend () -> T): T =
-  withWeatherWipeEpoch(guard) { block() }
+  withDataWipeGeneration(guard, block = block)
 
 /** Serialize a consumer's final side effect with deletion, without holding the guard over IO. */
-suspend fun <T : Any> writeCurrentWeatherData(block: suspend () -> T): T {
-  currentCoroutineContext().ensureActive()
-  val epoch = currentCoroutineContext()[WeatherWipeEpoch]
-  return if (epoch == null) block() else epoch.write(block)
-}
+suspend fun <T : Any> writeCurrentWeatherData(block: suspend () -> T): T = writeCurrentData(block)
 
 /** Inherited by nested stages and repository async children; never renew an originating epoch. */
-internal class WeatherWipeEpoch(val guard: DataWipeGuard, val observed: Long) :
-  AbstractCoroutineContextElement(Key) {
-  companion object Key : CoroutineContext.Key<WeatherWipeEpoch>
-  fun checkCurrent() {
-    if (guard.generation() != observed) throw CancellationException("Weather request invalidated by data wipe")
-  }
-  suspend fun <T : Any> write(block: suspend () -> T): T {
-    currentCoroutineContext().ensureActive()
-    return guard.writeIfUnchanged(observed) {
-      currentCoroutineContext().ensureActive()
-      block()
-    } ?: throw CancellationException("Weather request invalidated by data wipe")
-  }
-}
+internal typealias WeatherWipeEpoch = DataWipeEpoch
 
-internal suspend fun weatherWipeEpoch(guard: DataWipeGuard?): WeatherWipeEpoch? {
-  val inherited = currentCoroutineContext()[WeatherWipeEpoch]
-  if (inherited != null) {
-    require(guard == null || inherited.guard === guard) { "Weather stages must share DataWipeGuard" }
-    return inherited
-  }
-  return guard?.let { WeatherWipeEpoch(it, it.generation()) }
-}
+internal suspend fun weatherWipeEpoch(guard: DataWipeGuard?): WeatherWipeEpoch? = dataWipeEpoch(guard)
 
 internal suspend fun <T> withWeatherWipeEpoch(guard: DataWipeGuard?, block: suspend (WeatherWipeEpoch?) -> T): T {
   val epoch = weatherWipeEpoch(guard)

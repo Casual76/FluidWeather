@@ -2,7 +2,6 @@ package dev.pampa.fluidweather.core.ai.orchestrator
 
 import android.content.res.Resources
 import dev.antigravity.fluidengine.ai.keys.AiSettingsStore
-import dev.antigravity.fluidengine.ai.net.AiError
 import dev.antigravity.fluidengine.ai.orchestrator.AiConfirmationGate
 import dev.antigravity.fluidengine.ai.orchestrator.AiOrchestrator
 import dev.antigravity.fluidengine.ai.orchestrator.AskInput
@@ -26,6 +25,11 @@ import dev.pampa.fluidweather.core.ai.tools.AssistantAction
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
 import dev.pampa.fluidweather.core.ai.tools.titleRes
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import dev.pampa.fluidweather.core.data.DataWipeInvalidatedException
+import dev.pampa.fluidweather.core.data.dataWipeEpoch
+import dev.pampa.fluidweather.core.data.withDataWipeGeneration
+import dev.pampa.fluidweather.core.data.writeCurrentData
 import dev.pampa.fluidweather.core.model.Place
 import dev.pampa.fluidweather.strings.R
 import dev.pampa.fluidweather.strings.UnitFormatter
@@ -38,7 +42,6 @@ import java.io.File
 import java.time.ZoneId
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -158,17 +161,25 @@ class AssistantSession(
     stateFlow.value = AssistantState.Idle
   }
 
+  /** Stop the active turn before clearing the engine's in-memory diagnostic log. */
+  suspend fun resetForDataDeletion() {
+    val active = job
+    reset()
+    active?.join()
+  }
+
   /** La risposta alla conferma in [AssistantState.AwaitingConfirmation]: [id] e' quello di `confirmation`. */
   fun resolveAction(id: Long, confirmed: Boolean) = gate.resolve(id, confirmed)
 
   private fun start(block: suspend () -> Unit) {
     job?.cancel()
     gate.cancel()
+    val observed = sources.wipeGuard?.generation()
     job = scope.launch {
       try {
-        block()
+        runAssistantTurn(sources.wipeGuard, observed, stateFlow, block)
       } catch (e: CancellationException) {
-        // Lo stato Cancelled lo scrive cancel(); qui non c'e' altro da dire.
+        throw e
       } catch (e: AssistantFailure) {
         stateFlow.value = AssistantState.Failed(
           question = stateFlow.value.questionOrNull(),
@@ -218,6 +229,7 @@ class AssistantSession(
             stateFlow.value = AssistantState.Transcribing
             val language = language()
             val places = sources.savedLocations.places.first().filter { !it.isGps }.map { it.name }
+            dataWipeEpoch(null)
             val transcription = try {
               transcriber.transcribe(event.file, language, WeatherSpeech.hint(language, places))
             } catch (e: CancellationException) {
@@ -272,6 +284,7 @@ class AssistantSession(
       actions = if (settings.actionsEnabled) this else ActionSink.Disabled,
     )
     val prompt = promptContext(language, settings.actionsEnabled, mode, selected, toolContext, units)
+    dataWipeEpoch(null)
     val requestConversation = conversation.requestCopy()
     val grounding = ChatGrounding(language == "it")
     val input = AskInput(
@@ -290,7 +303,7 @@ class AssistantSession(
     val result = withContext(grounding) {
       bufferedAnswer(stateFlow) { privateState -> orchestrator.ask(input, privateState) }
     }
-    currentCoroutineContext().ensureActive()
+    dataWipeEpoch(null)
     // Catch GPS movement too, even when no selected-place tool was requested.
     val currentSelected = dev.pampa.fluidweather.core.ai.data.cancellableResult { resolver.selected() }.getOrNull()
     var valid = generation == sources.generation() && selectedId == sources.selectedPlaceStore.current() &&
@@ -305,21 +318,23 @@ class AssistantSession(
     if (generation != sources.generation() || locale != Locale.getDefault()) valid = false
     val safeAnswer = grounding.render(result.answer, clock(), valid)
     val safeChips = if (valid) grounding.chips(result.chips) else emptyList()
-    commitGroundedHistory(conversation, requestConversation, safeAnswer, safeChips)
-    // La conversazione e' mutata dentro: la UI la rilegge dallo stesso oggetto.
-    conversationFlow.value = conversation
-    stateFlow.value = AssistantState.Done(
-      question = question,
-      answer = safeAnswer,
-      chips = safeChips,
-      provider = result.provider,
-      mode = mode,
-      usage = result.usage,
-      toolsUsed = result.toolsUsed,
-      durationMillis = result.log.durationMillis,
-      tierReached = result.tierReached,
-      switches = result.log.switches,
-    )
+    writeCurrentData {
+      commitGroundedHistory(conversation, requestConversation, safeAnswer, safeChips)
+      // La conversazione e' mutata dentro: la UI la rilegge dallo stesso oggetto.
+      conversationFlow.value = conversation
+      stateFlow.value = AssistantState.Done(
+        question = question,
+        answer = safeAnswer,
+        chips = safeChips,
+        provider = result.provider,
+        mode = mode,
+        usage = result.usage,
+        toolsUsed = result.toolsUsed,
+        durationMillis = result.log.durationMillis,
+        tierReached = result.tierReached,
+        switches = result.log.switches,
+      )
+    }
   }
 
   private suspend fun promptContext(
@@ -368,7 +383,10 @@ class AssistantSession(
   override suspend fun perform(action: AssistantAction): ActionOutcome {
     if (!action.needsConfirmation) return execute(action)
     return when (gate.ask(confirmationTitle(action), null)) {
-      ConfirmationOutcome.CONFIRMED -> execute(action)
+      ConfirmationOutcome.CONFIRMED -> {
+        dataWipeEpoch(null)
+        execute(action)
+      }
       ConfirmationOutcome.REJECTED -> ActionOutcome.REJECTED
       ConfirmationOutcome.TIMEOUT -> ActionOutcome.TIMEOUT
     }
@@ -462,6 +480,26 @@ class AssistantSession(
     else -> null
   }
 
+}
+
+/** Keep the initial data epoch through voice, prompt reads and dispatch to each tool. */
+internal suspend fun runAssistantTurn(
+  guard: DataWipeGuard?,
+  observed: Long?,
+  state: MutableStateFlow<AssistantState>,
+  block: suspend () -> Unit,
+) {
+  try {
+    withDataWipeGeneration(guard, observed) {
+      // If the launch overlapped deletion, wait for its generation to expire before reading.
+      writeCurrentData { Unit }
+      block()
+      dataWipeEpoch(null)
+    }
+  } catch (_: DataWipeInvalidatedException) {
+    currentCoroutineContext().ensureActive()
+    state.value = AssistantState.Idle
+  }
 }
 
 /** Il suggerimento di vocabolario per Whisper: il dominio, nella lingua dell'app, e i posti dell'utente. */

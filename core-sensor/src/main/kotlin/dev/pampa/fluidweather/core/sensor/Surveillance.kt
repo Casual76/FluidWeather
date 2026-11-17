@@ -13,7 +13,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dev.pampa.fluidweather.core.model.PressureTrend
-import dev.pampa.fluidweather.core.model.SampleSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,9 +29,10 @@ import dev.pampa.fluidweather.strings.R
  */
 class SurveillanceController(private val context: Context) {
 
-  fun start() {
+  internal fun start(observed: Long) {
     runCatching {
-      ContextCompat.startForegroundService(context, Intent(context, SurveillanceService::class.java))
+      val intent = Intent(context, SurveillanceService::class.java).putExtra(SURVEILLANCE_GENERATION, observed)
+      ContextCompat.startForegroundService(context, intent)
     }
   }
 
@@ -40,6 +40,8 @@ class SurveillanceController(private val context: Context) {
     context.stopService(Intent(context, SurveillanceService::class.java))
   }
 }
+
+private const val SURVEILLANCE_GENERATION = "dev.pampa.fluidweather.surveillance.WIPE_GENERATION"
 
 /**
  * La seconda marcia: una lettura al minuto finche' la pressione si muove. Foreground service con
@@ -54,12 +56,15 @@ class SurveillanceService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    val engine = sensorRuntime().samplingEngine
+    val observed = intent?.getLongExtra(SURVEILLANCE_GENERATION, Long.MIN_VALUE)
+      ?.takeUnless { it == Long.MIN_VALUE } ?: engine.dataGeneration()
     startInForeground()
     latestStartId = startId
     loop.start(onFinished = {
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelfResult(latestStartId)
-    }) { withContext(Dispatchers.Default) { watch() } }
+    }) { withContext(Dispatchers.Default) { watch(engine, observed) } }
     return START_STICKY
   }
 
@@ -68,14 +73,12 @@ class SurveillanceService : Service() {
     super.onDestroy()
   }
 
-  private suspend fun watch() {
-    val engine = sensorRuntime().samplingEngine
+  private suspend fun watch(engine: SamplingEngine, observed: Long) {
     val startedAt = System.currentTimeMillis()
     var quietMinutes = 0
     while (scope.isActive) {
       // Missing hardware and an empty attempt both end this session without a minute retry loop.
-      if (engine.collect(source = SampleSource.SURVEILLANCE, durationSeconds = 0) == 0) return
-      engine.notifyPassCompleted(SampleSource.SURVEILLANCE)
+      if (!engine.runSurveillancePass(observed)) return
       val calm = !PressureTrend.callsForSurveillance(engine.currentTrend())
       quietMinutes = if (calm) quietMinutes + 1 else 0
       val expired = System.currentTimeMillis() - startedAt > MAX_RUNTIME_MILLIS

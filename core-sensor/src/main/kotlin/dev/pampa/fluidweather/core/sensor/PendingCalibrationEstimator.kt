@@ -1,5 +1,9 @@
 package dev.pampa.fluidweather.core.sensor
 
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import dev.pampa.fluidweather.core.data.DataWipeInvalidatedException
+import dev.pampa.fluidweather.core.data.withDataWipeGeneration
+import dev.pampa.fluidweather.core.data.writeCurrentData
 import dev.pampa.fluidweather.core.model.CalibrationOutcome
 import dev.pampa.fluidweather.core.model.CalibrationRecord
 import dev.pampa.fluidweather.core.model.PendingCalibrationBurst
@@ -8,9 +12,12 @@ import dev.pampa.fluidweather.nowcast.cleaning.CalibrationMath
 import dev.pampa.fluidweather.nowcast.cleaning.CalibrationReferenceSample
 import dev.pampa.fluidweather.nowcast.cleaning.CalibrationSegments
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** Persistence boundary for the retry also used at startup: a failed read is never empty state. */
 internal class PendingCalibrationEstimator(
+  private val wipeGuard: DataWipeGuard,
   private val pending: suspend () -> PendingCalibrationBurst?,
   private val current: suspend () -> CalibrationRecord?,
   private val samples: suspend (String) -> List<PressureSample>,
@@ -20,8 +27,11 @@ internal class PendingCalibrationEstimator(
   private val outcome: suspend (CalibrationOutcome) -> Unit,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
-  suspend fun retry(): Boolean = try {
-    retryEstimate()
+  suspend fun retry(observed: Long? = null): Boolean = try {
+    withDataWipeGeneration(wipeGuard, observed) { retryEstimate() }
+  } catch (_: DataWipeInvalidatedException) {
+    currentCoroutineContext().ensureActive()
+    false
   } catch (cancelled: CancellationException) {
     throw cancelled
   } catch (_: Exception) {
@@ -32,18 +42,20 @@ internal class PendingCalibrationEstimator(
   private suspend fun retryEstimate(): Boolean {
     val burst = pending() ?: return false
     if (current() != null) {
-      clearPending()
+      writeCurrentData { clearPending() }
       return false
     }
     val archived = samples(burst.burstId)
     if (archived.isEmpty()) {
-      clearPending()
+      writeCurrentData { clearPending() }
       return false
     }
     val segments = CalibrationSegments.of(archived)
     if (segments.isEmpty()) {
-      outcome(CalibrationOutcome.TOO_MUCH_MOVEMENT)
-      clearPending()
+      writeCurrentData {
+        outcome(CalibrationOutcome.TOO_MUCH_MOVEMENT)
+        clearPending()
+      }
       return false
     }
     val target = reference() ?: return false
@@ -55,13 +67,17 @@ internal class PendingCalibrationEstimator(
         kotlin.math.abs(target.atMillis - (it.fromMillis + (it.toMillis - it.fromMillis) / 2)) >
           CalibrationReferenceSample.MAX_SEPARATION_MINUTES * 60_000
       }
-      outcome(if (tooOld) CalibrationOutcome.REFERENCE_EXPIRED else CalibrationOutcome.NO_REFERENCE)
-      if (tooOld) clearPending()
+      writeCurrentData {
+        outcome(if (tooOld) CalibrationOutcome.REFERENCE_EXPIRED else CalibrationOutcome.NO_REFERENCE)
+        if (tooOld) clearPending()
+      }
       return false
     }
-    save(record)
-    outcome(CalibrationOutcome.OK)
-    clearPending()
+    writeCurrentData {
+      save(record)
+      outcome(CalibrationOutcome.OK)
+      clearPending()
+    }
     return true
   }
 }

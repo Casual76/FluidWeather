@@ -8,7 +8,7 @@ Rendere affidabili le funzioni già offerte, con precedenza alle notifiche e ai 
 
 L'utente ha confermato che il problema delle notifiche è variabile e va indagato nel suo insieme. Ha richiesto **solo verifiche sul computer per ora**: nessun emulatore o telefono viene utilizzato. La consegna distingue test JVM, compilazione e analisi statica da consegna reale delle notifiche, comportamento in Doze e prove sul campo.
 
-Tre agenti con contesto fresco analizzano notifiche, dati meteo e percorsi d'uso. L'orchestratore integra e gestisce l'unico runner Gradle del progetto. Il filesystem è condiviso; i perimetri di scrittura vengono assegnati esplicitamente. Modello ereditato: GPT-6.1 Sol, reasoning ultra. Il limite locale è tre figli contemporanei; gli incarichi successivi riutilizzano la capacità disponibile. Il Fluid Engine rimane alla versione fissata dal progetto.
+Tre agenti con contesto fresco analizzano notifiche, dati meteo e percorsi d'uso. L'orchestratore integra e gestisce l'unico runner Gradle del progetto. Il filesystem è condiviso; i perimetri di scrittura vengono assegnati esplicitamente. Gli incarichi iniziali hanno usato GPT-6.1 Sol; le review finali successive alla richiesta dell'utente usano GPT-6.2 Sol. Il limite locale è tre figli contemporanei; gli incarichi successivi riutilizzano la capacità disponibile. Il Fluid Engine rimane alla versione fissata dal progetto (3.0.5).
 
 ## Criteri di accettazione
 
@@ -40,4 +40,4 @@ Prove rosse eseguite prima degli interventi interessati: 1 difetto DST; 16 test 
 | Radar e uso quotidiano | Aggiornamento/riprova e ripresa lifecycle; frame vecchi riconoscibili; refresh Home esplicito, widget invalidato dalle località, fusi coerenti, preferenze aptiche e risparmio energia applicati. |
 | Azioni e assistente | Esito visibile di prova notifiche e cancellazione incompleta; cancellazioni indipendenti tentate e fallimenti propagati; serializzazione del cambio canale aggiornamenti; tolleranza al normale jitter GPS mantenendo le barriere di grounding. |
 
-Gli agenti non eseguono build né pilotano dispositivi. Le suite verdi della candidata, la migrazione Room sul computer, la compilazione APK e le review indipendenti restano da completare prima della consegna.
+Gli agenti non eseguono build né pilotano dispositivi. L'integrazione 4 è verde: 1.492 casi negli XML disponibili, zero fallimenti/errori/saltati, migrazioni Room comprese; APK e APK strumentato compilati; lint zero errori, otto warning e un hint. I risultati comprendono task eseguiti e già aggiornati. Le review indipendenti hanno richiesto una correzione ulteriore per il lavoro iniziato durante il wipe; ricollaudo e review del delta sono in corso. La cronologia e i voti sono in `docs/daily-reliability-review.md`.

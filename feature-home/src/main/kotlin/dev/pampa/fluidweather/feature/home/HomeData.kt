@@ -19,6 +19,8 @@ import dev.antigravity.fluidengine.ui.theme.AccentPreset
 import dev.antigravity.fluidengine.foundation.EngineSettings
 import dev.pampa.fluidweather.core.model.WeatherZones
 import dev.pampa.fluidweather.core.data.AppearanceSettingsStore
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import dev.pampa.fluidweather.core.data.dataWipeEpoch
 import dev.pampa.fluidweather.core.data.CalibrationStore
 import dev.pampa.fluidweather.core.data.HomeLayoutStore
 import dev.pampa.fluidweather.core.data.LearningRepository
@@ -74,12 +76,12 @@ import dev.pampa.fluidweather.core.weather.WeatherBriefService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /** Tutto quello che la home tocca; lo costruisce :app dal suo grafo. */
 class HomeDependencies(
@@ -117,6 +119,7 @@ class HomeDependencies(
   /** Optional name lookup, isolated from the weather/local-data load. */
   val resolveLocationName: suspend (Context, Double, Double) -> String? = ::reverseGeocode,
   val engineSettings: Flow<EngineSettings> = flowOf(EngineSettings()),
+  val wipeGuard: DataWipeGuard? = null,
 )
 
 data class HomeUiState(
@@ -226,9 +229,10 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
   LaunchedEffect(deps, place, reloads, active, lifecycle, wiped) {
     if (!active || wiped) return@LaunchedEffect
     lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-      coroutineScope {
+      val epoch = dataWipeEpoch(deps.wipeGuard)
+      withContext(epoch ?: EmptyCoroutineContext) load@{
         // Il corpo qui sotto scrive in `value` come prima: e' lo stesso caricamento, spostato.
-        val loadGeneration = deps.dataGeneration()
+        val loadGeneration = epoch?.observed ?: deps.dataGeneration()
         var value by GenerationHomeState(holder, deps.dataGeneration, loadGeneration, currentCoroutineContext())
         val explicitRefresh = explicitRefreshPending
         explicitRefreshPending = false
@@ -256,7 +260,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
           },
           backfill = { if (!place.isGps) deps.savedLocations.backfillZoneId(place.id, it.zoneId) },
         )
-        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@load
         if (deps.dataGeneration() == loadGeneration) briefSnapshot = known
         if (known != null) {
           value = value.copy(
@@ -302,10 +306,10 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
           }
           else -> {
             value = value.copy(loading = false, refreshing = false, hasLocation = false)
-            return@coroutineScope
+            return@load
           }
         }
-        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@load
         if (presetName != null) value = value.copy(locationName = presetName)
 
         val phase = SolarEphemeris.phaseAt(now, latitude, longitude)
@@ -315,7 +319,7 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         //    barometro, o presa troppo lontano da qui.
         val cadenceMillis = homeCatching { deps.samplingSettings.current().mode.cadenceMinutes * 60_000L }
           .getOrDefault(DEFAULT_CADENCE_MILLIS)
-        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@load
         val cached = known?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
         if (known != null && cached == null) {
           // Drop weather from A when GPS resolves B, retaining this device's local archive.
@@ -333,10 +337,10 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
         val snapshot = homeCatching { deps.snapshotRefresher.lastKnown(key) }.getOrNull()
           ?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
           ?: snapshotCandidate?.takeIf { homeSnapshotMatches(place, homePoint(latitude, longitude), it) && (invalidatedBefore == null || it.fetchedAtMillis > invalidatedBefore!!) }
-        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@load
         briefSnapshot = snapshot
         if (!place.isGps && snapshot != null) deps.savedLocations.backfillZoneId(place.id, snapshot.zoneId)
-        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@coroutineScope
+        if (!homeReadIsCurrent(deps.dataGeneration, loadGeneration)) return@load
         if (snapshot != null && snapshot !== known) value = value.applySnapshot(snapshot, now, deps, place)
 
         // Sole: oggi e ieri, per il "piu' corto/lungo di ieri" del widget.
@@ -421,7 +425,6 @@ fun rememberHomeState(deps: HomeDependencies, place: Place, active: Boolean = tr
             )
           }
         }
-
 
       }
     }

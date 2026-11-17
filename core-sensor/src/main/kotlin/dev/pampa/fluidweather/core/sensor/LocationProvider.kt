@@ -9,8 +9,13 @@ import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.util.Consumer
+import dev.pampa.fluidweather.core.data.DataWipeGuard
 import dev.pampa.fluidweather.core.data.LastFixStore
+import dev.pampa.fluidweather.core.data.dataWipeEpoch
+import dev.pampa.fluidweather.core.data.withDataWipeGeneration
+import dev.pampa.fluidweather.core.data.writeCurrentData
 import dev.pampa.fluidweather.core.model.LastFix
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -74,6 +79,7 @@ class LocationProvider(
   private val context: Context,
   private val lastFixStore: LastFixStore? = null,
   private val clock: () -> Long = System::currentTimeMillis,
+  private val wipeGuard: DataWipeGuard? = null,
 ) {
 
   private val manager: LocationManager? = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
@@ -86,21 +92,27 @@ class LocationProvider(
   private fun hasCoarse(): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-  suspend fun snapshot(timeoutMillis: Long = 10_000): LocationSnapshot? {
-    if (!hasPermission() || manager == null) return null
-    return try {
+  suspend fun snapshot(timeoutMillis: Long = 10_000): LocationSnapshot? = withDataWipeGeneration(wipeGuard) {
+    if (!hasPermission() || manager == null) return@withDataWipeGeneration null
+    val snapshot = try {
       LocationFallback.firstFix(
         current = { freshFix(LocationFallback.currentBudgetMillis(timeoutMillis)) },
         lastKnown = { lastKnownFix() },
         totalTimeoutMillis = timeoutMillis,
       )?.let { fix -> withTravelSpeed(fix) }?.also { fix ->
-        // Non lancia mai: un ultimo fix non scritto costa un giro, non la posizione di adesso.
-        runCatching { lastFixStore?.record(LastFix(fix.latitude, fix.longitude, fix.fixedAtMillis ?: clock())) }
+        // A cache failure leaves the live position usable. Invalidation still stops this request.
+        lastFixStore?.let { store ->
+          optionalContext {
+            writeCurrentData { store.record(LastFix(fix.latitude, fix.longitude, fix.fixedAtMillis ?: clock())) }
+          }
+        }
       }
     } catch (_: SecurityException) {
       // Il permesso puo' sparire fra il check e la chiamata (revoca dalle impostazioni).
       null
     }
+    dataWipeEpoch(wipeGuard)?.checkCurrent()
+    snapshot
   }
 
   /**
@@ -162,7 +174,7 @@ class LocationProvider(
    */
   private suspend fun withTravelSpeed(fix: LocationSnapshot): LocationSnapshot {
     if (fix.speedMetersPerSecond != null) return fix
-    val previous = runCatching { lastFixStore?.current() }.getOrNull() ?: return fix
+    val previous = optionalContext { lastFixStore?.current() } ?: return fix
     val speed = TravelSpeed.between(previous, fix.latitude, fix.longitude, fix.fixedAtMillis ?: clock())
     return if (speed == null) fix else fix.copy(speedMetersPerSecond = speed)
   }
@@ -213,8 +225,9 @@ internal object LocationFallback {
       withTimeoutOrNull(budgetMillis) { read() }
     } catch (security: SecurityException) {
       throw security
-    } catch (failure: Exception) {
-      // Un annullamento del chiamante si propaga; un fix fallito e' solo "niente fix".
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
       currentCoroutineContext().ensureActive()
       null
     }

@@ -94,7 +94,7 @@ data class LatestActivity(
 )
 
 /**
- * L'ultima attivita' riconosciuta, scritta dal receiver e letta da chiunque stia per registrare
+ * L'ultima attivita' riconosciuta, scritta dal motore di campionamento e letta da chiunque stia per registrare
  * un campione. Vive su DataStore e non in memoria perche' worker e allarmi girano anche a
  * processo appena nato.
  */
@@ -130,6 +130,16 @@ class LatestActivityStore(private val context: Context) {
   /** L'ultima volta che si e' stati in auto o in bici; null se non si e' mai saputo. */
   suspend fun lastInTransitMillis(): Long? =
     context.fluidWeatherStore.data.map { it[Keys.InTransitAt] }.first()
+
+  /** Rimuove movimento e cronologia dei transiti preservando le impostazioni nello stesso file. */
+  suspend fun clear() {
+    context.fluidWeatherStore.edit { preferences ->
+      preferences -= Keys.Kind
+      preferences -= Keys.Confidence
+      preferences -= Keys.ObservedAt
+      preferences -= Keys.InTransitAt
+    }
+  }
 
   private object Keys {
     val Kind = stringPreferencesKey("latest_activity_kind")

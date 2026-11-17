@@ -8,6 +8,7 @@ import dev.antigravity.fluidengine.ai.tools.ToolOutput
 import dev.antigravity.fluidengine.ai.tools.ToolRegistry
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.data.ResolvedPlace
+import dev.pampa.fluidweather.core.data.dataWipeEpoch
 import dev.pampa.fluidweather.strings.UnitFormatter
 import java.time.ZoneId
 import java.util.Locale
@@ -83,7 +84,9 @@ abstract class WeatherTool : AiTool<ToolContext> {
   abstract suspend fun answer(args: JsonObject, ctx: ToolContext): String
 
   final override suspend fun run(args: JsonObject, ctx: ToolContext): ToolOutput {
+    val epoch = dataWipeEpoch(null)
     val result = answer(args, ctx)
+    epoch?.checkCurrent()
     val grounding = kotlinx.coroutines.currentCoroutineContext()[dev.pampa.fluidweather.core.ai.grounding.ChatGrounding]
       ?: return ToolOutput(result)
     val qualified = if (name in setOf("meteo_riepilogo", "finestra_asciutta", "spiega_meteo")) result else when (group) {

@@ -1,20 +1,29 @@
 package dev.pampa.fluidweather.core.sensor
 
+import dev.pampa.fluidweather.core.data.DataWipeGuard
+import dev.pampa.fluidweather.core.data.DataWipeInvalidatedException
+import dev.pampa.fluidweather.core.data.LatestActivity
 import dev.pampa.fluidweather.core.data.LatestActivityStore
 import dev.pampa.fluidweather.core.data.PressureRepository
 import dev.pampa.fluidweather.core.data.SamplingSettingsStore
+import dev.pampa.fluidweather.core.data.dataWipeEpoch
+import dev.pampa.fluidweather.core.data.withDataWipeGeneration
+import dev.pampa.fluidweather.core.data.writeCurrentData
 import dev.pampa.fluidweather.core.model.ActivityKind
 import dev.pampa.fluidweather.core.model.PressureSample
 import dev.pampa.fluidweather.core.model.PressureTrend
 import dev.pampa.fluidweather.core.model.SampleSource
+import dev.pampa.fluidweather.core.model.SamplingMode
 import dev.pampa.fluidweather.nowcast.cleaning.CleaningPipeline
 import java.util.UUID
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -22,19 +31,17 @@ import kotlinx.coroutines.withTimeoutOrNull
  * allarmi, servizio di sorveglianza e raffica manuale condividono, cosi' un campione e' identico
  * qualunque strada l'abbia raccolto.
  */
-class SamplingEngine(
+class SamplingEngine internal constructor(
   private val barometer: Barometer,
-  private val locationProvider: LocationProvider,
-  private val activityStore: LatestActivityStore,
-  /**
-   * Chi misura il movimento (senza Google Play Services): a ogni raffica, mentre il fix arriva, si
-   * guarda se il telefono si muove. Null nei test che non hanno sensori: resta l'ultima attivita'.
-   */
-  private val activityRecognizer: ActivityRecognizer? = null,
+  private val snapshot: suspend () -> LocationSnapshot?,
+  private val latestActivity: suspend () -> LatestActivity?,
+  private val measureActivity: suspend () -> MotionFeatures?,
+  private val recordActivity: suspend (MotionFeatures, Double?) -> Unit,
   private val repository: PressureRepository,
-  private val settingsStore: SamplingSettingsStore,
-  private val surveillance: SurveillanceController,
+  private val currentMode: suspend () -> SamplingMode,
+  private val startSurveillance: (Long) -> Unit,
   private val cleaningPipeline: CleaningPipeline,
+  private val wipeGuard: DataWipeGuard,
   /**
    * Cosa succede DOPO ogni passata: il ciclo in background (giro meteo, verdetto, notifiche)
    * si aggancia qui, cosi' il meteo si aggiorna al ritmo del barometro. Un errore li' dentro
@@ -50,24 +57,67 @@ class SamplingEngine(
   private val cleanTrend: (suspend () -> Double?)? = null,
 ) {
 
+  constructor(
+    barometer: Barometer,
+    locationProvider: LocationProvider,
+    activityStore: LatestActivityStore,
+    activityRecognizer: ActivityRecognizer? = null,
+    repository: PressureRepository,
+    settingsStore: SamplingSettingsStore,
+    surveillance: SurveillanceController,
+    cleaningPipeline: CleaningPipeline,
+    afterPass: suspend (SampleSource) -> Unit = {},
+    cleanTrend: (suspend () -> Double?)? = null,
+    wipeGuard: DataWipeGuard,
+  ) : this(
+    barometer = barometer,
+    snapshot = { locationProvider.snapshot() },
+    latestActivity = activityStore::current,
+    measureActivity = { activityRecognizer?.measure() },
+    recordActivity = { motion, speed -> activityRecognizer?.record(motion, speed) },
+    repository = repository,
+    currentMode = { settingsStore.current().mode },
+    startSurveillance = surveillance::start,
+    cleaningPipeline = cleaningPipeline,
+    wipeGuard = wipeGuard,
+    afterPass = afterPass,
+    cleanTrend = cleanTrend,
+  )
+
   private val collectionMutex = Mutex()
+
+  /** Chiamato prima di accodare lavoro che appartiene alla generazione corrente. */
+  internal fun dataGeneration(): Long = wipeGuard.generation()
 
   /** Senza sensore niente raffiche: chi vuole tarare lo sa prima di partire. */
   val barometerAvailable: Boolean get() = barometer.isAvailable
 
   /** Il giro periodico: raffica o lettura secca secondo la modalita', poi il cambio di marcia. */
-  suspend fun runScheduledPass() {
-    val mode = settingsStore.current().mode
-    scheduledSensorPass(
-      available = barometer.isAvailable,
-      collect = { collect(source = SampleSource.PERIODIC, durationSeconds = mode.burstSeconds) },
-      completed = {
-        if (mode.surveillanceCapable && PressureTrend.callsForSurveillance(currentTrend())) {
-          surveillance.start()
-        }
-      },
-      weatherRefresh = { notifyPassCompleted(SampleSource.PERIODIC) },
-    )
+  suspend fun runScheduledPass() = runScheduledPass(observed = null)
+
+  internal suspend fun runScheduledPass(observed: Long?) {
+    try {
+      withDataWipeGeneration(wipeGuard, observed) {
+        val mode = currentMode()
+        val epoch = checkNotNull(dataWipeEpoch(wipeGuard))
+        scheduledSensorPass(
+          available = barometer.isAvailable,
+          collect = { collectForGeneration(null, SampleSource.PERIODIC, mode.burstSeconds) },
+          completed = {
+            if (mode.surveillanceCapable && PressureTrend.callsForSurveillance(currentTrend())) {
+              writeCurrentData { startSurveillance(epoch.observed) }
+            }
+          },
+          weatherRefresh = {
+            epoch.checkCurrent()
+            notifyPassCompleted(SampleSource.PERIODIC)
+          },
+        )
+      }
+    } catch (_: DataWipeInvalidatedException) {
+      currentCoroutineContext().ensureActive()
+      // Il prossimo giro acquisira' una nuova lettura nella generazione corrente.
+    }
   }
 
   /**
@@ -81,6 +131,15 @@ class SamplingEngine(
   suspend fun notifyPassCompleted(source: SampleSource = SampleSource.PERIODIC) {
     optionalContext { afterPass(source) }
   }
+
+  internal suspend fun runSurveillancePass(observed: Long): Boolean =
+    withDataWipeGeneration(wipeGuard, observed) {
+      val stored = collectForGeneration(observed, SampleSource.SURVEILLANCE, 0)
+      if (stored == 0) return@withDataWipeGeneration false
+      dataWipeEpoch(wipeGuard)?.checkCurrent()
+      notifyPassCompleted(SampleSource.SURVEILLANCE)
+      true
+    }
 
   /**
    * Registra letture per [durationSeconds] (0 = una sola) e restituisce quante ne ha archiviate.
@@ -100,10 +159,40 @@ class SamplingEngine(
     burstId: String? = null,
     contextRefreshSeconds: Int? = null,
     onProgress: ((completedSeconds: Int, totalSeconds: Int) -> Unit)? = null,
-  ): Int = collectionMutex.withLock {
+  ): Int = try {
+    collectForGeneration(null, source, durationSeconds, burstId, contextRefreshSeconds, onProgress)
+  } catch (_: DataWipeInvalidatedException) {
+    currentCoroutineContext().ensureActive()
+    0
+  }
+
+  internal suspend fun collectForGeneration(
+    observed: Long?,
+    source: SampleSource,
+    durationSeconds: Int,
+    burstId: String? = null,
+    contextRefreshSeconds: Int? = null,
+    onProgress: ((completedSeconds: Int, totalSeconds: Int) -> Unit)? = null,
+  ): Int = withDataWipeGeneration(wipeGuard, observed) {
+    collectionMutex.withLock {
+      val epoch = dataWipeEpoch(wipeGuard)
+      epoch?.checkCurrent()
+      val stored = collectReadings(source, durationSeconds, burstId, contextRefreshSeconds, onProgress)
+      epoch?.checkCurrent()
+      stored
+    }
+  }
+
+  private suspend fun collectReadings(
+    source: SampleSource,
+    durationSeconds: Int,
+    burstId: String?,
+    contextRefreshSeconds: Int?,
+    onProgress: ((completedSeconds: Int, totalSeconds: Int) -> Unit)?,
+  ): Int =
     coroutineScope {
       if (!barometer.isAvailable) return@coroutineScope 0
-      val locationDeferred = async { optionalContext { withTimeoutOrNull(10_000L) { locationProvider.snapshot() } } }
+      val locationDeferred = async { readLocation() }
       // Il movimento si misura mentre il fix arriva: i due tempi si sovrappongono, e poi la velocita'
       // che il fix porta con se' (o la media dal fix precedente) entra nel giudizio.
       val motionDeferred = async { measureMotion() }
@@ -117,7 +206,9 @@ class SamplingEngine(
         }
         val location = locationDeferred.await().forMeasurementAt(reading.timestampMillis)
         context = context.copy(activity = judgedActivity(motionDeferred.await(), location))
-        repository.record(listOf(reading.toPressureSample(source, burstId = null, location, context.activity)))
+        writeCurrentData {
+          repository.record(listOf(reading.toPressureSample(source, burstId = null, location, context.activity)))
+        }
         stored = 1
       } else {
         val id = burstId ?: UUID.randomUUID().toString()
@@ -130,13 +221,13 @@ class SamplingEngine(
         // matematica a valle puo' rimediare a un contesto che non e' mai stato registrato.
         val firstFix = locationDeferred.await().forMeasurementAt(System.currentTimeMillis())
         context = context.copy(location = firstFix, activity = judgedActivity(motionDeferred.await(), firstFix))
+        dataWipeEpoch(wipeGuard)?.checkCurrent()
         val refresher = contextRefreshSeconds?.takeIf { it > 0 }?.let { seconds ->
           launch {
             while (true) {
               delay(seconds * 1_000L)
               val motion = async { measureMotion() }
-              val fix = optionalContext { withTimeoutOrNull(10_000L) { locationProvider.snapshot() } }
-                .forMeasurementAt(System.currentTimeMillis())
+              val fix = readLocation().forMeasurementAt(System.currentTimeMillis())
               context = BurstContext(location = fix, activity = judgedActivity(motion.await(), fix))
             }
           }
@@ -145,7 +236,9 @@ class SamplingEngine(
           withTimeoutOrNull((durationSeconds + BURST_GRACE_SECONDS) * 1_000L) {
             barometer.burst(durationSeconds).collect { reading ->
               val now = context
-              repository.record(listOf(reading.toPressureSample(source, id, now.location, now.activity)))
+              writeCurrentData {
+                repository.record(listOf(reading.toPressureSample(source, id, now.location, now.activity)))
+              }
               stored++
               onProgress?.invoke(stored, durationSeconds)
             }
@@ -156,7 +249,9 @@ class SamplingEngine(
       }
       stored
     }
-  }
+
+  private suspend fun readLocation(): LocationSnapshot? =
+    optionalContext { withTimeoutOrNull(10_000L) { snapshot() } }
 
   /** Posizione e attivita' di questo momento della raffica. */
   private data class BurstContext(
@@ -176,35 +271,18 @@ class SamplingEngine(
   }
 
   /** Una misura del movimento; un errore dei sensori non ferma il campionamento. */
-  private suspend fun measureMotion(): MotionFeatures? {
-    val recognizer = activityRecognizer ?: return null
-    return try {
-      recognizer.measure()
-    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-      throw cancelled
-    } catch (_: Exception) {
-      // Un sensore che tace non e' un campione perso: l'attivita' resta l'ultima nota (o sconosciuta).
-      null
-    }
-  }
+  private suspend fun measureMotion(): MotionFeatures? = optionalContext { measureActivity() }
 
   /** Giudica la misura con la velocita' del fix, la scrive, e rilegge l'attivita' fresca com'e' in archivio. */
   private suspend fun judgedActivity(motion: MotionFeatures?, location: LocationSnapshot?): Pair<ActivityKind, Int?> {
-    val recognizer = activityRecognizer
-    if (recognizer != null && motion != null) {
-      try {
-        recognizer.record(motion, location?.speedMetersPerSecond)
-      } catch (cancelled: kotlinx.coroutines.CancellationException) {
-        throw cancelled
-      } catch (_: Exception) {
-        // L'archivio dell'attivita' non risponde: vale l'ultima nota.
-      }
+    if (motion != null) {
+      optionalContext { writeCurrentData { recordActivity(motion, location?.speedMetersPerSecond) } }
     }
     return freshActivity()
   }
 
   private suspend fun freshActivity(): Pair<ActivityKind, Int?> {
-    val latest = activityStore.current() ?: return ActivityKind.UNKNOWN to null
+    val latest = latestActivity() ?: return ActivityKind.UNKNOWN to null
     val stale = System.currentTimeMillis() - latest.observedAtMillis !in 0..ACTIVITY_FRESHNESS_MILLIS
     return if (stale) ActivityKind.UNKNOWN to null else latest.kind to latest.confidence
   }

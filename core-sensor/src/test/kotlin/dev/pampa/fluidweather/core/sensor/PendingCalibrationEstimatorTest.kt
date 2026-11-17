@@ -1,5 +1,6 @@
 package dev.pampa.fluidweather.core.sensor
 
+import dev.pampa.fluidweather.core.data.DataWipeGuard
 import dev.pampa.fluidweather.core.model.CalibrationOutcome
 import dev.pampa.fluidweather.core.model.CalibrationRecord
 import dev.pampa.fluidweather.core.model.PendingCalibrationBurst
@@ -7,6 +8,8 @@ import dev.pampa.fluidweather.core.model.PressureSample
 import dev.pampa.fluidweather.core.model.SampleSource
 import dev.pampa.fluidweather.nowcast.cleaning.CalibrationReferenceSample
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -20,6 +23,7 @@ class PendingCalibrationEstimatorTest {
   }
 
   private inner class Fixture {
+    val wipeGuard = DataWipeGuard()
     var pending: PendingCalibrationBurst? = PendingCalibrationBurst("offline", start, end)
     var saved: CalibrationRecord? = null
     var outcome: CalibrationOutcome? = CalibrationOutcome.NO_REFERENCE
@@ -28,10 +32,37 @@ class PendingCalibrationEstimatorTest {
     var write: suspend (CalibrationRecord) -> Unit = { saved = it }
     var getReference: suspend () -> CalibrationReferenceSample? = { target }
     val estimator get() = PendingCalibrationEstimator(
+      wipeGuard = wipeGuard,
       pending = { pending }, current = { readCurrent() }, samples = { readings },
       reference = { getReference() }, save = { write(it) }, clearPending = { pending = null },
       outcome = { outcome = it }, clock = { target?.atMillis ?: end },
     )
+  }
+
+  @Test fun `reference obtained after a wipe cannot restore an archived calibration`() = runTest {
+    val f = Fixture()
+    val entered = CompletableDeferred<Unit>()
+    val released = CompletableDeferred<Unit>()
+    f.getReference = {
+      entered.complete(Unit)
+      released.await()
+      f.target
+    }
+    val request = async { f.estimator.retry() }
+    entered.await()
+    f.wipeGuard.wipe {
+      f.pending = null
+      f.outcome = null
+    }
+    released.complete(Unit)
+    assertFalse(request.await())
+    assertNull(f.saved)
+    assertNull(f.outcome)
+    assertNull(f.pending)
+
+    f.pending = PendingCalibrationBurst("after-wipe", start, end)
+    assertTrue(f.estimator.retry())
+    assertEquals(CalibrationOutcome.OK, f.outcome)
   }
 
   @Test fun `offline burst can recover against a contemporaneous reference`() = runTest {

@@ -13,7 +13,10 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dev.pampa.fluidweather.core.data.CalibrationStore
+import dev.pampa.fluidweather.core.data.DataWipeGuard
 import dev.pampa.fluidweather.core.data.PressureRepository
+import dev.pampa.fluidweather.core.data.withDataWipeGeneration
+import dev.pampa.fluidweather.core.data.writeCurrentData
 import dev.pampa.fluidweather.core.model.CalibrationBurst
 import dev.pampa.fluidweather.core.model.CalibrationOutcome
 import dev.pampa.fluidweather.core.model.PendingCalibrationBurst
@@ -38,6 +41,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import dev.pampa.fluidweather.strings.R
 
+private const val WIPE_GENERATION_EXTRA = "dev.pampa.fluidweather.calibration.WIPE_GENERATION"
+private const val MISSING_GENERATION = Long.MIN_VALUE
+
 /**
  * La taratura iniziale: una raffica a 1 Hz in un foreground service, cosi' l'utente puo'
  * andarsene dalla schermata (e dall'app) mentre il sensore lavora; poi i **tratti fermi** della
@@ -60,6 +66,7 @@ class CalibrationController(
   /** La pressione al mare dei provider **qui e adesso**, con il suo quando e il suo dove. */
   private val reference: suspend () -> CalibrationReferenceSample?,
   private val scope: CoroutineScope,
+  private val wipeGuard: DataWipeGuard,
 ) {
 
   data class Progress(
@@ -75,6 +82,7 @@ class CalibrationController(
   private val operationMutex = Mutex()
   private val _progress = MutableStateFlow<Progress?>(null)
   private val pendingEstimator = PendingCalibrationEstimator(
+    wipeGuard = wipeGuard,
     pending = { store.pendingBurst.first() },
     current = { store.current() },
     samples = { repository.samplesOfBurst(it) },
@@ -86,6 +94,7 @@ class CalibrationController(
 
   /** null = nessuna taratura in corso. */
   val progress: StateFlow<Progress?> = _progress.asStateFlow()
+  fun dataGeneration(): Long = wipeGuard.generation()
 
   /**
    * Com'e' finita l'ultima raffica.
@@ -100,14 +109,22 @@ class CalibrationController(
   /** Avvia il servizio; se una raffica e' gia' in corso, non fa niente. */
   fun start() {
     if (_progress.value != null) return
+    val observed = wipeGuard.generation()
     if (!engine.barometerAvailable) {
-      scope.launch { optionalContext { store.setOutcome(CalibrationOutcome.NO_BAROMETER) } }
+      publishStartOutcome(observed, CalibrationOutcome.NO_BAROMETER)
       return
     }
     runCatching {
-      ContextCompat.startForegroundService(context, Intent(context, CalibrationService::class.java))
+      val intent = Intent(context, CalibrationService::class.java).putExtra(WIPE_GENERATION_EXTRA, observed)
+      ContextCompat.startForegroundService(context, intent)
     }.onFailure {
-      scope.launch { optionalContext { store.setOutcome(CalibrationOutcome.START_FAILED) } }
+      publishStartOutcome(observed, CalibrationOutcome.START_FAILED)
+    }
+  }
+
+  private fun publishStartOutcome(observed: Long, outcome: CalibrationOutcome) {
+    scope.launch {
+      withDataWipeGeneration(wipeGuard, observed) { persist { store.setOutcome(outcome) } }
     }
   }
 
@@ -116,93 +133,102 @@ class CalibrationController(
   }
 
   /** Il lavoro vero, eseguito dal servizio: la raffica intera, poi la stima. */
-  suspend fun run() {
-    if (!operationMutex.tryLock()) return
-    val burstId = UUID.randomUUID().toString()
-    val startedAt = System.currentTimeMillis()
-    _progress.value = Progress(0, CalibrationBurst.DURATION_SECONDS)
+  suspend fun run(observed: Long? = null) = withDataWipeGeneration(wipeGuard, observed) {
+    if (!operationMutex.tryLock()) return@withDataWipeGeneration
     try {
-      optionalContext { store.setOutcome(null) }
-      val references = mutableListOf<CalibrationReferenceSample>()
-      // Un riferimento **prima** di cominciare, non solo alla fine: se la rete c'e' adesso e fra
-      // dieci minuti no, dieci minuti di campioni non si buttano per quello.
-      optionalContext { reference() }?.let { references += it }
-
-      var elapsedSeconds = 0
-      var stored = 0
-      var segments = emptyList<CalibrationSegment>()
-
-      while (true) {
-        val chunk = if (elapsedSeconds == 0) {
-          CalibrationBurst.DURATION_SECONDS
-        } else {
-          minOf(EXTENSION_SECONDS, CalibrationBurst.MAX_DURATION_SECONDS - elapsedSeconds)
-        }
-        if (chunk <= 0) break
-        val extending = elapsedSeconds > 0
-        val usefulBefore = CalibrationSegments.usefulSeconds(segments)
-        stored += engine.collect(
-          source = SampleSource.CALIBRATION,
-          durationSeconds = chunk,
-          // Un id solo per tutte le tranche: la raffica e' una, e deve poter essere ritrovata con
-          // una query sola sia dalla stima sia dal ritentativo.
-          burstId = burstId,
-          contextRefreshSeconds = CalibrationBurst.CONTEXT_REFRESH_SECONDS,
-        ) { completed, total ->
-          _progress.value = if (extending) {
-            // Da qui in poi il progresso conta i secondi **utili**, non quelli passati: dire a chi
-            // sta camminando che manca poco quando non e' vero e' peggio che dire che si aspetta.
-            Progress(usefulBefore, CalibrationBurst.MIN_STABLE_SECONDS, waitingForStillness = true)
-          } else {
-            Progress(completed, total)
-          }
-        }
-        elapsedSeconds += chunk
-        optionalContext { reference() }?.let { references += it }
-        segments = CalibrationSegments.of(
-          repository.samplesOfBurst(burstId),
-        )
-        if (CalibrationSegments.usefulSeconds(segments) >= CalibrationBurst.MIN_STABLE_SECONDS) break
-        if (elapsedSeconds >= CalibrationBurst.MAX_DURATION_SECONDS) break
-      }
-
-      if (stored == 0) {
-        optionalContext { store.setOutcome(CalibrationOutcome.NO_READINGS) }
-        return
-      }
-      if (segments.isEmpty()) {
-        // Mezz'ora e nemmeno un minuto fermo: una stima si potrebbe anche fare, ma sarebbe la
-        // pressione di una cabina spacciata per quella di un posto.
-        optionalContext { store.setOutcome(CalibrationOutcome.TOO_MUCH_MOVEMENT) }
-        return
-      }
-      if (references.isEmpty()) {
-        // La raffica resta in archivio e in sospeso: la stima si ritenta appena i provider
-        // rispondono, senza chiedere altri dieci minuti a nessuno.
-        optionalContext {
-          store.setPendingBurst(
-            PendingCalibrationBurst(burstId, startedAt, System.currentTimeMillis()),
-          )
-          store.setOutcome(CalibrationOutcome.NO_REFERENCE)
-        }
-        return
-      }
-      val record = CalibrationMath.estimateSegments(segments, references, System.currentTimeMillis())
-      if (record == null) {
-        optionalContext {
-          store.setPendingBurst(PendingCalibrationBurst(burstId, startedAt, System.currentTimeMillis()))
-          store.setOutcome(CalibrationOutcome.NO_REFERENCE)
-        }
-        return
-      }
-      optionalContext {
-        store.save(record)
-        store.setPendingBurst(null)
-        store.setOutcome(CalibrationOutcome.OK)
-      }
+      collectAndEstimate()
     } finally {
       _progress.value = null
       operationMutex.unlock()
+    }
+  }
+
+  private suspend fun persist(change: suspend () -> Unit) {
+    optionalContext { writeCurrentData(change) }
+  }
+
+  private suspend fun collectAndEstimate() {
+    val burstId = UUID.randomUUID().toString()
+    val startedAt = System.currentTimeMillis()
+    _progress.value = Progress(0, CalibrationBurst.DURATION_SECONDS)
+    persist { store.setOutcome(null) }
+    val references = mutableListOf<CalibrationReferenceSample>()
+    // Un riferimento **prima** di cominciare, non solo alla fine: se la rete c'e' adesso e fra
+    // dieci minuti no, dieci minuti di campioni non si buttano per quello.
+    optionalContext { reference() }?.let { references += it }
+
+    var elapsedSeconds = 0
+    var stored = 0
+    var segments = emptyList<CalibrationSegment>()
+
+    while (true) {
+      val chunk = if (elapsedSeconds == 0) {
+        CalibrationBurst.DURATION_SECONDS
+      } else {
+        minOf(EXTENSION_SECONDS, CalibrationBurst.MAX_DURATION_SECONDS - elapsedSeconds)
+      }
+      if (chunk <= 0) break
+      val extending = elapsedSeconds > 0
+      val usefulBefore = CalibrationSegments.usefulSeconds(segments)
+      stored += engine.collectForGeneration(
+        observed = null,
+        source = SampleSource.CALIBRATION,
+        durationSeconds = chunk,
+        // Un id solo per tutte le tranche: la raffica e' una, e deve poter essere ritrovata con
+        // una query sola sia dalla stima sia dal ritentativo.
+        burstId = burstId,
+        contextRefreshSeconds = CalibrationBurst.CONTEXT_REFRESH_SECONDS,
+      ) { completed, total ->
+        _progress.value = if (extending) {
+          // Da qui in poi il progresso conta i secondi **utili**, non quelli passati: dire a chi
+          // sta camminando che manca poco quando non e' vero e' peggio che dire che si aspetta.
+          Progress(usefulBefore, CalibrationBurst.MIN_STABLE_SECONDS, waitingForStillness = true)
+        } else {
+          Progress(completed, total)
+        }
+      }
+      elapsedSeconds += chunk
+      optionalContext { reference() }?.let { references += it }
+      segments = CalibrationSegments.of(
+        repository.samplesOfBurst(burstId),
+      )
+      if (CalibrationSegments.usefulSeconds(segments) >= CalibrationBurst.MIN_STABLE_SECONDS) break
+      if (elapsedSeconds >= CalibrationBurst.MAX_DURATION_SECONDS) break
+    }
+
+    if (stored == 0) {
+      persist { store.setOutcome(CalibrationOutcome.NO_READINGS) }
+      return
+    }
+    if (segments.isEmpty()) {
+      // Mezz'ora e nemmeno un minuto fermo: una stima si potrebbe anche fare, ma sarebbe la
+      // pressione di una cabina spacciata per quella di un posto.
+      persist { store.setOutcome(CalibrationOutcome.TOO_MUCH_MOVEMENT) }
+      return
+    }
+    if (references.isEmpty()) {
+      // La raffica resta in archivio e in sospeso: la stima si ritenta appena i provider
+      // rispondono, senza chiedere altri dieci minuti a nessuno.
+      persist {
+        store.setPendingBurst(
+          PendingCalibrationBurst(burstId, startedAt, System.currentTimeMillis()),
+        )
+        store.setOutcome(CalibrationOutcome.NO_REFERENCE)
+      }
+      return
+    }
+    val record = CalibrationMath.estimateSegments(segments, references, System.currentTimeMillis())
+    if (record == null) {
+      persist {
+        store.setPendingBurst(PendingCalibrationBurst(burstId, startedAt, System.currentTimeMillis()))
+        store.setOutcome(CalibrationOutcome.NO_REFERENCE)
+      }
+      return
+    }
+    persist {
+      store.save(record)
+      store.setPendingBurst(null)
+      store.setOutcome(CalibrationOutcome.OK)
     }
   }
 
@@ -216,10 +242,10 @@ class CalibrationController(
    *
    * Vero se la taratura e' stata salvata adesso.
    */
-  suspend fun retryPendingEstimate(): Boolean {
+  suspend fun retryPendingEstimate(observed: Long? = null): Boolean {
     if (!operationMutex.tryLock()) return false
     return try {
-      pendingEstimator.retry()
+      pendingEstimator.retry(observed)
     } finally {
       operationMutex.unlock()
     }
@@ -245,6 +271,8 @@ class CalibrationService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val controller = sensorRuntime().calibrationController
+    val observed = intent?.getLongExtra(WIPE_GENERATION_EXTRA, MISSING_GENERATION)
+      ?.takeUnless { it == MISSING_GENERATION }
     startInForeground(controller.progress.value)
     scope.launch {
       controller.progress.collect { progress ->
@@ -256,7 +284,7 @@ class CalibrationService : Service() {
     }
     scope.launch {
       try {
-        controller.run()
+        controller.run(observed)
       } finally {
         stopSelf()
       }

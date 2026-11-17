@@ -204,6 +204,7 @@ private fun FluidWeatherRoutes(
           weatherSummaryGateway = graph.weatherSummaryService,
           routineWindowStore = graph.routineWindowStore,
           dataGeneration = graph.wipeGuard::generation,
+          wipeGuard = graph.wipeGuard,
           samplingSettings = graph.samplingSettingsStore,
           locationProvider = graph.locationProvider,
           pressureRepository = graph.pressureRepository,
