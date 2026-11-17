@@ -8,6 +8,7 @@ import dev.antigravity.fluidengine.ai.tools.ToolOutput
 import dev.antigravity.fluidengine.ai.tools.ToolRegistry
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.data.ResolvedPlace
+import dev.pampa.fluidweather.core.data.DataWipeEpoch
 import dev.pampa.fluidweather.core.data.dataWipeEpoch
 import dev.pampa.fluidweather.strings.UnitFormatter
 import java.time.ZoneId
@@ -59,6 +60,8 @@ class ToolContext(
   val selected: ResolvedPlace?,
   val actionsEnabled: Boolean,
   val actions: ActionSink,
+  /** Retain the epoch when the bridge builds the context separately from tool execution. */
+  val bridgedEpoch: DataWipeEpoch? = null,
 ) {
   /** Pigri, cosi' un test dell'orchestratore costruisce un contesto senza Android sotto. */
   val sources: AiDataSources by lazy { sourcesProvider() }

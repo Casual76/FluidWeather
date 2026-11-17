@@ -10,6 +10,10 @@ import dev.pampa.fluidweather.core.ai.tools.ActionSink
 import dev.pampa.fluidweather.core.ai.tools.AssistantAction
 import dev.pampa.fluidweather.core.ai.tools.ToolContext
 import dev.pampa.fluidweather.core.ai.tools.OpenTarget
+import dev.pampa.fluidweather.core.data.DataWipeInvalidatedException
+import dev.pampa.fluidweather.core.data.dataWipeEpoch
+import dev.pampa.fluidweather.core.data.withDataWipeGeneration
+import dev.pampa.fluidweather.core.data.writeCurrentData
 import dev.pampa.fluidweather.core.ui.AppDeepLink
 import dev.pampa.fluidweather.core.ui.AppDestination
 import dev.pampa.fluidweather.core.ui.AppScreen
@@ -24,6 +28,9 @@ import dev.antigravity.fluidengine.ai.tools.ToolOutput
 import dev.antigravity.fluidengine.ai.tools.ToolRegistry
 import java.time.ZoneId
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
@@ -72,9 +79,16 @@ private class BridgedTool(private val inner: EngineTool<ToolContext>) : EngineTo
   override val isAction: Boolean = inner.isAction
   override val needsConfirmation: Boolean = inner.needsConfirmation
 
-  override suspend fun run(args: JsonObject, ctx: ToolContext): ToolOutput {
-    val text = inner.run(args, ctx).text
-    return if (text.startsWith("errore")) ToolOutput.error(text.removePrefix("errore:").trim()) else ToolOutput(text)
+  override suspend fun run(args: JsonObject, ctx: ToolContext): ToolOutput = try {
+    val origin = ctx.bridgedEpoch
+    withDataWipeGeneration(origin?.guard, origin?.observed) {
+      val text = inner.run(args, ctx).text
+      dataWipeEpoch(null)
+      if (text.startsWith("errore")) ToolOutput.error(text.removePrefix("errore:").trim()) else ToolOutput(text)
+    }
+  } catch (_: DataWipeInvalidatedException) {
+    currentCoroutineContext().ensureActive()
+    ToolOutput.error("I dati sono cambiati. Ripeti la richiesta.")
   }
 }
 
@@ -97,20 +111,33 @@ class WeatherToolHostProvider : AiToolHostProvider<ToolContext>() {
   override suspend fun context(call: RemoteCall): ToolContext {
     val assistant = app.graph.aiAssistant
     val sources = assistant.dataSources
-    val resources = context!!.resources
-    val units = UnitFormatter(resources, sources.unitsStore.current(), Locale.getDefault())
-    val selected = runCatching { assistant.resolver.selected() }.getOrNull()
-    return ToolContext(
-      sourcesProvider = { sources },
-      unitsProvider = { units },
-      resourcesProvider = { resources },
-      locale = Locale.getDefault(),
-      zone = ZoneId.systemDefault(),
-      nowMillis = System.currentTimeMillis(),
-      selected = selected,
-      actionsEnabled = true,
-      actions = BridgeActionSink(app, context!!),
-    )
+    return withDataWipeGeneration(app.graph.wipeGuard) {
+      val origin = dataWipeEpoch(app.graph.wipeGuard)
+      writeCurrentData { Unit }
+      val resources = context!!.resources
+      val locale = Locale.getDefault()
+      val units = UnitFormatter(resources, sources.unitsStore.current(), locale)
+      val selected = try {
+        assistant.resolver.selected()
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        null
+      }
+      dataWipeEpoch(null)
+      ToolContext(
+        sourcesProvider = { sources },
+        unitsProvider = { units },
+        resourcesProvider = { resources },
+        locale = locale,
+        zone = ZoneId.systemDefault(),
+        nowMillis = System.currentTimeMillis(),
+        selected = selected,
+        actionsEnabled = true,
+        actions = BridgeActionSink(app, context!!),
+        bridgedEpoch = origin,
+      )
+    }
   }
 
   override fun domain(): String = "meteo"
@@ -158,7 +185,7 @@ private fun OpenTarget.destination(): AppDestination = when (this) {
 private class BridgeActionSink(private val app: FluidWeatherApp, private val context: Context) : ActionSink {
   override suspend fun perform(action: AssistantAction): ActionOutcome {
     val outcome = app.graph.aiAssistant.session.performPreConfirmed(action)
-    if (action is AssistantAction.Open) {
+    if (action is AssistantAction.Open && outcome == ActionOutcome.DONE) {
       // Aprire qualcosa che resta dietro non e' aprire niente: si porta l'app davanti con lo
       // stesso Uri che scrive il widget e che `MainActivity` rilegge.
       //

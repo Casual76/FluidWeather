@@ -85,6 +85,7 @@ private class FakeProvider(
   private val queue = ArrayDeque(turns)
   val requests = mutableListOf<ChatRequest>()
   val streamed = mutableListOf<ChatRequest>()
+  var beforeText: suspend () -> Unit = {}
 
   override suspend fun complete(request: ChatRequest): ChatTurn {
     requests += request
@@ -99,6 +100,7 @@ private class FakeProvider(
     when (val turn = queue.removeFirstOrNull() ?: Scripted.Text("(fine copione)")) {
       is Scripted.Fail -> throw turn.error
       is Scripted.Text -> {
+        beforeText()
         turn.text.chunked(7).forEach { emit(ChatDelta.Text(it)); delay(5) }
         emit(ChatDelta.Finish(FinishReason.STOP, null, RateLimitInfo.EMPTY))
       }
@@ -400,7 +402,8 @@ class WeatherOrchestratorTest {
     val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
     val entered = CompletableDeferred<Unit>()
     val resume = CompletableDeferred<Unit>()
-    val old = FakeProvider(ProviderId.OPENROUTER, listOf(Scripted.Text("Old reply"))) {
+    val old = FakeProvider(ProviderId.OPENROUTER, listOf(Scripted.Text("Old reply")))
+    old.beforeText = {
       entered.complete(Unit)
       resume.await()
     }
