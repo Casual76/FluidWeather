@@ -27,7 +27,7 @@ La suite iniziale è passata in 1m26s. La prima riconta nella directory di lavor
 
 Prove rosse eseguite prima degli interventi interessati: 1 difetto DST; 16 test notifiche con 13 fallimenti e 3 controlli passanti; 20 test dati con 18 fallimenti e 2 controlli passanti; 3 test del costruttore orario reale con 2 fallimenti e 1 controllo passante. Sono fixture di regressione, non misure meteo sul campo. Le ulteriori prove aggiunte durante l'implementazione verranno riportate separatamente.
 
-## Interventi candidati, in attesa di verifica integrata
+## Interventi integrati
 
 | Area | Risultato richiesto |
 |---|---|
@@ -40,4 +40,10 @@ Prove rosse eseguite prima degli interventi interessati: 1 difetto DST; 16 test 
 | Radar e uso quotidiano | Aggiornamento/riprova e ripresa lifecycle; frame vecchi riconoscibili; refresh Home esplicito, widget invalidato dalle località, fusi coerenti, preferenze aptiche e risparmio energia applicati. |
 | Azioni e assistente | Esito visibile di prova notifiche e cancellazione incompleta; cancellazioni indipendenti tentate e fallimenti propagati; serializzazione del cambio canale aggiornamenti; tolleranza al normale jitter GPS mantenendo le barriere di grounding. |
 
-Gli agenti non eseguono build né pilotano dispositivi. L'integrazione 4 è verde: 1.492 casi negli XML disponibili, zero fallimenti/errori/saltati, migrazioni Room comprese; APK e APK strumentato compilati; lint zero errori, otto warning e un hint. I risultati comprendono task eseguiti e già aggiornati. Le review indipendenti hanno richiesto una correzione ulteriore per il lavoro iniziato durante il wipe; ricollaudo e review del delta sono in corso. La cronologia e i voti sono in `docs/daily-reliability-review.md`.
+## Candidata pubblicata
+
+La beta `2.2.0-beta.1` (codice 25) è pubblicata dal commit `68d910e25f80f13454a6256470cdea4befb699bb`. Le operazioni in corso su meteo, campioni, taratura, osservazioni e assistente conservano la propria generazione fino alla scrittura finale. La cancellazione invalida anche le operazioni iniziate mentre gli archivi vengono svuotati. Località salvate e preferenze restano disponibili.
+
+L'integrazione 8 termina in 5m34s con **1.507 casi negli XML di 15 moduli**. Il runner ha rieseguito 82 casi e riutilizzato 1.425 risultati senza fallimenti, errori o skip. Lint debug e release sono senza errori. Gli APK debug, strumentato e release sono stati verificati in compilazione sul PC. Il download pubblico coincide con il binario firmato per hash e dimensione. [Pubblicazione e identità dell'APK](releases/2.2.0-beta.1-publication.md).
+
+Le review e i risultati del collaudo sono in [daily-reliability-review.md](daily-reliability-review.md). Consegna delle notifiche in Doze e sui diversi telefoni, vibrazione, launcher e accuratezza sul campo restano da verificare su dispositivo.

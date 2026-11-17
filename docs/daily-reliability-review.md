@@ -65,3 +65,11 @@ Snapshot `a1d5a3da4cb2c3a3281c69726e010fc99b9a6d9e`. Le due review GPT-6.2 Sol c
 | C5 Regressioni e integrazione sul computer | 8 | 8 | 8 | 8 | Verificato sul PC |
 
 La review d'uso quotidiano ha ricostruito tre percorsi preesistenti che conservavano input acquisiti prima del wipe: passata del barometro in attesa del GPS, stima di taratura in attesa del riferimento, turno dell'assistente sospeso sul provider. I rapporti `review-technical-r3.md` e `review-daily-r3.md` distinguono questi percorsi dalle prove procedurali del guardiano. La candidata successiva fa ereditare la generazione all'intera operazione, comprese le scritture meteo derivate, e verifica i nuovi ingressi con regressioni dedicate.
+
+## Esito delle ultime review
+
+Sul commit `669bb7a` (R4) i tre ingressi R3 sono protetti. Le due review hanno chiesto di coprire anche il salvataggio delle osservazioni e la pubblicazione del log dell'assistente. I test d'integrazione 6 hanno inoltre rilevato un import assente e due asserzioni sull'identità di un'eccezione attraverso `withContext`. I test corretti verificano ancora la propagazione della cancellazione e l'assenza di scritture.
+
+Sul commit `38f80cc` (R5) l'osservazione è protetta nel repository e il log resta privato fino alla pubblicazione del turno. Il reviewer ha individuato un ultimo passaggio federato che poteva rinnovare la generazione tra costruzione del contesto e avvio del tool. L'integrazione 7 ha compilato gli APK e concluso lint. Un test si è fermato nella fixture perché la barriera era agganciata alle chiamate a tool anziché al ramo di solo testo.
+
+Il delta `68d910e` (R6) cattura la generazione prima di leggere il contesto federato e la ripristina fino all'esecuzione del tool. La review indipendente ha dato GO sul sorgente per questo delta. L'integrazione 8 conferma la regressione diagnostica con la barriera nel ramo di solo testo, il rifiuto del commit di osservazioni scadute e i percorsi riparati in R3. La decisione di pubblicare in beta si basa sulle review del delta e su 228 XML, 1.507 casi verdi, lint Debug e Release senza errori e APK firmato con il certificato della stabile. Il runner ha rieseguito 82 casi e riutilizzato 1.425 risultati. Il collaudo su dispositivo resta fuori dal perimetro.
