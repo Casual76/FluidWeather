@@ -177,7 +177,10 @@ class SnapshotAndAlertsTest {
     val store = WeatherSnapshotStore(Files.createTempDirectory("snapshots").toFile())
     var clock = now
     val hooked = mutableListOf<RegisteredRound>()
-    val sorgente = roundSourceOf({ at -> WeatherRound(listOf(fetchOf(43.8, 11.2, at)), FusedForecast(emptyList(), emptyMap())) }) { clock }
+    val sorgente = object : RoundSource {
+      override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound =
+        WeatherRound(listOf(fetchOf(latitude, longitude, clock)), FusedForecast(emptyList(), emptyMap()))
+    }
     val refresher = WeatherSnapshotRefresher(sorgente, store, onGpsRoundRegistered = { hooked += it }) { clock }
 
     refresher.refresh(WeatherSnapshot.GPS_KEY, 43.8, 11.2)

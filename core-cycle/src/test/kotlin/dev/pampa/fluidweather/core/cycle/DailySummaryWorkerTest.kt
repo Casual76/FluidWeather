@@ -30,7 +30,7 @@ class SummaryWorkerTestApplication : Application(), CycleRuntime {
 class DailySummaryWorkerTest {
   private lateinit var app: SummaryWorkerTestApplication
   @Before fun prepare() {
-    app = RuntimeEnvironment.getApplication()
+    app = RuntimeEnvironment.getApplication() as SummaryWorkerTestApplication
     app.requested = null
     app.delivery = { true }
   }
