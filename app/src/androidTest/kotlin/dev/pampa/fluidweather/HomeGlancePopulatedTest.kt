@@ -65,8 +65,9 @@ class HomeGlancePopulatedTest(private val language: String, private val width: I
       current = CurrentWeatherSummary(WeatherKind.PARTLY_CLOUDY, 13.0, listOf(currentSource)), routines = listOf(routine))
     compose.setContent {
       val base = LocalContext.current
-      val configuration = remember { Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(language)) } }
-      val context = remember { base.createConfigurationContext(configuration) }
+      val baseConfiguration = LocalConfiguration.current
+      val configuration = remember(baseConfiguration, language) { Configuration(baseConfiguration).apply { setLocale(Locale.forLanguageTag(language)) } }
+      val context = remember(base, configuration) { base.createConfigurationContext(configuration) }
       val device = LocalDensity.current
       BoxWithConstraints(Modifier.fillMaxSize()) {
         val target = device.density * minOf(maxWidth.value / width, maxHeight.value / 900f)

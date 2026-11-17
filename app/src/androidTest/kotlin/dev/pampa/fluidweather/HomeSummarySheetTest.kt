@@ -39,8 +39,9 @@ class HomeSummarySheetTest {
     val gateway = WeatherSummaryGateway { document -> calls++; input = document; result(document) }
     compose.setContent {
       val base = LocalContext.current
-      val config = remember(language) { Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(language)) } }
-      val context = remember(config) { base.createConfigurationContext(config) }
+      val baseConfiguration = LocalConfiguration.current
+      val config = remember(baseConfiguration, language) { Configuration(baseConfiguration).apply { setLocale(Locale.forLanguageTag(language)) } }
+      val context = remember(base, config) { base.createConfigurationContext(config) }
       val density = LocalDensity.current
       CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides config,
         LocalDensity provides Density(density.density, scale)) {

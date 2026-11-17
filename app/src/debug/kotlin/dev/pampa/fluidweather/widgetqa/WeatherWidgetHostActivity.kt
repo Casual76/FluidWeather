@@ -60,7 +60,7 @@ class WeatherWidgetHostActivity : Activity() {
     setContentView(root)
     scope.launch {
       try {
-        val views = if (responsive) WeatherWidgetHostRenderer.responsive(widgetContext, case)
+        val views = if (responsive && android.os.Build.VERSION.SDK_INT >= 31) WeatherWidgetHostRenderer.responsive(widgetContext, case)
           else WeatherWidgetHostRenderer.render(widgetContext, case, model)
         val child = if (native != null) {
           native.updateAppWidget(views)

@@ -117,6 +117,7 @@ class NowcastUseCase(
    * riprodurle. Senza, il riferimento di tutti i posti ([V3Priors.pooled]).
    */
   private val localClimate: suspend (latitude: Double, longitude: Double) -> LocalClimate? = { _, _ -> null },
+  private val wipeGuard: dev.pampa.fluidweather.core.data.DataWipeGuard? = null,
 ) {
 
   /**
@@ -152,7 +153,7 @@ class NowcastUseCase(
     pointLongitude: Double? = null,
     /** UI acquisition must distinguish storage failure from confirmed empty data. */
     failOnLocalReadError: Boolean = false,
-  ): NowcastSnapshot {
+  ): NowcastSnapshot = withWeatherDataGeneration(wipeGuard) {
     val baseline = localRead(failOnLocalReadError) { baselineStore.current() }
     // L'ultima temperatura nota, non i quindici gradi standard: offline e online devono ridurre
     // con lo stesso righello, altrimenti la stessa serie mostra due pressioni diverse.
@@ -203,20 +204,22 @@ class NowcastUseCase(
     val soloTier = noContextTier(priors)
     val solo = if (withSoloShadow && features != null) cleaning?.let { soloOf(engine, it, normal, learning, nowMillis, soloTier, priors, referenceKnown) } else null
 
-    if (record) explanation?.verdict?.let { nowcastAttempt { nowcastHistory.record(it.toRecord(nowMillis)) } }
+    if (record) explanation?.verdict?.let {
+      nowcastAttempt { writeCurrentWeatherData { nowcastHistory.record(it.toRecord(nowMillis)) } }
+    }
     nowcastAttempt { rememberAltitude(cleaning) }
     // Solo il posto del telefono: la memoria lenta del barometro (temperatura e coordinate di casa)
     // non deve imparare da una localita' salvata o da un posto chiesto all'assistente, dove il
     // sensore non c'e'.
     if (snapshot?.placeKey == WeatherSnapshot.GPS_KEY) {
-      nowcastAttempt { baselineStore.observePlace(temperature, snapshot.latitude, snapshot.longitude) }
+      nowcastAttempt { writeCurrentWeatherData { baselineStore.observePlace(temperature, snapshot.latitude, snapshot.longitude) } }
     }
 
     val historyHours = cleaning?.historyHours ?: 0.0
     val blocked = samplingBlocked(samples, nowMillis, failOnLocalReadError) ||
       (historyHours >= FeatureExtractor.MIN_HISTORY_HOURS &&
         cleaning != null && !CurrentSignalPolicy.isCurrent(cleaning.filtered, nowMillis))
-    return NowcastSnapshot(
+    NowcastSnapshot(
       nowMillis = nowMillis,
       samples = samples,
       calibration = calibration,
@@ -427,7 +430,7 @@ class NowcastUseCase(
       altitude,
       temperatureCelsius ?: SeaLevel.STANDARD_TEMPERATURE_CELSIUS,
     )
-    nowcastAttempt { baselineStore.saveNormal(normal, nowMillis) }
+    nowcastAttempt { writeCurrentWeatherData { baselineStore.saveNormal(normal, nowMillis) } }
     return normal
   }
 
@@ -439,7 +442,7 @@ class NowcastUseCase(
   private suspend fun rememberAltitude(cleaning: CleaningResult?) {
     val altitudes = cleaning?.cleaned?.mapNotNull { it.altitudeMeters }?.sorted().orEmpty()
     if (altitudes.size < MIN_ALTITUDES_TO_LEARN) return
-    baselineStore.observeAltitude(altitudes[altitudes.size / 2])
+    writeCurrentWeatherData { baselineStore.observeAltitude(altitudes[altitudes.size / 2]) }
   }
 
   /**
@@ -451,9 +454,9 @@ class NowcastUseCase(
    * spenti (l'app) l'archivio delle emissioni non si legge affatto: erano due anni di righe da portare
    * in memoria per niente.
    */
-  suspend fun learningState(nowMillis: Long): LearningState {
-    fresh(nowMillis)?.let { return it }
-    return learningMutex.withLock {
+  suspend fun learningState(nowMillis: Long): LearningState = withWeatherDataGeneration(wipeGuard) {
+    fresh(nowMillis)?.let { return@withWeatherDataGeneration it }
+    learningMutex.withLock {
       // Ricontrollo dentro il lucchetto: chi ha aspettato in coda trova il lavoro gia' fatto.
       fresh(nowMillis)?.let { return@withLock it }
       val state = nowcastAttempt {
@@ -469,7 +472,7 @@ class NowcastUseCase(
           includeCases = withAnalogs,
         )
       }.getOrDefault(LearningState.EMPTY)
-      learningCache = nowMillis to state
+      writeCurrentWeatherData { learningCache = nowMillis to state }
       state
     }
   }

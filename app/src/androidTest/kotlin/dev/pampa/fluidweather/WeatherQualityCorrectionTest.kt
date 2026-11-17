@@ -40,8 +40,9 @@ class WeatherQualityCorrectionTest {
   private fun sunDates(language: String) {
     compose.setContent {
       val original = LocalContext.current
-      val config = remember { Configuration(original.resources.configuration).apply { setLocale(Locale(language)) } }
-      val localized = remember { original.createConfigurationContext(config) }
+      val baseConfiguration = LocalConfiguration.current
+      val config = remember(baseConfiguration, language) { Configuration(baseConfiguration).apply { setLocale(Locale(language)) } }
+      val localized = remember(original, config) { original.createConfigurationContext(config) }
       val device = LocalDensity.current
       BoxWithConstraints(Modifier.fillMaxSize()) {
         val fit = device.density * minOf(maxWidth.value / 360, maxHeight.value / 900)

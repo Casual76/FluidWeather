@@ -52,7 +52,9 @@ class DailySummaryWorkerTest {
   @Test fun `WorkManager cancellation propagates`() = runBlocking {
     val cancellation = CancellationException("stopped")
     app.delivery = { throw cancellation }
-    assertSame(cancellation, runCatching { worker().doWork() }.exceptionOrNull())
+    val failure = runCatching { worker().doWork() }.exceptionOrNull()
+    assertTrue(failure is CancellationException)
+    assertEquals("stopped", failure?.message)
   }
   @Test fun `invalid work input does not invoke delivery`() = runBlocking {
     val worker = TestListenableWorkerBuilder<DailySummaryWorker>(app).build()

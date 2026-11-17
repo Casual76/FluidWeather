@@ -22,4 +22,16 @@ Rapporti completi e log sono conservati localmente in `artifacts/reliability-202
 
 ## Verifica del delta
 
-La candidata successiva corregge i rilievi del primo giro. Esito di suite, APK e review del delta ancora in attesa; nessun voto precedente viene trasferito alla nuova versione.
+Il secondo giro riguarda `e282f2b40efdab27befd1da4191fa1c8258ed9ce`. Due reviewer nuovi hanno verificato il delta: compilazione e commit del registro dopo il wipe sono chiusi. Hanno individuato un ulteriore percorso GPS nel nowcast che poteva riscrivere memoria barometrica e storico dopo il wipe; il guard del registro non proteggeva questi salvataggi precedenti.
+
+| Criterio | Tecnico | Uso quotidiano | Media | Minimo | Esito |
+|---|---:|---:|---:|---:|---|
+| C1 Notifiche e recupero | 8 | 7 | 7,5 | 7 | Da completare |
+| C2 Tempo, età e cache meteo | 8 | 8 | 8 | 8 | Verificato nel perimetro PC |
+| C3 Percorsi quotidiani e impostazioni | 8 | 8 | 8 | 8 | Verificato nel perimetro PC |
+| C4 Persistenza, privacy e migrazioni | 5 | 5 | 5 | 5 | Non superato |
+| C5 Regressioni e integrazione sul computer | 6 | 6 | 6 | 6 | Non superato |
+
+L'integrazione 2 compila APK app e APK dei test strumentati; migrazioni Room e replay passano. L'integrazione 3 verifica 328/328 test meteo e 69/71 test notifiche: due fixture richiedono adeguamento (identità delle eccezioni recuperate dalle coroutine e clock della risposta fake). Il lint completo rileva cinque errori preesistenti nelle utility debug e nei test di locale. Questi risultati non sono presentati come un'integrazione verde.
+
+La correzione successiva protegge anche i salvataggi del nowcast e aggiunge un controllo positivo e due prove GPS sospese durante la cancellazione, con Room/DataStore reali. I test corretti e i cinque errori lint devono passare nel batch successivo; nessun voto viene trasferito a una nuova versione senza review del delta.

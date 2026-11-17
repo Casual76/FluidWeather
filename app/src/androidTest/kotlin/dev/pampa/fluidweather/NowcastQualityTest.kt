@@ -69,10 +69,11 @@ class NowcastQualityTest {
     )
     compose.setContent {
       val original = LocalContext.current
-      val configuration = remember(language) {
-        Configuration(original.resources.configuration).apply { setLocale(Locale(language)) }
+      val baseConfiguration = LocalConfiguration.current
+      val configuration = remember(baseConfiguration, language) {
+        Configuration(baseConfiguration).apply { setLocale(Locale(language)) }
       }
-      val localized = remember(configuration) { original.createConfigurationContext(configuration) }
+      val localized = remember(original, configuration) { original.createConfigurationContext(configuration) }
       resources = localized.resources
       val device = LocalDensity.current
       // Fit a fixed reading viewport on either a phone emulator or the physical tablet.

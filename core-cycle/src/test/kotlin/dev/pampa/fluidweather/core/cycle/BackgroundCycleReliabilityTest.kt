@@ -82,8 +82,8 @@ class BackgroundCycleReliabilityTest {
       override suspend fun refresh(latitude: Double, longitude: Double, registerPredictions: Boolean): WeatherRound {
         onRefresh()
         val descriptor = ProviderRegistry.all.first()
-        val bundle = ForecastBundle(descriptor.id, noon, latitude, longitude,
-          listOf(HourlyPoint(noon, temperatureC = 20.0)))
+        val bundle = ForecastBundle(descriptor.id, now, latitude, longitude,
+          listOf(HourlyPoint(now, temperatureC = 20.0)))
         return WeatherRound(listOf(ProviderFetch(descriptor, bundle, null)), snapshot(tokyo).fused)
       }
     }

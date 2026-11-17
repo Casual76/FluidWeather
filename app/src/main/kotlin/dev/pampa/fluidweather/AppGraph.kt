@@ -259,6 +259,7 @@ class AppGraph(context: Context) {
     learningStore = learningStore,
     nowcastHistory = nowcastHistoryStore,
     baselineStore = barometerBaselineStore,
+    wipeGuard = wipeGuard,
     // Niente analoghi: somiglianze misurate su feature barometriche senza abilita' trascinerebbero
     // ogni verdetto verso il tasso base dell'archivio.
     engine = NowcastEngine.trained(analogPolicy = AnalogPolicy.OFF),
