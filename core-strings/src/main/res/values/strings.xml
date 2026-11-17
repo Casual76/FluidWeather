@@ -561,7 +561,7 @@
   <string name="kind_thunderstorm">Thunderstorm</string>
   <string name="learning_active_gain">Active · out-of-sample Brier change %1$s</string>
   <string name="learning_rule_fallback">Here the barometer rule speaks instead of the model · Brier change %1$s</string>
-  <string name="learning_explain">Recalibrated = the model\'s probability mapped onto the true frequency of your verifications (Platt scaling), with one map per context (fresh, stale, none). A map is applied only if, fitted on the older 70% of your verifications, it beats the raw probability on the newest 30%.</string>
+  <string name="learning_explain" formatted="false">Recalibrated = the model\'s probability mapped onto the true frequency of your verifications (Platt scaling), with one map per context (fresh, stale, none). A map is applied only if, fitted on the older 70% of your verifications, it beats the raw probability on the newest 30%.</string>
   <string name="learning_map_counts">%1$s cases: %2$s wet, %3$s dry</string>
   <string name="learning_model_version">Model version</string>
   <string name="learning_not_yet">Not yet: 100 verifications are needed, at least 10 wet and 10 dry</string>

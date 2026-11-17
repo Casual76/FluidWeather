@@ -3,6 +3,7 @@ package dev.pampa.fluidweather.core.ai.orchestrator
 import android.content.res.Resources
 import dev.antigravity.fluidengine.ai.keys.AiSettingsStore
 import dev.antigravity.fluidengine.ai.orchestrator.AiConfirmationGate
+import dev.antigravity.fluidengine.ai.orchestrator.AiDiagnosticsLog
 import dev.antigravity.fluidengine.ai.orchestrator.AiOrchestrator
 import dev.antigravity.fluidengine.ai.orchestrator.AskInput
 import dev.antigravity.fluidengine.ai.orchestrator.AskMode
@@ -19,6 +20,7 @@ import dev.antigravity.fluidengine.ai.speech.Transcriber
 import dev.pampa.fluidweather.core.ai.data.AiDataSources
 import dev.pampa.fluidweather.core.ai.data.PlaceResolver
 import dev.pampa.fluidweather.core.ai.data.ResolvedPlace
+import dev.pampa.fluidweather.core.ai.data.cancellableResult
 import dev.pampa.fluidweather.core.ai.tools.ActionOutcome
 import dev.pampa.fluidweather.core.ai.tools.ActionSink
 import dev.pampa.fluidweather.core.ai.tools.AssistantAction
@@ -73,7 +75,8 @@ class AssistantSession(
   private val resolver: PlaceResolver,
   private val settingsStore: AiSettingsStore,
   private val providers: ProviderFactory,
-  private val orchestrator: AiOrchestrator<ToolContext>,
+  private val orchestrator: (AiDiagnosticsLog) -> AiOrchestrator<ToolContext>,
+  private val diagnostics: AiDiagnosticsLog,
   private val transcriber: Transcriber,
   private val speechFactory: () -> SpeechCapture,
   private val cacheDir: File,
@@ -159,13 +162,6 @@ class AssistantSession(
     cancel()
     conversationFlow.value = Conversation(ids.getAndIncrement(), clock())
     stateFlow.value = AssistantState.Idle
-  }
-
-  /** Stop the active turn before clearing the engine's in-memory diagnostic log. */
-  suspend fun resetForDataDeletion() {
-    val active = job
-    reset()
-    active?.join()
   }
 
   /** La risposta alla conferma in [AssistantState.AwaitingConfirmation]: [id] e' quello di `confirmation`. */
@@ -300,8 +296,17 @@ class AssistantSession(
       actionsEnabled = settings.actionsEnabled,
       chipFilter = WeatherChip::accepts,
     )
-    val result = withContext(grounding) {
-      bufferedAnswer(stateFlow) { privateState -> orchestrator.ask(input, privateState) }
+    // The engine logs before returning, including turns with no tool calls.
+    val turnDiagnostics = AiDiagnosticsLog()
+    val result = try {
+      withContext(grounding) {
+        bufferedAnswer(stateFlow) { privateState -> orchestrator(turnDiagnostics).ask(input, privateState) }
+      }
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      writeCurrentData { copyRateLimits(turnDiagnostics, diagnostics) }
+      throw failure
     }
     dataWipeEpoch(null)
     // Catch GPS movement too, even when no selected-place tool was requested.
@@ -318,7 +323,7 @@ class AssistantSession(
     if (generation != sources.generation() || locale != Locale.getDefault()) valid = false
     val safeAnswer = grounding.render(result.answer, clock(), valid)
     val safeChips = if (valid) grounding.chips(result.chips) else emptyList()
-    writeCurrentData {
+    publishAssistantResult(turnDiagnostics, diagnostics) {
       commitGroundedHistory(conversation, requestConversation, safeAnswer, safeChips)
       // La conversazione e' mutata dentro: la UI la rilegge dallo stesso oggetto.
       conversationFlow.value = conversation
@@ -416,8 +421,15 @@ class AssistantSession(
    * federati — PampAI/Aria chiede all'utente prima di chiamarci, e qui non c'e' una card a cui
    * chiedere. Dentro l'app si passa sempre da [perform].
    */
-  suspend fun performPreConfirmed(action: AssistantAction): ActionOutcome =
-    runCatching { execute(action) }.getOrDefault(ActionOutcome.UNAVAILABLE)
+  suspend fun performPreConfirmed(action: AssistantAction): ActionOutcome = try {
+    withDataWipeGeneration(sources.wipeGuard) {
+      writeCurrentData { Unit }
+      cancellableResult { execute(action) }.getOrDefault(ActionOutcome.UNAVAILABLE)
+    }
+  } catch (_: DataWipeInvalidatedException) {
+    currentCoroutineContext().ensureActive()
+    ActionOutcome.UNAVAILABLE
+  }
 
   private suspend fun execute(action: AssistantAction): ActionOutcome = when (action) {
     is AssistantAction.Open -> {
@@ -429,12 +441,12 @@ class AssistantSession(
       ActionOutcome.DONE
     }
     AssistantAction.StartBurst -> {
-      sources.manualBurst.start()
+      writeCurrentData { sources.manualBurst.start() }
       ActionOutcome.DONE
     }
     is AssistantAction.RecordObservation -> {
-      val here = runCatching { sources.locationProvider.snapshot(timeoutMillis = 5_000) }.getOrNull()
-      val placeName = runCatching { resolver.selected()?.name }.getOrNull()
+      val here = cancellableResult { sources.locationProvider.snapshot(timeoutMillis = 5_000) }.getOrNull()
+      val placeName = cancellableResult { resolver.selected()?.name }.getOrNull()
       sources.observations.record(action.condition, clock(), here?.latitude, here?.longitude, placeName)
       ActionOutcome.DONE
     }
@@ -462,7 +474,7 @@ class AssistantSession(
       ActionOutcome.DONE
     }
     AssistantAction.StartCalibration -> {
-      sources.calibrationController.start()
+      writeCurrentData { sources.calibrationController.start() }
       ActionOutcome.DONE
     }
   }
@@ -480,6 +492,22 @@ class AssistantSession(
     else -> null
   }
 
+}
+
+private fun copyRateLimits(from: AiDiagnosticsLog, to: AiDiagnosticsLog) {
+  from.rateLimits.value.forEach { (provider, limit) -> to.rateLimit(provider, limit) }
+}
+
+internal suspend fun publishAssistantResult(
+  turnDiagnostics: AiDiagnosticsLog,
+  diagnostics: AiDiagnosticsLog,
+  publish: () -> Unit,
+) {
+  writeCurrentData {
+    copyRateLimits(turnDiagnostics, diagnostics)
+    turnDiagnostics.entries.value.asReversed().forEach(diagnostics::add)
+    publish()
+  }
 }
 
 /** Keep the initial data epoch through voice, prompt reads and dispatch to each tool. */

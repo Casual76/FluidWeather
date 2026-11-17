@@ -131,7 +131,6 @@ class AppGraph(context: Context) {
 
   val pressureRepository = PressureRepository(database.pressureDao())
   val nowcastHistoryStore = NowcastHistoryStore(database.nowcastHistoryDao())
-  val observationRepository = ObservationRepository(database.observationDao())
   // Apprendimento on-device (fase 16): l'archivio da cui si impara e le mappe di ricalibrazione.
   val learningRepository = LearningRepository(database.learningDao())
   val learningStore = LearningStore(context)
@@ -141,6 +140,7 @@ class AppGraph(context: Context) {
    * prima del lavoro e, se nel frattempo e' passata una cancellazione, non scrive. Vedi [DataWipeGuard].
    */
   val wipeGuard = DataWipeGuard()
+  val observationRepository = ObservationRepository(database.observationDao(), wipeGuard)
   val samplingSettingsStore = SamplingSettingsStore(context)
   val engineSettingsStore = EngineSettingsStore(context)
   val calibrationStore = CalibrationStore(context)
@@ -579,7 +579,7 @@ class AppGraph(context: Context) {
           },
           { radarTiles.clear() },
           {
-            aiAssistant.session.resetForDataDeletion()
+            aiAssistant.session.reset()
             aiAssistant.diagnostics.clear()
           },
         )

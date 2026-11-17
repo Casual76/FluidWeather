@@ -561,7 +561,7 @@
   <string name="kind_thunderstorm">Temporale</string>
   <string name="learning_active_gain">Attiva · variazione di Brier fuori campione %1$s</string>
   <string name="learning_rule_fallback">Qui parla la regola del barometro al posto del modello · variazione di Brier %1$s</string>
-  <string name="learning_explain">Ricalibrato = la probabilità del modello portata sulla frequenza vera delle tue verifiche (Platt scaling), con una mappa per contesto (fresco, vecchio, assente). Una mappa si applica solo se, stimata sul 70% più vecchio delle verifiche, batte la probabilità grezza sul 30% più recente.</string>
+  <string name="learning_explain" formatted="false">Ricalibrato = la probabilità del modello portata sulla frequenza vera delle tue verifiche (Platt scaling), con una mappa per contesto (fresco, vecchio, assente). Una mappa si applica solo se, stimata sul 70% più vecchio delle verifiche, batte la probabilità grezza sul 30% più recente.</string>
   <string name="learning_map_counts">%1$s casi: %2$s bagnati, %3$s asciutti</string>
   <string name="learning_model_version">Versione del modello</string>
   <string name="learning_not_yet">Non ancora: servono 100 verifiche, almeno 10 bagnate e 10 asciutte</string>

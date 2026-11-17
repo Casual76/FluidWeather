@@ -1,5 +1,7 @@
 package dev.pampa.fluidweather.feature.report
 
+import dev.pampa.fluidweather.core.data.DataWipeInvalidatedException
+
 import android.content.Context
 import android.location.Geocoder
 import androidx.compose.animation.core.Animatable
@@ -210,14 +212,20 @@ private fun ReportContent(deps: ReportDependencies) {
       onClick = {
         val condition = selected ?: return@FluidButton
         val here = place
+        val observed = deps.observations.generation()
         scope.launch {
-          sent = deps.observations.record(
-            condition = condition,
-            timestampMillis = System.currentTimeMillis(),
-            latitude = here?.latitude,
-            longitude = here?.longitude,
-            placeName = here?.name,
-          )
+          sent = try {
+            deps.observations.record(
+              condition = condition,
+              timestampMillis = System.currentTimeMillis(),
+              latitude = here?.latitude,
+              longitude = here?.longitude,
+              placeName = here?.name,
+              observed = observed,
+            )
+          } catch (_: DataWipeInvalidatedException) {
+            return@launch
+          }
           haptics.play(if (sent != null) FluidHapticEvent.Confirm else FluidHapticEvent.Error)
         }
       },

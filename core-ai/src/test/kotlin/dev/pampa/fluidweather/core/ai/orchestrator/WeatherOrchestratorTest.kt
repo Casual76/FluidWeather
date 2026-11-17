@@ -392,6 +392,44 @@ class WeatherOrchestratorTest {
   }
 
   @Test
+  fun `no-tool turn finishing after wipe cannot publish diagnostics`() = runBlocking {
+    val guard = DataWipeGuard()
+    val shared = AiDiagnosticsLog()
+    val scratch = AiDiagnosticsLog()
+    val engine = WeatherOrchestrator.create(registry, scratch)
+    val state = MutableStateFlow<AssistantState>(AssistantState.Idle)
+    val entered = CompletableDeferred<Unit>()
+    val resume = CompletableDeferred<Unit>()
+    val old = FakeProvider(ProviderId.OPENROUTER, listOf(Scripted.Text("Old reply"))) {
+      entered.complete(Unit)
+      resume.await()
+    }
+    var published = false
+    val turn = launch {
+      runAssistantTurn(guard, guard.generation(), state) {
+        engine.ask(input("Old question", old), state)
+        publishAssistantResult(scratch, shared) { published = true }
+      }
+    }
+    withTimeout(5_000L) { entered.await() }
+    guard.wipe { shared.clear() }
+    resume.complete(Unit)
+    withTimeout(5_000L) { turn.join() }
+    assertEquals("Old question", scratch.entries.value.single().question)
+    assertTrue(shared.entries.value.isEmpty())
+    assertTrue(!published)
+
+    val fresh = AiDiagnosticsLog()
+    runAssistantTurn(guard, guard.generation(), state) {
+      val provider = FakeProvider(ProviderId.OPENROUTER, listOf(Scripted.Text("New reply")))
+      WeatherOrchestrator.create(registry, fresh).ask(input("New question", provider), state)
+      publishAssistantResult(fresh, shared) { published = true }
+    }
+    assertTrue(published)
+    assertEquals("New question", shared.entries.value.single().question)
+  }
+
+  @Test
   fun `turn wrapper propagates ordinary cancellation`() = runBlocking {
     val guard = DataWipeGuard()
     val state = MutableStateFlow<AssistantState>(AssistantState.Transcribing)

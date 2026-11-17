@@ -85,7 +85,6 @@ class AiAssistant(
   val resolver = PlaceResolver(dataSources)
   val registry = AllTools.registry(resolver)
   val gate = AiConfirmationGate(WeatherOrchestrator.config)
-  val orchestrator = WeatherOrchestrator.create(registry, diagnostics, gate)
   val transcriber = Transcriber { providers.ordered(ProviderFactory.Kind.STT) }
 
   val session = AssistantSession(
@@ -94,7 +93,8 @@ class AiAssistant(
     resolver = resolver,
     settingsStore = settings,
     providers = providers,
-    orchestrator = orchestrator,
+    orchestrator = { log -> WeatherOrchestrator.create(registry, log, gate) },
+    diagnostics = diagnostics,
     transcriber = transcriber,
     speechFactory = { SpeechCapture(AndroidPcmSource(appContext)) },
     cacheDir = appContext.cacheDir,

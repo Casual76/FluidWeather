@@ -43,7 +43,12 @@ interface ObservationDao {
 }
 
 /** L'archivio delle osservazioni: poche righe, ma sono le uniche scritte da un essere umano. */
-class ObservationRepository(private val dao: ObservationDao) {
+class ObservationRepository(
+  private val dao: ObservationDao,
+  private val wipeGuard: DataWipeGuard? = null,
+) {
+  fun generation(): Long? = wipeGuard?.generation()
+
 
   fun recent(limit: Int = 10): Flow<List<Observation>> = dao.recent(limit).map { list -> list.mapNotNull { it.toModel() } }
 
@@ -55,17 +60,20 @@ class ObservationRepository(private val dao: ObservationDao) {
     latitude: Double?,
     longitude: Double?,
     placeName: String?,
-  ): Observation {
-    val id = dao.insert(
-      ObservationEntity(
-        timestampMillis = timestampMillis,
-        condition = condition.name,
-        latitude = latitude,
-        longitude = longitude,
-        placeName = placeName,
-      ),
-    )
-    return Observation(id, timestampMillis, condition, latitude, longitude, placeName)
+    observed: Long? = null,
+  ): Observation = withDataWipeGeneration(wipeGuard, observed) {
+    writeCurrentData {
+      val id = dao.insert(
+        ObservationEntity(
+          timestampMillis = timestampMillis,
+          condition = condition.name,
+          latitude = latitude,
+          longitude = longitude,
+          placeName = placeName,
+        ),
+      )
+      Observation(id, timestampMillis, condition, latitude, longitude, placeName)
+    }
   }
 
   suspend fun delete(id: Long) = dao.delete(id)

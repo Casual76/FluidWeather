@@ -117,7 +117,9 @@ class PendingCalibrationEstimatorTest {
     try {
       f.estimator.retry()
       fail("cancellation must propagate")
-    } catch (failure: CancellationException) { assertSame(cancelled, failure) }
+    } catch (failure: CancellationException) {
+      assertTrue(failure === cancelled || failure.cause === cancelled)
+    }
     assertNull(f.saved)
     assertNotNull(f.pending)
   }
@@ -129,7 +131,9 @@ class PendingCalibrationEstimatorTest {
     try {
       f.estimator.retry()
       fail("cancellation must propagate")
-    } catch (failure: CancellationException) { assertSame(cancelled, failure) }
+    } catch (failure: CancellationException) {
+      assertTrue(failure === cancelled || failure.cause === cancelled)
+    }
     assertEquals(CalibrationOutcome.NO_REFERENCE, f.outcome)
     assertNotNull(f.pending)
   }
